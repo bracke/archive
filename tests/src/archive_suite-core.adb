@@ -20,6 +20,7 @@ with Archive.Archives.Index;
 with Archive.Archives.Opening;
 with Archive.Archives.Opening.Tasks;
 with Archive.Archives.Paths;
+with Archive.Archives.Readers.Ar;
 with Archive.Archives.Readers.Gzip;
 with Archive.Archives.Readers.Dispatch;
 with Archive.Archives.Readers.Tar;
@@ -201,6 +202,7 @@ package body Archive_Suite.Core is
    function Index_Tar
      (Bytes : Zlib.Byte_Array)
       return Archive.Archives.Readers.Tar.Tar_Index_Result;
+   function One_File_Ar return Zlib.Byte_Array;
    function Index_Gzip
      (Bytes       : Zlib.Byte_Array;
       Source_Name : String := "")
@@ -539,7 +541,8 @@ package body Archive_Suite.Core is
       Assert (R.Format = Archive.Archives.Formats.Cpio_Format, "cpio unsupported format id");
 
       R := Detect_Bytes (Ar);
-      Assert (R.Format = Archive.Archives.Formats.Ar_Format, "ar unsupported format id");
+      Assert (R.Status = Archive.Archives.Formats.Detected, "ar signature is detected");
+      Assert (R.Format = Archive.Archives.Formats.Ar_Format, "ar format id");
 
       R := Detect_Bytes (Split_Zip);
       Assert
@@ -562,6 +565,8 @@ package body Archive_Suite.Core is
            Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.BZip2_Format);
          Zstd_Caps : constant Archive.Archives.Formats.Format_Capabilities :=
            Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Zstd_Format);
+         Ar_Caps : constant Archive.Archives.Formats.Format_Capabilities :=
+           Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Ar_Format);
          Xz : constant Archive.Archives.Formats.Format_Capabilities :=
            Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Xz_Format);
       begin
@@ -573,6 +578,9 @@ package body Archive_Suite.Core is
                  "bzip2 supports single logical-file creation only");
          Assert (Zstd_Caps.Can_Create and then not Zstd_Caps.Can_Add_Entries,
                  "zstd supports single logical-file creation only");
+         Assert (Ar_Caps.Can_Index and then Ar_Caps.Can_Open_Entry_Streams
+                 and then not Ar_Caps.Can_Create,
+                 "ar supports read workflows without advertising write capability");
          Assert (not Xz.Can_Create and then not Xz.Can_Index,
                  "unsupported formats do not advertise write capability");
          Assert
@@ -656,6 +664,23 @@ package body Archive_Suite.Core is
       Put32 (Bytes, 0, 16#0605_4B50#);
       return Bytes;
    end Empty_Zip;
+
+   function One_File_Ar return Zlib.Byte_Array is
+      Bytes : Zlib.Byte_Array (1 .. 72) :=
+        [others => Zlib.Byte (Character'Pos (' '))];
+   begin
+      Put_Text (Bytes, 0, "!<arch>" & ASCII.LF);
+      Put_Text (Bytes, 8, "a.txt/");
+      Put_Text (Bytes, 24, "0");
+      Put_Text (Bytes, 36, "0");
+      Put_Text (Bytes, 42, "0");
+      Put_Text (Bytes, 48, "100644");
+      Put_Text (Bytes, 56, "3");
+      Put_Text (Bytes, 66, "`" & ASCII.LF);
+      Put_Text (Bytes, 68, "abc");
+      Bytes (72) := Zlib.Byte (Character'Pos (ASCII.LF));
+      return Bytes;
+   end One_File_Ar;
 
    function One_File_Zip
      (Method    : Natural := 0;
@@ -2486,6 +2511,7 @@ package body Archive_Suite.Core is
       Zstd : constant Zlib.Byte_Array :=
         Zlib.Zstd_Encoder.Encode (Plain, Zstd_Status);
       Tar : constant Zlib.Byte_Array := One_File_Tar;
+      Ar : constant Zlib.Byte_Array := One_File_Ar;
    begin
       Assert (Status = Zlib.Ok, "dispatch gzip fixture builds");
       Assert (Tar_Gz_Status = Zlib.Ok, "dispatch tar.gz fixture builds");
@@ -2551,6 +2577,27 @@ package body Archive_Suite.Core is
             and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('o'))
             and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('k')),
             "tar payload bytes are returned");
+      end;
+
+      declare
+         Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+           Open_Dispatch (Ar, Source_Name => "sample.ar");
+         Item : constant Archive.Archives.Entries.Archive_Entry :=
+           Archive.Archives.Index.Entry_For (Opened.Index, 2);
+         Payload : constant Test_Stream_Result :=
+           Stream_Dispatch_Payload (Ar, "sample.ar", Item);
+      begin
+         Assert (Opened.Status = Archive.Archives.Errors.Ok, "ar dispatch succeeds");
+         Assert (Opened.Format = Archive.Archives.Formats.Ar_Format, "ar dispatch records format");
+         Assert (Archive.Archives.Index.Physical_Count (Opened.Index) = 1,
+                 "ar dispatch publishes physical entry");
+         Assert
+           (Payload.Status = Archive.Archives.Errors.Ok
+            and then Payload.Integrity = Archive.Archives.Entries.Verified
+            and then Payload.Bytes_Written = 3
+            and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('a'))
+            and then Bytes_Of (Payload) (3) = Zlib.Byte (Character'Pos ('c')),
+            "ar dispatch streams stored member payload");
       end;
 
       declare

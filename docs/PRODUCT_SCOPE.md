@@ -57,6 +57,7 @@ Required V1 read workflows:
 | ZIP DEFLATE | required | required | required | required | archive ZIP adapter + `zlib` |
 | ZIP BZip2 / LZMA / Zstandard | supported | supported | supported | supported | archive ZIP adapter + `zlib` |
 | gzip | required | required | required | required | `zlib` |
+| AR | supported | supported | supported | supported | archive AR adapter |
 
 Required V1 write workflows:
 
@@ -161,7 +162,7 @@ and shell snapshots expose the recent count and ordered path list through the
 settings snapshot for menu construction.
 
 Recognized unsupported formats include RAR, XZ, CAB, CPIO,
-ISO, AR, split ZIP, multi-volume ZIP, encrypted entries outside the supported
+ISO, split ZIP, multi-volume ZIP, encrypted entries outside the supported
 7z subset, ZIP PPMd, and unsupported ZIP or 7z compression methods.
 
 ## Non-Negotiable Invariants

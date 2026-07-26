@@ -187,6 +187,24 @@ package body Archive.Archives.Formats is
                Can_Remove_Entries          => False,
                Can_Rename_Entries          => True,
                Requires_Rewrite_For_Update => True);
+         when Ar_Format =>
+            return
+              (Can_Index                   => True,
+               Can_Open_Entry_Streams      => True,
+               Can_Verify_Metadata         => True,
+               Can_Verify_Payload          => True,
+               Supports_Duplicates         => True,
+               Supports_Symbolic_Links     => False,
+               Supports_Hard_Links         => False,
+               Supports_Encryption         => False,
+               Supports_Random_Access      => True,
+               Requires_Temporary_Backing  => False,
+               Can_Create                  => False,
+               Can_Add_Entries             => False,
+               Can_Replace_Entries         => False,
+               Can_Remove_Entries          => False,
+               Can_Rename_Entries          => False,
+               Requires_Rewrite_For_Update => False);
          when others =>
             return (others => False);
       end case;
@@ -266,7 +284,7 @@ package body Archive.Archives.Formats is
         and then B (Bytes, 6) = Character'Pos ('>')
         and then B (Bytes, 7) = 16#0A#
       then
-         return (Recognized_Unsupported, Ar_Format);
+         return (Detected, Ar_Format);
       elsif Bytes'Length >= 4
         and then B (Bytes, 0) = 16#50#
         and then B (Bytes, 1) = 16#4B#

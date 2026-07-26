@@ -17,6 +17,7 @@ that registry and the AUnit format tests.
 | 7z | supported for the native zlib-backed subset | supported through `zlib` native 7z extraction | supported through zlib header, size, CRC, and method validation | supported through safe extraction planning/execution | supported by Deflate file-list publication through `zlib` | `zlib` |
 | bzip2 | supported as one logical regular-file archive | supported through `zlib` bzip2 decoding | supported by bzip2 block and combined CRC validation | supported through safe extraction planning/execution | supported by bzip2 writer adapter | `zlib` |
 | Zstandard | supported as one logical regular-file archive | supported through `zlib` Zstandard decoding | supported by zlib frame validation and optional content checksum | supported through safe extraction planning/execution | supported by Zstandard writer adapter | `zlib` |
+| AR | supported for stored members, symbol tables, GNU string tables, and BSD long names | supported for stored regular-file members | supported by bounded member header and size validation | supported through safe extraction planning/execution | not supported | archive AR adapter |
 
 Current covered edge cases include ZIP comments, Unicode path extra fields,
 ZIP64 per-entry size extras within host bounds, data descriptors with and
@@ -29,7 +30,7 @@ device and FIFO metadata, PAX long paths, invalid TAR checksum, and TAR
 truncation, zlib-backed native 7z listing and payload extraction, and
 zlib-backed Deflate 7z file-list publication, zlib-backed bzip2 single-file
 decoding and publication, and zlib-backed Zstandard single-file decoding and
-publication.
+publication, and stored Unix AR member indexing and payload streaming.
 
 Recognized but unsupported:
 
@@ -38,7 +39,6 @@ Recognized but unsupported:
 - CAB
 - CPIO
 - ISO
-- AR
 - split ZIP / spanning ZIP
 
 Unsupported ZIP methods, including ZIP PPMd and non-bridge LZMA variants, remain
