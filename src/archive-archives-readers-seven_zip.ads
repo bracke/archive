@@ -14,6 +14,11 @@ package Archive.Archives.Readers.Seven_Zip is
       Max_Bytes : Positive := 256 * 1_024 * 1_024)
       return Seven_Zip_Index_Result;
 
+   function Index_Volume_File
+     (First_Volume_Path : String;
+      Max_Bytes         : Positive := 256 * 1_024 * 1_024)
+      return Seven_Zip_Index_Result;
+
    type Stream_Result is record
       Status    : Archive.Archives.Errors.Error_Code := Archive.Archives.Errors.Ok;
       Integrity : Archive.Archives.Entries.Integrity_State :=
@@ -26,6 +31,15 @@ package Archive.Archives.Readers.Seven_Zip is
       Max_Bytes : Positive;
       Item      : Archive.Archives.Entries.Archive_Entry;
       Consumer  : not null access procedure
+        (Bytes : Zlib.Byte_Array;
+         Continue : in out Boolean))
+      return Stream_Result;
+
+   function Stream_Payload_Volume_File
+     (First_Volume_Path : String;
+      Max_Bytes         : Positive;
+      Item              : Archive.Archives.Entries.Archive_Entry;
+      Consumer          : not null access procedure
         (Bytes : Zlib.Byte_Array;
          Continue : in out Boolean))
       return Stream_Result;

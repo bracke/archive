@@ -56,6 +56,68 @@ package body Archive.Archives.Readers.Seven_Zip is
         and then (Name (Name'Last) = '/' or else Name (Name'Last) = '\');
    end Name_Looks_Directory;
 
+   function Is_First_Volume_Path (Path : String) return Boolean is
+   begin
+      return Path'Length >= 4
+        and then Path (Path'Last - 3 .. Path'Last) = ".001";
+   end Is_First_Volume_Path;
+
+   function Volume_Suffix (N : Positive) return String is
+      Hundreds : constant Natural := (N / 100) mod 10;
+      Tens     : constant Natural := (N / 10) mod 10;
+      Ones     : constant Natural := N mod 10;
+   begin
+      return
+        Character'Val (Character'Pos ('0') + Hundreds)
+        & Character'Val (Character'Pos ('0') + Tens)
+        & Character'Val (Character'Pos ('0') + Ones);
+   end Volume_Suffix;
+
+   function Volume_Path (First_Volume_Path : String; N : Positive) return String is
+   begin
+      if N = 1 or else not Is_First_Volume_Path (First_Volume_Path) then
+         return First_Volume_Path;
+      end if;
+
+      return First_Volume_Path (First_Volume_Path'First .. First_Volume_Path'Last - 3)
+        & Volume_Suffix (N);
+   end Volume_Path;
+
+   function Volumes_Within_Limit
+     (First_Volume_Path : String;
+      Max_Bytes         : Positive)
+      return Boolean
+   is
+      Limit : constant Ada.Directories.File_Size :=
+        Ada.Directories.File_Size (Max_Bytes);
+      Total : Ada.Directories.File_Size := 0;
+   begin
+      for N in 1 .. 999 loop
+         declare
+            Path : constant String := Volume_Path (First_Volume_Path, N);
+         begin
+            exit when N > 1 and then not Ada.Directories.Exists (Path);
+            if not Ada.Directories.Exists (Path) then
+               return False;
+            end if;
+
+            declare
+               Size : constant Ada.Directories.File_Size := Ada.Directories.Size (Path);
+            begin
+               if Size > Limit or else Total > Limit - Size then
+                  return False;
+               end if;
+               Total := Total + Size;
+            end;
+         end;
+      end loop;
+
+      return True;
+   exception
+      when others =>
+         return False;
+   end Volumes_Within_Limit;
+
    function Effective_Read_Limit
      (Path      : String;
       Max_Bytes : Positive)
@@ -77,25 +139,62 @@ package body Archive.Archives.Readers.Seven_Zip is
          return Max_Bytes;
    end Effective_Read_Limit;
 
-   function Index_File
+   function Load_File_Image
      (Path      : String;
-      Max_Bytes : Positive := 256 * 1_024 * 1_024)
-      return Seven_Zip_Index_Result
+      Max_Bytes : Positive;
+      Status    : out Archive.Archives.Errors.Error_Code)
+      return Zlib.Byte_Array
    is
       Source : constant Archive.Archives.Streams.Buffered_Source :=
         Archive.Archives.Streams.Read_Bounded
           (Path, Effective_Read_Limit (Path, Max_Bytes));
-      Status : Zlib.Status_Code := Zlib.Ok;
-      Result : Seven_Zip_Index_Result;
    begin
-      if Source.Status /= Archive.Archives.Errors.Ok then
-         Result.Status := Source.Status;
-         return Result;
+      Status := Source.Status;
+      return Source.Bytes;
+   end Load_File_Image;
+
+   function Load_Volume_Image
+     (First_Volume_Path : String;
+      Max_Bytes         : Positive;
+      Status            : out Archive.Archives.Errors.Error_Code)
+      return Zlib.Byte_Array
+   is
+      Z_Status : Zlib.Status_Code := Zlib.Ok;
+   begin
+      if not Volumes_Within_Limit (First_Volume_Path, Max_Bytes) then
+         Status := Archive.Archives.Errors.Limit_Exceeded;
+         return [1 .. 0 => 0];
       end if;
 
       declare
+         Image : constant Zlib.Byte_Array :=
+           Zlib.Read_Seven_Zip_Volumes (First_Volume_Path, Z_Status);
+      begin
+         Status := Map_Status (Z_Status);
+         if Status = Archive.Archives.Errors.Ok
+           and then Image'Length > Max_Bytes
+         then
+            Status := Archive.Archives.Errors.Limit_Exceeded;
+            return [1 .. 0 => 0];
+         end if;
+         return Image;
+      end;
+   exception
+      when Storage_Error =>
+         Status := Archive.Archives.Errors.Limit_Exceeded;
+         return [1 .. 0 => 0];
+      when others =>
+         Status := Archive.Archives.Errors.Read_Failed;
+         return [1 .. 0 => 0];
+   end Load_Volume_Image;
+
+   function Index_Image (Archive_Image : Zlib.Byte_Array) return Seven_Zip_Index_Result is
+      Status : Zlib.Status_Code := Zlib.Ok;
+      Result : Seven_Zip_Index_Result;
+   begin
+      declare
          Listed : constant Zlib.Archive_Entry_Array :=
-           Zlib.List_Seven_Zip_Entries (Source.Bytes, Status);
+           Zlib.List_Seven_Zip_Entries (Archive_Image, Status);
          Ordinal : Archive.Types.Archive_Ordinal := 0;
       begin
          Result.Status := Map_Status (Status);
@@ -131,29 +230,54 @@ package body Archive.Archives.Readers.Seven_Zip is
       end;
 
       return Result;
+   end Index_Image;
+
+   function Index_File
+     (Path      : String;
+      Max_Bytes : Positive := 256 * 1_024 * 1_024)
+      return Seven_Zip_Index_Result
+   is
+      Load_Status : Archive.Archives.Errors.Error_Code;
+      Image       : constant Zlib.Byte_Array :=
+        Load_File_Image (Path, Max_Bytes, Load_Status);
+   begin
+      if Load_Status /= Archive.Archives.Errors.Ok then
+         return (Status => Load_Status,
+                 Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
+      end if;
+
+      return Index_Image (Image);
    end Index_File;
 
-   function Stream_Payload_File
-     (Path      : String;
-      Max_Bytes : Positive;
-      Item      : Archive.Archives.Entries.Archive_Entry;
-      Consumer  : not null access procedure
+   function Index_Volume_File
+     (First_Volume_Path : String;
+      Max_Bytes         : Positive := 256 * 1_024 * 1_024)
+      return Seven_Zip_Index_Result
+   is
+      Load_Status : Archive.Archives.Errors.Error_Code;
+      Image       : constant Zlib.Byte_Array :=
+        Load_Volume_Image (First_Volume_Path, Max_Bytes, Load_Status);
+   begin
+      if Load_Status /= Archive.Archives.Errors.Ok then
+         return (Status => Load_Status,
+                 Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
+      end if;
+
+      return Index_Image (Image);
+   end Index_Volume_File;
+
+   function Stream_Payload_Image
+     (Archive_Image : Zlib.Byte_Array;
+      Item          : Archive.Archives.Entries.Archive_Entry;
+      Consumer      : not null access procedure
         (Bytes : Zlib.Byte_Array;
          Continue : in out Boolean))
       return Stream_Result
    is
-      Source : constant Archive.Archives.Streams.Buffered_Source :=
-        Archive.Archives.Streams.Read_Bounded
-          (Path, Effective_Read_Limit (Path, Max_Bytes));
       Status : Zlib.Status_Code := Zlib.Ok;
       Continue : Boolean := True;
    begin
-      if Source.Status /= Archive.Archives.Errors.Ok then
-         return
-           (Status        => Source.Status,
-            Integrity     => Archive.Archives.Entries.Not_Available,
-            Bytes_Written => 0);
-      elsif Item.Kind = Archive.Archives.Entries.Directory then
+      if Item.Kind = Archive.Archives.Entries.Directory then
          return
            (Status        => Archive.Archives.Errors.Ok,
             Integrity     => Archive.Archives.Entries.Verified,
@@ -168,7 +292,7 @@ package body Archive.Archives.Readers.Seven_Zip is
       declare
          Payload : constant Zlib.Byte_Array :=
            Zlib.Extract_Seven_Zip
-             (Source.Bytes, To_String (Item.Original_Path), Status);
+             (Archive_Image, To_String (Item.Original_Path), Status);
       begin
          if Status /= Zlib.Ok then
             return
@@ -189,6 +313,29 @@ package body Archive.Archives.Readers.Seven_Zip is
                else Archive.Archives.Entries.Not_Checked),
             Bytes_Written => Archive.Types.Uncompressed_Size (Payload'Length));
       end;
+   end Stream_Payload_Image;
+
+   function Stream_Payload_File
+     (Path      : String;
+      Max_Bytes : Positive;
+      Item      : Archive.Archives.Entries.Archive_Entry;
+      Consumer  : not null access procedure
+        (Bytes : Zlib.Byte_Array;
+         Continue : in out Boolean))
+      return Stream_Result
+   is
+      Load_Status : Archive.Archives.Errors.Error_Code;
+      Image       : constant Zlib.Byte_Array :=
+        Load_File_Image (Path, Max_Bytes, Load_Status);
+   begin
+      if Load_Status /= Archive.Archives.Errors.Ok then
+         return
+           (Status        => Load_Status,
+            Integrity     => Archive.Archives.Entries.Not_Available,
+            Bytes_Written => 0);
+      end if;
+
+      return Stream_Payload_Image (Image, Item, Consumer);
    exception
       when Storage_Error =>
          return
@@ -201,4 +348,38 @@ package body Archive.Archives.Readers.Seven_Zip is
             Integrity     => Archive.Archives.Entries.Not_Available,
             Bytes_Written => 0);
    end Stream_Payload_File;
+
+   function Stream_Payload_Volume_File
+     (First_Volume_Path : String;
+      Max_Bytes         : Positive;
+      Item              : Archive.Archives.Entries.Archive_Entry;
+      Consumer          : not null access procedure
+        (Bytes : Zlib.Byte_Array;
+         Continue : in out Boolean))
+      return Stream_Result
+   is
+      Load_Status : Archive.Archives.Errors.Error_Code;
+      Image       : constant Zlib.Byte_Array :=
+        Load_Volume_Image (First_Volume_Path, Max_Bytes, Load_Status);
+   begin
+      if Load_Status /= Archive.Archives.Errors.Ok then
+         return
+           (Status        => Load_Status,
+            Integrity     => Archive.Archives.Entries.Not_Available,
+            Bytes_Written => 0);
+      end if;
+
+      return Stream_Payload_Image (Image, Item, Consumer);
+   exception
+      when Storage_Error =>
+         return
+           (Status        => Archive.Archives.Errors.Limit_Exceeded,
+            Integrity     => Archive.Archives.Entries.Not_Available,
+            Bytes_Written => 0);
+      when others =>
+         return
+           (Status        => Archive.Archives.Errors.Zlib_Failed,
+            Integrity     => Archive.Archives.Entries.Not_Available,
+            Bytes_Written => 0);
+   end Stream_Payload_Volume_File;
 end Archive.Archives.Readers.Seven_Zip;

@@ -47,6 +47,12 @@ package body Archive.Archives.Readers.Dispatch is
         or else Has_Suffix (Source_Name, ".tgz");
    end Looks_Like_Tar_Gzip;
 
+   function Looks_Like_Seven_Zip_First_Volume (Source_Name : String) return Boolean is
+   begin
+      return Has_Suffix (Source_Name, ".7z.001")
+        or else Has_Suffix (Source_Name, ".001");
+   end Looks_Like_Seven_Zip_First_Volume;
+
    function Tar_Backing_Path (Path : String) return String is
       Size_Image : constant String := Ada.Directories.File_Size'Image (Ada.Directories.Size (Path));
       Hash       : Natural := 0;
@@ -182,8 +188,12 @@ package body Archive.Archives.Readers.Dispatch is
             end;
 
             declare
+               Native_Name : constant String :=
+                 (if Source_Name'Length > 0 then Source_Name else Path);
                Parsed : constant Archive.Archives.Readers.Seven_Zip.Seven_Zip_Index_Result :=
-                 Archive.Archives.Readers.Seven_Zip.Index_File (Path, Max_Bytes);
+                 (if Looks_Like_Seven_Zip_First_Volume (Native_Name)
+                  then Archive.Archives.Readers.Seven_Zip.Index_Volume_File (Path, Max_Bytes)
+                  else Archive.Archives.Readers.Seven_Zip.Index_File (Path, Max_Bytes));
             begin
                Result.Status := Parsed.Status;
                if Parsed.Status = Archive.Archives.Errors.Ok then
@@ -468,9 +478,14 @@ package body Archive.Archives.Readers.Dispatch is
                   Consumer.all (Bytes, Continue);
                end Forward;
 
+               Native_Name : constant String :=
+                 (if Source_Name'Length > 0 then Source_Name else Path);
                Payload : constant Archive.Archives.Readers.Seven_Zip.Stream_Result :=
-                 Archive.Archives.Readers.Seven_Zip.Stream_Payload_File
-                   (Path, 256 * 1_024 * 1_024, Item, Forward'Access);
+                 (if Looks_Like_Seven_Zip_First_Volume (Native_Name)
+                  then Archive.Archives.Readers.Seven_Zip.Stream_Payload_Volume_File
+                    (Path, 256 * 1_024 * 1_024, Item, Forward'Access)
+                  else Archive.Archives.Readers.Seven_Zip.Stream_Payload_File
+                    (Path, 256 * 1_024 * 1_024, Item, Forward'Access));
             begin
                return (Status => Payload.Status,
                        Integrity => Payload.Integrity,

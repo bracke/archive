@@ -3150,6 +3150,73 @@ package body Archive_Suite.Core is
       end;
 
       declare
+         Root : constant String := "obj/reader-sevenzip-volumes";
+         Base : constant String := Root & "/sample.7z";
+         First_Volume : constant String := Base & ".001";
+         Volume_Status : Zlib.Status_Code := Zlib.Ok;
+         type Volume_Suffix_Array is array (Positive range <>) of String (1 .. 3);
+         Volume_Suffixes : constant Volume_Suffix_Array :=
+           [1 => "001", 2 => "002", 3 => "003", 4 => "004"];
+      begin
+         Ada.Directories.Create_Path (Root);
+         for Suffix of Volume_Suffixes loop
+            declare
+               Path : constant String := Base & "." & Suffix;
+            begin
+               if Ada.Directories.Exists (Path) then
+                  Ada.Directories.Delete_File (Path);
+               end if;
+            end;
+         end loop;
+
+         Zlib.Write_Seven_Zip_Volumes
+           (Seven, Base, Volume_Size => 40, Status => Volume_Status);
+         Assert (Volume_Status = Zlib.Ok, "7z volume fixture writes");
+
+         declare
+            Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+              Archive.Archives.Readers.Dispatch.Open_File
+                (First_Volume,
+                 Max_Bytes => 256 * 1_024,
+                 Source_Name => "sample.7z.001");
+            Limit_Open : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+              Archive.Archives.Readers.Dispatch.Open_File
+                (First_Volume,
+                 Max_Bytes => 20,
+                 Source_Name => "sample.7z.001");
+            Item : constant Archive.Archives.Entries.Archive_Entry :=
+              (if Opened.Status = Archive.Archives.Errors.Ok
+               then Archive.Archives.Index.Entry_For (Opened.Index, 2)
+               else (others => <>));
+            Payload : constant Test_Stream_Result :=
+              (if Opened.Status = Archive.Archives.Errors.Ok
+               then Stream_Dispatch_Payload_File
+                 (First_Volume, "sample.7z.001", Item)
+               else (Status => Opened.Status,
+                     Integrity => Archive.Archives.Entries.Not_Available,
+                     Bytes_Written => 0,
+                     Prefix_Length => 0,
+                     Bytes => [others => 0]));
+         begin
+            Assert
+              (Opened.Status = Archive.Archives.Errors.Ok
+               and then Opened.Format = Archive.Archives.Formats.Seven_Zip_Format
+               and then Archive.Archives.Index.Physical_Count (Opened.Index) = 1,
+               "7z volume dispatch reassembles and indexes first volume");
+            Assert
+              (Payload.Status = Archive.Archives.Errors.Ok
+               and then Payload.Integrity = Archive.Archives.Entries.Verified
+               and then Payload.Bytes_Written = 3
+               and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('a'))
+               and then Bytes_Of (Payload) (3) = Zlib.Byte (Character'Pos ('c')),
+               "7z volume dispatch streams reassembled payload");
+            Assert
+              (Limit_Open.Status = Archive.Archives.Errors.Limit_Exceeded,
+               "7z volume dispatch rejects joined volume set over limit");
+         end;
+      end;
+
+      declare
          Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
            Open_Dispatch (Zstd, Source_Name => "sample.txt.zst");
          Item : constant Archive.Archives.Entries.Archive_Entry :=
