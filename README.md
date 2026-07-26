@@ -6,25 +6,25 @@ V1 is intended to browse, preview, verify, extract, create, and update archive c
 
 ## Supported Formats
 
-Planned V1 support:
+Current V1 support:
 
 | Format | Browse | Preview | Verify | Extract | Create/Update | Backend |
 | --- | --- | --- | --- | --- | --- | --- |
-| TAR | partial | partial | partial | partial | partial | `tarlib` |
-| TAR.GZ / TGZ | partial | partial | partial | partial | partial | `zlib` + `tarlib` |
-| ZIP stored | partial | partial | partial | partial | partial | archive ZIP adapter |
-| ZIP DEFLATE | partial | partial | partial | partial | partial | archive ZIP adapter + `zlib` |
-| gzip | partial | partial | partial | partial | partial | `zlib` |
+| TAR | supported | supported | supported | supported | supported by rewrite | `tarlib` |
+| TAR.GZ / TGZ | supported | supported | supported | supported | supported by rewrite | `zlib` + `tarlib` |
+| ZIP stored | supported | supported | supported | supported | supported by rewrite | archive ZIP adapter |
+| ZIP DEFLATE | supported | supported | supported | supported | supported by rewrite | archive ZIP adapter + `zlib` |
+| gzip | supported | supported | supported | supported | supported single-file replacement | `zlib` |
 
 Recognized but unsupported in V1: 7z, RAR, XZ, bzip2, Zstandard, CAB, CPIO, ISO, AR, split ZIP, multi-volume ZIP, encrypted entries, and unsupported ZIP compression methods.
 
 ## Current Implementation Status
 
-This repository currently contains a broad V1 foundation: manifests, GPR
-projects, executable entry point, core typed IDs, format probing, TAR/ZIP/gzip
-reader adapters, zlib compression routing, immutable indexing, path-safety
-classification, command registry, application model, settings defaults,
-localization facade, extraction/write planning and execution primitives,
+This repository currently contains the V1 archive-manager implementation:
+manifests, GPR projects, executable entry point, core typed IDs, format probing,
+TAR/ZIP/gzip reader adapters, zlib compression routing, immutable indexing,
+path-safety classification, command registry, application model, settings
+defaults, localization facade, extraction/write planning and execution,
 headless GUI/runtime probes, release reporting, and Ada-owned validation gates.
 
 The local `tarlib` dependency now exposes TAR reader and writer APIs. `archive` should consume those public APIs for TAR browse, extract, create, and update workflows instead of parsing TAR records directly.

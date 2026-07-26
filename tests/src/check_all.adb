@@ -792,6 +792,8 @@ procedure Check_All is
       Require_Document_Text
         ("README.md", "docs/FORMAT_SUPPORT.md");
       Require_Document_Text
+        ("README.md", "Current V1 support");
+      Require_Document_Text
         ("README.md", "docs/testing-guide.md");
       Require_Document_Text
         ("README.md", "docs/settings-architecture.md");
@@ -1089,6 +1091,10 @@ procedure Check_All is
 
       Forbid_Document_Text
         ("README.md", "read-only graphical desktop archive browser");
+      Forbid_Document_Text
+        ("README.md", "partial | partial");
+      Forbid_Document_Text
+        ("README.md", "Planned V1 support");
       Forbid_Document_Text
         ("README.md", "write-only POSIX USTAR library");
       Forbid_Document_Text
