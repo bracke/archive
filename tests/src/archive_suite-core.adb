@@ -1053,8 +1053,12 @@ package body Archive_Suite.Core is
            30 + Name'Length + Effective_Local_Extra + Payload'Length + Descriptor_Length;
          Central_Size : constant Natural :=
            46 + Name'Length + Effective_Central_Extra + Central_Comment_Length;
+         ZIP64_Record_Length : constant Natural := (if Zip64_Locator then 56 else 0);
          ZIP64_Locator_Length : constant Natural := (if Zip64_Locator then 20 else 0);
-         EOCD_Offset : constant Natural := Central_Offset + Central_Size + ZIP64_Locator_Length;
+         ZIP64_Record_Offset : constant Natural := Central_Offset + Central_Size;
+         ZIP64_Locator_Offset : constant Natural := ZIP64_Record_Offset + ZIP64_Record_Length;
+         EOCD_Offset : constant Natural := Central_Offset + Central_Size
+           + ZIP64_Record_Length + ZIP64_Locator_Length;
          Total : constant Natural := EOCD_Offset + 22 + Archive_Comment_Length;
          Flags : constant Natural :=
            (if Encrypted or else Strong_Encryption then 1 else 0)
@@ -1184,7 +1188,18 @@ package body Archive_Suite.Core is
          end loop;
 
          if Zip64_Locator then
-            Put32 (Bytes, Central_Offset + Central_Size, 16#0706_4B50#);
+            Put32 (Bytes, ZIP64_Record_Offset, 16#0606_4B50#);
+            Put64 (Bytes, ZIP64_Record_Offset + 4, 44);
+            Put16 (Bytes, ZIP64_Record_Offset + 12, 45);
+            Put16 (Bytes, ZIP64_Record_Offset + 14, 45);
+            Put64 (Bytes, ZIP64_Record_Offset + 24, 1);
+            Put64 (Bytes, ZIP64_Record_Offset + 32, 1);
+            Put64 (Bytes, ZIP64_Record_Offset + 40, Central_Size);
+            Put64 (Bytes, ZIP64_Record_Offset + 48, Central_Offset);
+
+            Put32 (Bytes, ZIP64_Locator_Offset, 16#0706_4B50#);
+            Put64 (Bytes, ZIP64_Locator_Offset + 8, ZIP64_Record_Offset);
+            Put32 (Bytes, ZIP64_Locator_Offset + 16, 1);
          end if;
          Put32 (Bytes, EOCD_Offset, 16#0605_4B50#);
          Put16 (Bytes, EOCD_Offset + 8, 1);
@@ -1991,11 +2006,21 @@ package body Archive_Suite.Core is
       end;
 
       declare
+         Bytes : constant Zlib.Byte_Array :=
+           One_File_Zip (Zip64_Locator => True);
          Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
-           Index_Zip (One_File_Zip (Zip64_Locator => True));
+           Index_Zip (Bytes);
+         Item : constant Archive.Archives.Entries.Archive_Entry :=
+           Parsed.Entries.Element (1);
+         Payload : constant Test_Stream_Result :=
+           Stream_Zip_Payload (Bytes, Item);
       begin
-         Assert (Parsed.Status = Archive.Archives.Errors.Unsupported_Format,
-                 "zip64 EOCD locator is rejected explicitly");
+         Assert (Parsed.Status = Archive.Archives.Errors.Ok,
+                 "single-disk zip64 EOCD locator parses");
+         Assert (Payload.Status = Archive.Archives.Errors.Ok,
+                 "single-disk zip64 EOCD payload reads");
+         Assert (Payload.Integrity = Archive.Archives.Entries.Verified,
+                 "single-disk zip64 EOCD payload verifies crc");
       end;
 
       declare

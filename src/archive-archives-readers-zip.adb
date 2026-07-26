@@ -229,6 +229,16 @@ package body Archive.Archives.Readers.Zip is
       Length : Natural := 0;
    end record;
 
+   type ZIP64_EOCD_Result is record
+      Present        : Boolean := False;
+      Valid          : Boolean := True;
+      Record_Offset  : Interfaces.Unsigned_64 := 0;
+      Entries_On_Disk : Interfaces.Unsigned_64 := 0;
+      Entries_Total  : Interfaces.Unsigned_64 := 0;
+      Directory_Size : Interfaces.Unsigned_64 := 0;
+      Directory_Off  : Interfaces.Unsigned_64 := 0;
+   end record;
+
    function Fits_Natural (Value : Interfaces.Unsigned_64) return Boolean is
    begin
       return Value <= Interfaces.Unsigned_64 (Natural'Last);
@@ -426,6 +436,83 @@ package body Archive.Archives.Readers.Zip is
       return (Valid => False, ZIP64 => False, Length => 0);
    end Descriptor_At;
 
+   function ZIP64_EOCD_At
+     (Path      : String;
+      EOCD_Abs  : Natural)
+      return ZIP64_EOCD_Result
+   is
+      Locator_Abs : constant Natural := EOCD_Abs - 20;
+      Locator     : Zlib.Byte_Array (1 .. 20);
+      Locator_Status : Archive.Archives.Errors.Error_Code;
+      Header      : Zlib.Byte_Array (1 .. 56);
+      Header_Status : Archive.Archives.Errors.Error_Code;
+      Result      : ZIP64_EOCD_Result;
+   begin
+      Read_File_Slice (Path, Locator_Abs, Locator, Locator_Status);
+      if Locator_Status /= Archive.Archives.Errors.Ok
+        or else Signature (Locator, 0) /= 16#0706_4B50#
+      then
+         return (Present => False, Valid => True, others => <>);
+      end if;
+
+      Result.Present := True;
+      Result.Record_Offset := U64 (Locator, 8);
+
+      if U32 (Locator, 4) /= 0
+        or else U32 (Locator, 16) /= 1
+        or else not Fits_Natural (Result.Record_Offset)
+      then
+         Result.Valid := False;
+         return Result;
+      end if;
+
+      declare
+         Record_Abs : constant Natural := Natural (Result.Record_Offset);
+      begin
+         if Record_Abs > Locator_Abs
+           or else Locator_Abs - Record_Abs < 56
+         then
+            Result.Valid := False;
+            return Result;
+         end if;
+
+         Read_File_Slice (Path, Record_Abs, Header, Header_Status);
+         if Header_Status /= Archive.Archives.Errors.Ok
+           or else Signature (Header, 0) /= 16#0606_4B50#
+           or else U64 (Header, 4) < 44
+           or else not Fits_Natural (U64 (Header, 4))
+         then
+            Result.Valid := False;
+            return Result;
+         end if;
+
+         declare
+            Record_Total : constant Natural := Natural (U64 (Header, 4)) + 12;
+         begin
+            if Record_Total > Locator_Abs - Record_Abs
+              or else Record_Abs + Record_Total /= Locator_Abs
+              or else U32 (Header, 16) /= 0
+              or else U32 (Header, 20) /= 0
+            then
+               Result.Valid := False;
+               return Result;
+            end if;
+         end;
+
+         Result.Entries_On_Disk := U64 (Header, 24);
+         Result.Entries_Total := U64 (Header, 32);
+         Result.Directory_Size := U64 (Header, 40);
+         Result.Directory_Off := U64 (Header, 48);
+      end;
+
+      return Result;
+   exception
+      when others =>
+         Result.Present := True;
+         Result.Valid := False;
+         return Result;
+   end ZIP64_EOCD_At;
+
    function Is_Directory_Name (Name : String) return Boolean is
    begin
       return Name'Length > 0 and then Name (Name'Last) = '/';
@@ -519,47 +606,20 @@ package body Archive.Archives.Readers.Zip is
 
          EOCD_Abs := Tail_Offset + EOCD_Rel;
 
-         if EOCD_Abs >= 20 then
-            declare
-               Locator_Bytes  : Zlib.Byte_Array (1 .. 4);
-               Locator_Status : Archive.Archives.Errors.Error_Code;
-            begin
-               Read_File_Slice (Path, EOCD_Abs - 20, Locator_Bytes, Locator_Status);
-               if Locator_Status = Archive.Archives.Errors.Ok
-                 and then Signature (Locator_Bytes, 0) = 16#0706_4B50#
-               then
-                  return
-                    (Status  => Archive.Archives.Errors.Unsupported_Format,
-                     Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
-               end if;
-            end;
-         end if;
-
-         if U16 (Tail_Bytes, EOCD_Rel + 4) /= 0
-           or else U16 (Tail_Bytes, EOCD_Rel + 6) /= 0
-         then
-            return
-              (Status  => Archive.Archives.Errors.Unsupported_Format,
-               Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
-         end if;
-
          declare
-            Entries_On_Disk_Raw : constant Interfaces.Unsigned_16 :=
-              U16 (Tail_Bytes, EOCD_Rel + 8);
-            Entries_Total_Raw   : constant Interfaces.Unsigned_16 :=
-              U16 (Tail_Bytes, EOCD_Rel + 10);
-            Directory_Size_Raw  : constant Interfaces.Unsigned_32 :=
-              U32 (Tail_Bytes, EOCD_Rel + 12);
-            Directory_Off_Raw   : constant Interfaces.Unsigned_32 :=
-              U32 (Tail_Bytes, EOCD_Rel + 16);
-            Archive_Comment     : constant Natural :=
-              Natural (U16 (Tail_Bytes, EOCD_Rel + 20));
-            Result              : Zip_Index_Result;
+            ZIP64_EOCD : constant ZIP64_EOCD_Result :=
+              (if EOCD_Abs >= 20
+               then ZIP64_EOCD_At (Path, EOCD_Abs)
+               else (Present => False, Valid => True, others => <>));
          begin
-            if Entries_On_Disk_Raw = 16#FFFF#
-              or else Entries_Total_Raw = 16#FFFF#
-              or else Directory_Size_Raw = 16#FFFF_FFFF#
-              or else Directory_Off_Raw = 16#FFFF_FFFF#
+            if not ZIP64_EOCD.Valid then
+               return
+                 (Status  => Archive.Archives.Errors.Invalid_Format,
+                  Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
+            end if;
+
+            if U16 (Tail_Bytes, EOCD_Rel + 4) /= 0
+              or else U16 (Tail_Bytes, EOCD_Rel + 6) /= 0
             then
                return
                  (Status  => Archive.Archives.Errors.Unsupported_Format,
@@ -567,19 +627,35 @@ package body Archive.Archives.Readers.Zip is
             end if;
 
             declare
-               Entries_On_Disk : constant Natural := Natural (Entries_On_Disk_Raw);
-               Entries_Total   : constant Natural := Natural (Entries_Total_Raw);
-               Directory_Size  : constant Natural := Natural (Directory_Size_Raw);
-               Directory_Off   : constant Natural := Natural (Directory_Off_Raw);
+               Entries_On_Disk_Raw : constant Interfaces.Unsigned_16 :=
+                 U16 (Tail_Bytes, EOCD_Rel + 8);
+               Entries_Total_Raw   : constant Interfaces.Unsigned_16 :=
+                 U16 (Tail_Bytes, EOCD_Rel + 10);
+               Directory_Size_Raw  : constant Interfaces.Unsigned_32 :=
+                 U32 (Tail_Bytes, EOCD_Rel + 12);
+               Directory_Off_Raw   : constant Interfaces.Unsigned_32 :=
+                 U32 (Tail_Bytes, EOCD_Rel + 16);
+               Archive_Comment     : constant Natural :=
+                 Natural (U16 (Tail_Bytes, EOCD_Rel + 20));
+               Result              : Zip_Index_Result;
             begin
-               if Entries_On_Disk /= Entries_Total then
+               if not ZIP64_EOCD.Present
+                 and then
+                   (Entries_On_Disk_Raw = 16#FFFF#
+                    or else Entries_Total_Raw = 16#FFFF#
+                    or else Directory_Size_Raw = 16#FFFF_FFFF#
+                    or else Directory_Off_Raw = 16#FFFF_FFFF#)
+               then
                   return
                     (Status  => Archive.Archives.Errors.Unsupported_Format,
                      Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
-               elsif Directory_Off > EOCD_Abs
-                 or else Directory_Size > EOCD_Abs - Directory_Off
-                 or else Directory_Off + Directory_Size /= EOCD_Abs
-                 or else EOCD_Abs + EOCD_Min_Size + Archive_Comment /= Size_N
+               elsif ZIP64_EOCD.Present
+                 and then
+                   (ZIP64_EOCD.Entries_On_Disk /= ZIP64_EOCD.Entries_Total
+                    or else not Fits_Natural (ZIP64_EOCD.Entries_On_Disk)
+                    or else not Fits_Natural (ZIP64_EOCD.Entries_Total)
+                    or else not Fits_Natural (ZIP64_EOCD.Directory_Size)
+                    or else not Fits_Natural (ZIP64_EOCD.Directory_Off))
                then
                   return
                     (Status  => Archive.Archives.Errors.Invalid_Format,
@@ -587,58 +663,57 @@ package body Archive.Archives.Readers.Zip is
                end if;
 
                declare
-                  Directory_Bytes  : Zlib.Byte_Array (1 .. Directory_Size);
-                  Directory_Status : Archive.Archives.Errors.Error_Code;
-                  Cursor          : Natural := 0;
+                  Entries_On_Disk : constant Natural :=
+                    (if ZIP64_EOCD.Present
+                     then Natural (ZIP64_EOCD.Entries_On_Disk)
+                     else Natural (Entries_On_Disk_Raw));
+                  Entries_Total   : constant Natural :=
+                    (if ZIP64_EOCD.Present
+                     then Natural (ZIP64_EOCD.Entries_Total)
+                     else Natural (Entries_Total_Raw));
+                  Directory_Size  : constant Natural :=
+                    (if ZIP64_EOCD.Present
+                     then Natural (ZIP64_EOCD.Directory_Size)
+                     else Natural (Directory_Size_Raw));
+                  Directory_Off   : constant Natural :=
+                    (if ZIP64_EOCD.Present
+                     then Natural (ZIP64_EOCD.Directory_Off)
+                     else Natural (Directory_Off_Raw));
+                  Directory_End   : constant Natural :=
+                    (if ZIP64_EOCD.Present
+                     then Natural (ZIP64_EOCD.Record_Offset)
+                     else EOCD_Abs);
                begin
-                  Read_File_Slice
-                    (Path, Directory_Off, Directory_Bytes, Directory_Status);
-                  if Directory_Status /= Archive.Archives.Errors.Ok then
+                  if Entries_On_Disk /= Entries_Total then
                      return
-                       (Status  => Directory_Status,
+                       (Status  => Archive.Archives.Errors.Unsupported_Format,
+                        Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
+                  elsif Directory_Off > Directory_End
+                    or else Directory_Size > Directory_End - Directory_Off
+                    or else Directory_Off + Directory_Size /= Directory_End
+                    or else EOCD_Abs + EOCD_Min_Size + Archive_Comment /= Size_N
+                  then
+                     return
+                       (Status  => Archive.Archives.Errors.Invalid_Format,
                         Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
                   end if;
 
-                  for Ordinal in 0 .. Entries_Total - 1 loop
-                     if not In_Range (Directory_Bytes, Cursor, 46)
-                       or else Signature (Directory_Bytes, Cursor) /= 16#0201_4B50#
-                     then
+                  declare
+                     Directory_Bytes  : Zlib.Byte_Array (1 .. Directory_Size);
+                     Directory_Status : Archive.Archives.Errors.Error_Code;
+                     Cursor          : Natural := 0;
+                  begin
+                     Read_File_Slice
+                       (Path, Directory_Off, Directory_Bytes, Directory_Status);
+                     if Directory_Status /= Archive.Archives.Errors.Ok then
                         return
-                          (Status  => Archive.Archives.Errors.Invalid_Format,
+                          (Status  => Directory_Status,
                            Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
                      end if;
 
-                     declare
-                        Flags      : constant Interfaces.Unsigned_16 :=
-                          U16 (Directory_Bytes, Cursor + 8);
-                        Method     : constant Interfaces.Unsigned_16 :=
-                          U16 (Directory_Bytes, Cursor + 10);
-                        CRC        : constant Interfaces.Unsigned_32 :=
-                          U32 (Directory_Bytes, Cursor + 16);
-                        Comp_Size_Raw : constant Interfaces.Unsigned_32 :=
-                          U32 (Directory_Bytes, Cursor + 20);
-                        Uncomp_Raw    : constant Interfaces.Unsigned_32 :=
-                          U32 (Directory_Bytes, Cursor + 24);
-                        Name_Len   : constant Natural :=
-                          Natural (U16 (Directory_Bytes, Cursor + 28));
-                        Extra_Len  : constant Natural :=
-                          Natural (U16 (Directory_Bytes, Cursor + 30));
-                        Comment_Len : constant Natural :=
-                          Natural (U16 (Directory_Bytes, Cursor + 32));
-                        Local_Off_Raw : constant Interfaces.Unsigned_32 :=
-                          U32 (Directory_Bytes, Cursor + 42);
-                        Header_End : constant Natural := Cursor + 46;
-                     begin
-                        if not Within_Metadata_Limit
-                          (Name_Len + Extra_Len + Comment_Len)
-                        then
-                           return
-                             (Status  => Archive.Archives.Errors.Limit_Exceeded,
-                              Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
-                        elsif not In_Range
-                          (Directory_Bytes,
-                           Header_End,
-                           Name_Len + Extra_Len + Comment_Len)
+                     for Ordinal in 0 .. Entries_Total - 1 loop
+                        if not In_Range (Directory_Bytes, Cursor, 46)
+                          or else Signature (Directory_Bytes, Cursor) /= 16#0201_4B50#
                         then
                            return
                              (Status  => Archive.Archives.Errors.Invalid_Format,
@@ -646,40 +721,36 @@ package body Archive.Archives.Readers.Zip is
                         end if;
 
                         declare
-                           Name : constant String :=
-                             Name_At (Directory_Bytes, Header_End, Name_Len);
-                           Extra_Offset : constant Natural := Header_End + Name_Len;
-                           Comment_Offset : constant Natural := Extra_Offset + Extra_Len;
-                           Unicode_Name : constant Unicode_Path_Result :=
-                             Unicode_Path_From_Extra
-                               (Directory_Bytes, Extra_Offset, Extra_Len, Name);
-                           ZIP64 : constant ZIP64_Extra_Result :=
-                             ZIP64_From_Extra
-                               (Directory_Bytes,
-                                Extra_Offset,
-                                Extra_Len,
-                                Need_Uncomp => Uncomp_Raw = 16#FFFF_FFFF#,
-                                Need_Comp   => Comp_Size_Raw = 16#FFFF_FFFF#,
-                                Need_Local  => Local_Off_Raw = 16#FFFF_FFFF#);
-                           Comp_Size_64 : constant Interfaces.Unsigned_64 :=
-                             (if Comp_Size_Raw = 16#FFFF_FFFF#
-                              then ZIP64.Compressed
-                              else Interfaces.Unsigned_64 (Comp_Size_Raw));
-                           Uncomp_64 : constant Interfaces.Unsigned_64 :=
-                             (if Uncomp_Raw = 16#FFFF_FFFF#
-                              then ZIP64.Uncompressed
-                              else Interfaces.Unsigned_64 (Uncomp_Raw));
-                           Local_Off_64 : constant Interfaces.Unsigned_64 :=
-                             (if Local_Off_Raw = 16#FFFF_FFFF#
-                              then ZIP64.Local_Offset
-                              else Interfaces.Unsigned_64 (Local_Off_Raw));
-                           Item : Archive.Archives.Entries.Archive_Entry;
+                           Flags      : constant Interfaces.Unsigned_16 :=
+                             U16 (Directory_Bytes, Cursor + 8);
+                           Method     : constant Interfaces.Unsigned_16 :=
+                             U16 (Directory_Bytes, Cursor + 10);
+                           CRC        : constant Interfaces.Unsigned_32 :=
+                             U32 (Directory_Bytes, Cursor + 16);
+                           Comp_Size_Raw : constant Interfaces.Unsigned_32 :=
+                             U32 (Directory_Bytes, Cursor + 20);
+                           Uncomp_Raw    : constant Interfaces.Unsigned_32 :=
+                             U32 (Directory_Bytes, Cursor + 24);
+                           Name_Len   : constant Natural :=
+                             Natural (U16 (Directory_Bytes, Cursor + 28));
+                           Extra_Len  : constant Natural :=
+                             Natural (U16 (Directory_Bytes, Cursor + 30));
+                           Comment_Len : constant Natural :=
+                             Natural (U16 (Directory_Bytes, Cursor + 32));
+                           Local_Off_Raw : constant Interfaces.Unsigned_32 :=
+                             U32 (Directory_Bytes, Cursor + 42);
+                           Header_End : constant Natural := Cursor + 46;
                         begin
-                           if not Unicode_Name.Valid
-                             or else not ZIP64.Valid
-                             or else not Fits_Natural (Comp_Size_64)
-                             or else not Fits_Natural (Uncomp_64)
-                             or else not Fits_Natural (Local_Off_64)
+                           if not Within_Metadata_Limit
+                             (Name_Len + Extra_Len + Comment_Len)
+                           then
+                              return
+                                (Status  => Archive.Archives.Errors.Limit_Exceeded,
+                                 Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
+                           elsif not In_Range
+                             (Directory_Bytes,
+                              Header_End,
+                              Name_Len + Extra_Len + Comment_Len)
                            then
                               return
                                 (Status  => Archive.Archives.Errors.Invalid_Format,
@@ -687,21 +758,40 @@ package body Archive.Archives.Readers.Zip is
                            end if;
 
                            declare
-                              Comp_Size : constant Natural := Natural (Comp_Size_64);
-                              Local_Off : constant Natural := Natural (Local_Off_64);
-                              Local_Header_Bytes : Zlib.Byte_Array (1 .. 30);
-                              Local_Header_Status :
-                                Archive.Archives.Errors.Error_Code;
+                              Name : constant String :=
+                                Name_At (Directory_Bytes, Header_End, Name_Len);
+                              Extra_Offset : constant Natural := Header_End + Name_Len;
+                              Comment_Offset : constant Natural := Extra_Offset + Extra_Len;
+                              Unicode_Name : constant Unicode_Path_Result :=
+                                Unicode_Path_From_Extra
+                                  (Directory_Bytes, Extra_Offset, Extra_Len, Name);
+                              ZIP64 : constant ZIP64_Extra_Result :=
+                                ZIP64_From_Extra
+                                  (Directory_Bytes,
+                                   Extra_Offset,
+                                   Extra_Len,
+                                   Need_Uncomp => Uncomp_Raw = 16#FFFF_FFFF#,
+                                   Need_Comp   => Comp_Size_Raw = 16#FFFF_FFFF#,
+                                   Need_Local  => Local_Off_Raw = 16#FFFF_FFFF#);
+                              Comp_Size_64 : constant Interfaces.Unsigned_64 :=
+                                (if Comp_Size_Raw = 16#FFFF_FFFF#
+                                 then ZIP64.Compressed
+                                 else Interfaces.Unsigned_64 (Comp_Size_Raw));
+                              Uncomp_64 : constant Interfaces.Unsigned_64 :=
+                                (if Uncomp_Raw = 16#FFFF_FFFF#
+                                 then ZIP64.Uncompressed
+                                 else Interfaces.Unsigned_64 (Uncomp_Raw));
+                              Local_Off_64 : constant Interfaces.Unsigned_64 :=
+                                (if Local_Off_Raw = 16#FFFF_FFFF#
+                                 then ZIP64.Local_Offset
+                                 else Interfaces.Unsigned_64 (Local_Off_Raw));
+                              Item : Archive.Archives.Entries.Archive_Entry;
                            begin
-                              Read_File_Slice
-                                (Path, Local_Off, Local_Header_Bytes, Local_Header_Status);
-                              if Local_Header_Status /= Archive.Archives.Errors.Ok then
-                                 return
-                                   (Status  => Local_Header_Status,
-                                    Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
-                              elsif Signature (Local_Header_Bytes, 0) /= 16#0403_4B50#
-                                or else U16 (Local_Header_Bytes, 6) /= Flags
-                                or else U16 (Local_Header_Bytes, 8) /= Method
+                              if not Unicode_Name.Valid
+                                or else not ZIP64.Valid
+                                or else not Fits_Natural (Comp_Size_64)
+                                or else not Fits_Natural (Uncomp_64)
+                                or else not Fits_Natural (Local_Off_64)
                               then
                                  return
                                    (Status  => Archive.Archives.Errors.Invalid_Format,
@@ -709,198 +799,221 @@ package body Archive.Archives.Readers.Zip is
                               end if;
 
                               declare
-                                 Local_Name_Len : constant Natural :=
-                                   Natural (U16 (Local_Header_Bytes, 26));
-                                 Local_Extra_Len : constant Natural :=
-                                   Natural (U16 (Local_Header_Bytes, 28));
+                                 Comp_Size : constant Natural := Natural (Comp_Size_64);
+                                 Local_Off : constant Natural := Natural (Local_Off_64);
+                                 Local_Header_Bytes : Zlib.Byte_Array (1 .. 30);
+                                 Local_Header_Status :
+                                   Archive.Archives.Errors.Error_Code;
                               begin
-                                 if not Within_Metadata_Limit
-                                   (Local_Name_Len + Local_Extra_Len)
-                                 then
+                                 Read_File_Slice
+                                   (Path, Local_Off, Local_Header_Bytes, Local_Header_Status);
+                                 if Local_Header_Status /= Archive.Archives.Errors.Ok then
                                     return
-                                      (Status  => Archive.Archives.Errors.Limit_Exceeded,
+                                      (Status  => Local_Header_Status,
                                        Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
-                                 elsif Local_Name_Len /= Name_Len then
+                                 elsif Signature (Local_Header_Bytes, 0) /= 16#0403_4B50#
+                                   or else U16 (Local_Header_Bytes, 6) /= Flags
+                                   or else U16 (Local_Header_Bytes, 8) /= Method
+                                 then
                                     return
                                       (Status  => Archive.Archives.Errors.Invalid_Format,
                                        Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
                                  end if;
 
                                  declare
-                                    Local_Name_Extra_Bytes :
-                                      Zlib.Byte_Array
-                                        (1 .. Local_Name_Len + Local_Extra_Len);
-                                    Local_Name_Extra_Status :
-                                      Archive.Archives.Errors.Error_Code;
+                                    Local_Name_Len : constant Natural :=
+                                      Natural (U16 (Local_Header_Bytes, 26));
+                                    Local_Extra_Len : constant Natural :=
+                                      Natural (U16 (Local_Header_Bytes, 28));
                                  begin
-                                    Read_File_Slice
-                                      (Path,
-                                       Local_Off + 30,
-                                       Local_Name_Extra_Bytes,
-                                       Local_Name_Extra_Status);
-                                    if Local_Name_Extra_Status /= Archive.Archives.Errors.Ok
+                                    if not Within_Metadata_Limit
+                                      (Local_Name_Len + Local_Extra_Len)
                                     then
                                        return
-                                         (Status  => Local_Name_Extra_Status,
+                                         (Status  => Archive.Archives.Errors.Limit_Exceeded,
                                           Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
-                                    elsif not Name_Equals
-                                      (Local_Name_Extra_Bytes, 0, Name)
-                                    then
+                                    elsif Local_Name_Len /= Name_Len then
                                        return
                                          (Status  => Archive.Archives.Errors.Invalid_Format,
                                           Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
                                     end if;
 
                                     declare
-                                       Uses_Data_Descriptor : constant Boolean := (Flags and 8) /= 0;
-                                       Local_Comp_Size : constant Interfaces.Unsigned_32 :=
-                                         U32 (Local_Header_Bytes, 18);
-                                       Local_Uncomp_Size : constant Interfaces.Unsigned_32 :=
-                                         U32 (Local_Header_Bytes, 22);
-                                       Local_ZIP64 : constant ZIP64_Extra_Result :=
-                                         ZIP64_From_Extra
-                                           (Local_Name_Extra_Bytes,
-                                            Local_Name_Len,
-                                            Local_Extra_Len,
-                                            Need_Uncomp => Local_Uncomp_Size = 16#FFFF_FFFF#,
-                                            Need_Comp   => Local_Comp_Size = 16#FFFF_FFFF#,
-                                            Need_Local  => False);
-                                       Effective_Local_Comp : constant Interfaces.Unsigned_64 :=
-                                         (if Local_Comp_Size = 16#FFFF_FFFF#
-                                          then Local_ZIP64.Compressed
-                                          else Interfaces.Unsigned_64 (Local_Comp_Size));
-                                       Effective_Local_Uncomp : constant Interfaces.Unsigned_64 :=
-                                         (if Local_Uncomp_Size = 16#FFFF_FFFF#
-                                          then Local_ZIP64.Uncompressed
-                                          else Interfaces.Unsigned_64 (Local_Uncomp_Size));
-                                       Data_Start : constant Natural :=
-                                         Local_Off + 30 + Local_Name_Len + Local_Extra_Len;
-                                       Descriptor_Start : constant Natural := Data_Start + Comp_Size;
-                                       Descriptor : Descriptor_Result := (others => <>);
+                                       Local_Name_Extra_Bytes :
+                                         Zlib.Byte_Array
+                                           (1 .. Local_Name_Len + Local_Extra_Len);
+                                       Local_Name_Extra_Status :
+                                         Archive.Archives.Errors.Error_Code;
                                     begin
-                                       if not Local_ZIP64.Valid then
+                                       Read_File_Slice
+                                         (Path,
+                                          Local_Off + 30,
+                                          Local_Name_Extra_Bytes,
+                                          Local_Name_Extra_Status);
+                                       if Local_Name_Extra_Status /= Archive.Archives.Errors.Ok
+                                       then
                                           return
-                                            (Status  => Archive.Archives.Errors.Invalid_Format,
+                                            (Status  => Local_Name_Extra_Status,
                                              Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
-                                       elsif not Uses_Data_Descriptor
-                                         and then
-                                           (Effective_Local_Comp /= Comp_Size_64
-                                            or else Effective_Local_Uncomp /= Uncomp_64)
+                                       elsif not Name_Equals
+                                         (Local_Name_Extra_Bytes, 0, Name)
                                        then
                                           return
                                             (Status  => Archive.Archives.Errors.Invalid_Format,
                                              Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
-                                       elsif Data_Start > Directory_Off
-                                         or else Comp_Size > Directory_Off - Data_Start
-                                         or else Descriptor_Start > Directory_Off
-                                       then
-                                          return
-                                            (Status  => Archive.Archives.Errors.Invalid_Format,
-                                             Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
-                                       elsif Uses_Data_Descriptor then
-                                          declare
-                                             Descriptor_Array :
-                                               Zlib.Byte_Array
-                                                 (1 .. Natural'Min
-                                                    (24,
-                                                     Directory_Off
-                                                       - Descriptor_Start));
-                                             Descriptor_Status :
-                                               Archive.Archives.Errors.Error_Code;
-                                          begin
-                                             Read_File_Slice
-                                               (Path,
-                                                Descriptor_Start,
-                                                Descriptor_Array,
-                                                Descriptor_Status);
-                                             if Descriptor_Status /= Archive.Archives.Errors.Ok then
-                                                return
-                                                  (Status  => Descriptor_Status,
-                                                   Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
-                                             end if;
-                                             Descriptor :=
-                                               Descriptor_At
-                                                 (Descriptor_Array,
-                                                  0,
-                                                  CRC,
-                                                  Comp_Size_64,
-                                                  Uncomp_64);
-                                          end;
-                                          if not Descriptor.Valid
-                                            or else Descriptor_Start + Descriptor.Length > Directory_Off
+                                       end if;
+
+                                       declare
+                                          Uses_Data_Descriptor : constant Boolean := (Flags and 8) /= 0;
+                                          Local_Comp_Size : constant Interfaces.Unsigned_32 :=
+                                            U32 (Local_Header_Bytes, 18);
+                                          Local_Uncomp_Size : constant Interfaces.Unsigned_32 :=
+                                            U32 (Local_Header_Bytes, 22);
+                                          Local_ZIP64 : constant ZIP64_Extra_Result :=
+                                            ZIP64_From_Extra
+                                              (Local_Name_Extra_Bytes,
+                                               Local_Name_Len,
+                                               Local_Extra_Len,
+                                               Need_Uncomp => Local_Uncomp_Size = 16#FFFF_FFFF#,
+                                               Need_Comp   => Local_Comp_Size = 16#FFFF_FFFF#,
+                                               Need_Local  => False);
+                                          Effective_Local_Comp : constant Interfaces.Unsigned_64 :=
+                                            (if Local_Comp_Size = 16#FFFF_FFFF#
+                                             then Local_ZIP64.Compressed
+                                             else Interfaces.Unsigned_64 (Local_Comp_Size));
+                                          Effective_Local_Uncomp : constant Interfaces.Unsigned_64 :=
+                                            (if Local_Uncomp_Size = 16#FFFF_FFFF#
+                                             then Local_ZIP64.Uncompressed
+                                             else Interfaces.Unsigned_64 (Local_Uncomp_Size));
+                                          Data_Start : constant Natural :=
+                                            Local_Off + 30 + Local_Name_Len + Local_Extra_Len;
+                                          Descriptor_Start : constant Natural := Data_Start + Comp_Size;
+                                          Descriptor : Descriptor_Result := (others => <>);
+                                       begin
+                                          if not Local_ZIP64.Valid then
+                                             return
+                                               (Status  => Archive.Archives.Errors.Invalid_Format,
+                                                Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
+                                          elsif not Uses_Data_Descriptor
+                                            and then
+                                              (Effective_Local_Comp /= Comp_Size_64
+                                               or else Effective_Local_Uncomp /= Uncomp_64)
                                           then
                                              return
                                                (Status  => Archive.Archives.Errors.Invalid_Format,
                                                 Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
+                                          elsif Data_Start > Directory_Off
+                                            or else Comp_Size > Directory_Off - Data_Start
+                                            or else Descriptor_Start > Directory_Off
+                                          then
+                                             return
+                                               (Status  => Archive.Archives.Errors.Invalid_Format,
+                                                Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
+                                          elsif Uses_Data_Descriptor then
+                                             declare
+                                                Descriptor_Array :
+                                                  Zlib.Byte_Array
+                                                    (1 .. Natural'Min
+                                                       (24,
+                                                        Directory_Off
+                                                          - Descriptor_Start));
+                                                Descriptor_Status :
+                                                  Archive.Archives.Errors.Error_Code;
+                                             begin
+                                                Read_File_Slice
+                                                  (Path,
+                                                   Descriptor_Start,
+                                                   Descriptor_Array,
+                                                   Descriptor_Status);
+                                                if Descriptor_Status /= Archive.Archives.Errors.Ok then
+                                                   return
+                                                     (Status  => Descriptor_Status,
+                                                      Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
+                                                end if;
+                                                Descriptor :=
+                                                  Descriptor_At
+                                                    (Descriptor_Array,
+                                                     0,
+                                                     CRC,
+                                                     Comp_Size_64,
+                                                     Uncomp_64);
+                                             end;
+                                             if not Descriptor.Valid
+                                               or else Descriptor_Start + Descriptor.Length > Directory_Off
+                                             then
+                                                return
+                                                  (Status  => Archive.Archives.Errors.Invalid_Format,
+                                                   Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
+                                             end if;
                                           end if;
-                                       end if;
 
-                                       Item.Format_Metadata :=
-                                         To_Unbounded_String
-                                           (ZIP_Metadata
-                                              (Flags, Extra_Len, Comment_Len, Unicode_Name.Present,
-                                               (Flags and 2048) /= 0,
-                                               ZIP64.Present or else Local_ZIP64.Present,
-                                               Uses_Data_Descriptor,
-                                               Uses_Data_Descriptor and then Descriptor.ZIP64,
-                                               (Flags and 1) /= 0,
-                                               Method));
-                                       Item.Data_Offset :=
-                                         (Present => True,
-                                          Value => Archive.Types.Source_Offset (Data_Start));
+                                          Item.Format_Metadata :=
+                                            To_Unbounded_String
+                                              (ZIP_Metadata
+                                                 (Flags, Extra_Len, Comment_Len, Unicode_Name.Present,
+                                                  (Flags and 2048) /= 0,
+                                                  ZIP64.Present or else Local_ZIP64.Present,
+                                                  Uses_Data_Descriptor,
+                                                  Uses_Data_Descriptor and then Descriptor.ZIP64,
+                                                  (Flags and 1) /= 0,
+                                                  Method));
+                                          Item.Data_Offset :=
+                                            (Present => True,
+                                             Value => Archive.Types.Source_Offset (Data_Start));
+                                       end;
                                     end;
                                  end;
                               end;
+
+                              Item.Id := Archive.Types.No_Entry;
+                              Item.Ordinal := Archive.Types.Archive_Ordinal (Ordinal);
+                              Item.Original_Path := To_Unbounded_String (Name);
+                              Item.Display_Name :=
+                                To_Unbounded_String
+                                  (Archive.Archives.Paths.Safe_Display_Name
+                                     ((if Unicode_Name.Present
+                                       then To_String (Unicode_Name.Path)
+                                       else Name)));
+                              if Comment_Len > 0 then
+                                 Item.Comment := To_Unbounded_String
+                                   (Name_At (Directory_Bytes, Comment_Offset, Comment_Len));
+                              end if;
+                              Item.CRC32 := (Present => True, Value => Archive.Types.CRC32_Value (CRC));
+                              Item.Kind :=
+                                (if Is_Directory_Name (Name)
+                                 then Archive.Archives.Entries.Directory
+                                 else Archive.Archives.Entries.Regular_File);
+                              Item.Compressed :=
+                                (Present => True, Value => Archive.Types.Uncompressed_Size (Comp_Size_64));
+                              Item.Uncompressed :=
+                                (Present => True, Value => Archive.Types.Uncompressed_Size (Uncomp_64));
+                              Item.Method := Compression_For (Method);
+                              Item.Encryption :=
+                                (if (Flags and 1) = 0
+                                 then Archive.Archives.Entries.Not_Encrypted
+                                 elsif (Flags and 16#40#) /= 0
+                                 then Archive.Archives.Entries.Zip_Strong_Encryption
+                                 else Archive.Archives.Entries.Zip_Traditional_Encryption);
+                              Item.Integrity :=
+                                (if CRC = 0 and then Uncomp_64 = 0
+                                 then Archive.Archives.Entries.Not_Available
+                                 else Archive.Archives.Entries.Not_Checked);
+                              Item.Safety := Archive.Archives.Paths.Normalize (Name).Safety;
+                              Result.Entries.Append (Item);
                            end;
 
-                           Item.Id := Archive.Types.No_Entry;
-                           Item.Ordinal := Archive.Types.Archive_Ordinal (Ordinal);
-                           Item.Original_Path := To_Unbounded_String (Name);
-                           Item.Display_Name :=
-                             To_Unbounded_String
-                               (Archive.Archives.Paths.Safe_Display_Name
-                                  ((if Unicode_Name.Present
-                                    then To_String (Unicode_Name.Path)
-                                    else Name)));
-                           if Comment_Len > 0 then
-                              Item.Comment := To_Unbounded_String
-                                (Name_At (Directory_Bytes, Comment_Offset, Comment_Len));
-                           end if;
-                           Item.CRC32 := (Present => True, Value => Archive.Types.CRC32_Value (CRC));
-                           Item.Kind :=
-                             (if Is_Directory_Name (Name)
-                              then Archive.Archives.Entries.Directory
-                              else Archive.Archives.Entries.Regular_File);
-                           Item.Compressed :=
-                             (Present => True, Value => Archive.Types.Uncompressed_Size (Comp_Size_64));
-                           Item.Uncompressed :=
-                             (Present => True, Value => Archive.Types.Uncompressed_Size (Uncomp_64));
-                           Item.Method := Compression_For (Method);
-                           Item.Encryption :=
-                             (if (Flags and 1) = 0
-                              then Archive.Archives.Entries.Not_Encrypted
-                              elsif (Flags and 16#40#) /= 0
-                              then Archive.Archives.Entries.Zip_Strong_Encryption
-                              else Archive.Archives.Entries.Zip_Traditional_Encryption);
-                           Item.Integrity :=
-                             (if CRC = 0 and then Uncomp_64 = 0
-                              then Archive.Archives.Entries.Not_Available
-                              else Archive.Archives.Entries.Not_Checked);
-                           Item.Safety := Archive.Archives.Paths.Normalize (Name).Safety;
-                           Result.Entries.Append (Item);
+                           Cursor := Header_End + Name_Len + Extra_Len + Comment_Len;
                         end;
+                     end loop;
 
-                        Cursor := Header_End + Name_Len + Extra_Len + Comment_Len;
-                     end;
-                  end loop;
-
-                  if Cursor /= Directory_Size then
-                     Result.Status := Archive.Archives.Errors.Invalid_Format;
-                  end if;
+                     if Cursor /= Directory_Size then
+                        Result.Status := Archive.Archives.Errors.Invalid_Format;
+                     end if;
+                  end;
                end;
-            end;
 
-            return Result;
+               return Result;
+            end;
          end;
       end;
    exception
