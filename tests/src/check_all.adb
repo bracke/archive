@@ -317,6 +317,16 @@ procedure Check_All is
          Fail (Path & ": preview generation must stay stream-accumulator based");
       end if;
 
+      if Ends_With (Path, "/archive-writes-zip.adb")
+        and then
+          (Contains (Content, "Write_Bytes (Payload")
+           or else not Contains (Content, "Stage_External_Compressed_File")
+           or else not Contains (Content, "zip-external-payload")
+           or else not Contains (Content, "Copy_File (To_String (Staged), Good)"))
+      then
+         Fail (Path & ": ZIP external payload writes must stage and stream compressed members");
+      end if;
+
       if Ends_With (Path, "/archive-archives-readers-gzip.adb")
         and then
           (not Contains (Content, "Max_Gzip_Field_Metadata")

@@ -9,6 +9,7 @@ with Archive.Archives.Entries;
 with Archive.Archives.Index;
 with Archive.Archives.Readers.Dispatch;
 with Archive.Compression.Zlib;
+with Archive.Temporary_Resources;
 with Archive.Verification.CRC32;
 with Archive.Types;
 
@@ -136,6 +137,19 @@ package body Archive.Writes.Zip is
          end if;
          return Name & "/";
       end Directory_Name;
+
+      function Parent_Directory (Path : String) return String is
+      begin
+         for Index in reverse Path'Range loop
+            if Path (Index) = '/' then
+               if Index = Path'First then
+                  return "/";
+               end if;
+               return Path (Path'First .. Index - 1);
+            end if;
+         end loop;
+         return ".";
+      end Parent_Directory;
 
       function Has_Source_Mutations return Boolean is
       begin
@@ -426,6 +440,71 @@ package body Archive.Writes.Zip is
             OK := False;
       end Deflate_File;
 
+      procedure Stage_External_Compressed_File
+        (Path              : String;
+         Method            : out Interfaces.Unsigned_16;
+         CRC               : out Archive.Types.CRC32_Value;
+         Uncompressed_Size : out Interfaces.Unsigned_64;
+         Compressed_Size   : out Interfaces.Unsigned_32;
+         Staged_Path       : out Ada.Strings.Unbounded.Unbounded_String;
+         Good              : out Boolean)
+      is
+         Root    : constant String := Parent_Directory (Path);
+         Staged  : constant String :=
+           Archive.Temporary_Resources.Fresh_Sibling_Path
+             (Root, Path, "zip-external-payload");
+         Status  : Zlib.Status_Code := Zlib.Ok;
+         Raw_CRC : Interfaces.Unsigned_32 := 0;
+         Raw_Compressed_Size : Interfaces.Unsigned_64 := 0;
+      begin
+         Good := False;
+         Method := 0;
+         CRC := 0;
+         Uncompressed_Size := 0;
+         Compressed_Size := 0;
+         Staged_Path := Null_Unbounded_String;
+
+         if Staged = "" then
+            Write_Status := Archive.Archives.Errors.Write_Failed;
+            return;
+         end if;
+
+         Zlib.Compress_ZIP_External_File_To_File
+           (Path, Staged, External_Method, Method, Raw_CRC, Uncompressed_Size,
+            Raw_Compressed_Size, Status);
+
+         if Status /= Zlib.Ok
+           or else Uncompressed_Size > Interfaces.Unsigned_64 (Interfaces.Unsigned_32'Last)
+           or else Raw_Compressed_Size > Interfaces.Unsigned_64 (Interfaces.Unsigned_32'Last)
+         then
+            if Ada.Directories.Exists (Staged) then
+               Ada.Directories.Delete_File (Staged);
+            end if;
+            Write_Status :=
+              (if Status = Zlib.Unsupported_Method
+               then Archive.Archives.Errors.Unsupported_Method
+               else Archive.Archives.Errors.Write_Failed);
+            return;
+         end if;
+
+         Compressed_Size := Interfaces.Unsigned_32 (Raw_Compressed_Size);
+         CRC := Archive.Types.CRC32_Value (Raw_CRC);
+         Staged_Path := To_Unbounded_String (Staged);
+         Good := True;
+      exception
+         when others =>
+            if Staged /= "" and then Ada.Directories.Exists (Staged) then
+               begin
+                  Ada.Directories.Delete_File (Staged);
+               exception
+                  when others =>
+                     null;
+               end;
+            end if;
+            Write_Status := Archive.Archives.Errors.Write_Failed;
+            Good := False;
+      end Stage_External_Compressed_File;
+
       procedure Write_File_Record (Name : String; Path : String) is
          Size : Interfaces.Unsigned_32 := 0;
          Compressed_Size : Interfaces.Unsigned_32 := 0;
@@ -438,33 +517,23 @@ package body Archive.Writes.Zip is
          if External then
             declare
                Method : Interfaces.Unsigned_16 := 0;
-               External_CRC : Interfaces.Unsigned_32 := 0;
                Uncompressed_Size : Interfaces.Unsigned_64 := 0;
-               Status : Zlib.Status_Code := Zlib.Ok;
-               Payload : constant Zlib.Byte_Array :=
-                 Zlib.Compress_ZIP_External_File
-                   (Path, External_Method, Method, External_CRC,
-                    Uncompressed_Size, Status);
+               Staged : Ada.Strings.Unbounded.Unbounded_String;
             begin
-               if Status /= Zlib.Ok
-                 or else Uncompressed_Size > Interfaces.Unsigned_64 (Interfaces.Unsigned_32'Last)
-                 or else Interfaces.Unsigned_64 (Payload'Length) >
-                   Interfaces.Unsigned_64 (Interfaces.Unsigned_32'Last)
-               then
+               Stage_External_Compressed_File
+                 (Path, Method, CRC, Uncompressed_Size, Compressed_Size, Staged, Good);
+               if not Good then
                   OK := False;
-                  Write_Status :=
-                    (if Status = Zlib.Unsupported_Method
-                     then Archive.Archives.Errors.Unsupported_Method
-                     else Archive.Archives.Errors.Write_Failed);
                   return;
                end if;
 
                Size := Interfaces.Unsigned_32 (Uncompressed_Size);
-               CRC := Archive.Types.CRC32_Value (External_CRC);
-               Compressed_Size := Interfaces.Unsigned_32 (Payload'Length);
                Write_Local_Header
                  (Name, CRC, Size, Compressed_Size, Natural (Method), 0);
-               Write_Bytes (Payload, Good);
+               Copy_File (To_String (Staged), Good);
+               if Ada.Directories.Exists (To_String (Staged)) then
+                  Ada.Directories.Delete_File (To_String (Staged));
+               end if;
                if not Good then
                   OK := False;
                   return;
