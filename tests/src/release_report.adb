@@ -754,6 +754,37 @@ procedure Release_Report is
                & ": corpus case is missing " & Field);
          end if;
       end Require_Field;
+
+      function Known_Archive_Input (Value : String) return Boolean is
+      begin
+         return Value in
+           "tar-basic"
+           | "tar-gzip-basic"
+           | "tar-duplicate-path"
+           | "zip-stored-basic"
+           | "zip-deflate-basic"
+           | "zip-data-descriptor"
+           | "zip-zip64-basic"
+           | "zip-unicode-path"
+           | "gzip-basic"
+           | "gzip-empty"
+           | "zip-bad-crc"
+           | "zip-central-crc-mismatch"
+           | "zip-unicode-path-bad-crc"
+           | "zip-unicode-path-bad-version"
+           | "zip-unsupported-method"
+           | "zip-encrypted"
+           | "zip-multi-disk"
+           | "zip-zip64-missing-extra"
+           | "zip-zip64-too-large"
+           | "zip-local-size-mismatch"
+           | "zip-bad-local-signature"
+           | "zip-truncated-central"
+           | "gzip-bad-header-crc"
+           | "gzip-truncated"
+           | "gzip-bad-trailer"
+           | "tar-truncated";
+      end Known_Archive_Input;
    begin
       if not Ada.Directories.Exists (Manifest) then
          Missing := Missing + 1;
@@ -808,6 +839,16 @@ procedure Release_Report is
                   Require_Field (Line, "source", Line_No);
                   Require_Field (Line, "open", Line_No);
                   Require_Field (Line, "entries", Line_No);
+                  if Field_Value (Line, "input") /= ""
+                    and then not Known_Archive_Input (Field_Value (Line, "input"))
+                  then
+                     Invalid := Invalid + 1;
+                     Put_Line
+                       (Standard_Error,
+                        Manifest & ":" & Line_No'Image
+                        & ": unknown archive corpus input "
+                        & Field_Value (Line, "input"));
+                  end if;
                   if Id = "archive-tar-basic" then
                      Has_Tar := True;
                   elsif Id = "archive-tar-gzip-basic" then
