@@ -352,9 +352,10 @@ package body Archive.Archives.Readers.Cab is
          declare
             Compressed_Size : constant Natural :=
               (if Item.Compressed.Present then Natural (Item.Compressed.Value) else 0);
-            Raw : Ada.Streams.Stream_Element_Array
-              (1 .. Ada.Streams.Stream_Element_Offset (Compressed_Size));
-            Last : Ada.Streams.Stream_Element_Offset := 0;
+            Marker : Ada.Streams.Stream_Element_Array (1 .. 2);
+            Marker_Last : Ada.Streams.Stream_Element_Offset := 0;
+            Compressed_Remaining : Natural := 0;
+            Total_Output : Archive.Types.Uncompressed_Size := 0;
          begin
             if Compressed_Size <= 2 then
                return (Status => Archive.Archives.Errors.Invalid_Format,
@@ -362,93 +363,119 @@ package body Archive.Archives.Readers.Cab is
                        Bytes_Written => 0);
             end if;
 
+            Compressed_Remaining := Compressed_Size - 2;
+
             Ada.Streams.Stream_IO.Open (File, Ada.Streams.Stream_IO.In_File, Path);
             Ada.Streams.Stream_IO.Set_Index
               (File, Ada.Streams.Stream_IO.Count (Natural (Item.Data_Offset.Value) + 1));
-            Ada.Streams.Stream_IO.Read (File, Raw, Last);
-            Ada.Streams.Stream_IO.Close (File);
-            if Last < Raw'First
-              or else Natural (Last - Raw'First + 1) /= Compressed_Size
-              or else Raw (Raw'First) /= Ada.Streams.Stream_Element (Character'Pos ('C'))
-              or else Raw (Raw'First + 1) /= Ada.Streams.Stream_Element (Character'Pos ('K'))
+            Ada.Streams.Stream_IO.Read (File, Marker, Marker_Last);
+            if Marker_Last < Marker'First
+              or else Natural (Marker_Last - Marker'First + 1) /= Marker'Length
+              or else Marker (Marker'First) /= Ada.Streams.Stream_Element (Character'Pos ('C'))
+              or else Marker (Marker'First + 1) /= Ada.Streams.Stream_Element (Character'Pos ('K'))
             then
+               Ada.Streams.Stream_IO.Close (File);
                return (Status => Archive.Archives.Errors.Invalid_Format,
                        Integrity => Archive.Archives.Entries.Failed,
                        Bytes_Written => 0);
             end if;
 
             declare
-               Deflated : Zlib.Byte_Array (1 .. Compressed_Size - 2);
+               Inflater : Archive.Compression.Zlib.Inflate_Stream;
+               Close_Result : Archive.Compression.Zlib.Stream_Close_Result;
+
+               procedure Forward
+                 (Bytes : Zlib.Byte_Array;
+                  Continue : in out Boolean) is
+               begin
+                  Consumer.all (Bytes, Continue);
+                  if Continue then
+                     Total_Output := Total_Output +
+                       Archive.Types.Uncompressed_Size (Bytes'Length);
+                  end if;
+               end Forward;
             begin
-               for Index in Deflated'Range loop
-                  Deflated (Index) :=
-                    Zlib.Byte
-                      (Raw (Raw'First + 1 + Ada.Streams.Stream_Element_Offset (Index)));
+               Archive.Compression.Zlib.Open
+                 (Inflater,
+                  Archive.Compression.Zlib.Raw_Deflate,
+                  Limits =>
+                    (Max_Output_Bytes => Item.Uncompressed.Value,
+                     Max_Ratio        => 1_000));
+
+               while Compressed_Remaining > 0 loop
+                  declare
+                     Chunk_Length : constant Natural :=
+                       Natural'Min (Payload_Chunk_Size, Compressed_Remaining);
+                     Raw_Chunk : Ada.Streams.Stream_Element_Array
+                       (1 .. Ada.Streams.Stream_Element_Offset (Chunk_Length));
+                     Raw_Last : Ada.Streams.Stream_Element_Offset := 0;
+                     Deflated_Chunk : Zlib.Byte_Array (1 .. Chunk_Length);
+                  begin
+                     Ada.Streams.Stream_IO.Read (File, Raw_Chunk, Raw_Last);
+                     if Raw_Last < Raw_Chunk'First
+                       or else Natural (Raw_Last - Raw_Chunk'First + 1) /= Chunk_Length
+                     then
+                        Close_Result := Archive.Compression.Zlib.Close (Inflater);
+                        Ada.Streams.Stream_IO.Close (File);
+                        return (Status => Archive.Archives.Errors.Read_Failed,
+                                Integrity => Archive.Archives.Entries.Failed,
+                                Bytes_Written => Total_Output);
+                     end if;
+
+                     for Index in Deflated_Chunk'Range loop
+                        Deflated_Chunk (Index) :=
+                          Zlib.Byte
+                            (Raw_Chunk
+                               (Raw_Chunk'First
+                                + Ada.Streams.Stream_Element_Offset
+                                  (Index - Deflated_Chunk'First)));
+                     end loop;
+
+                     declare
+                        Append_Result : constant Archive.Compression.Zlib.Stream_Step_Result :=
+                          Archive.Compression.Zlib.Append_Chunks
+                            (Inflater, Deflated_Chunk, Forward'Access);
+                     begin
+                        Compressed_Remaining := Compressed_Remaining - Chunk_Length;
+
+                        if Append_Result.Status /= Archive.Archives.Errors.Ok then
+                           Close_Result := Archive.Compression.Zlib.Close (Inflater);
+                           Ada.Streams.Stream_IO.Close (File);
+                           return (Status => Append_Result.Status,
+                                   Integrity => Archive.Archives.Entries.Failed,
+                                   Bytes_Written => Total_Output);
+                        end if;
+                     end;
+                  end;
                end loop;
 
+               Ada.Streams.Stream_IO.Close (File);
+
                declare
-                  Inflater : Archive.Compression.Zlib.Inflate_Stream;
-                  Close_Result : Archive.Compression.Zlib.Stream_Close_Result;
-
-                  procedure Forward
-                    (Bytes : Zlib.Byte_Array;
-                     Continue : in out Boolean) is
-                  begin
-                     Consumer.all (Bytes, Continue);
-                  end Forward;
+                  Finish_Result : constant Archive.Compression.Zlib.Stream_Step_Result :=
+                    Archive.Compression.Zlib.Finish_Chunks
+                      (Inflater, Forward'Access);
                begin
-                  Archive.Compression.Zlib.Open
-                    (Inflater,
-                     Archive.Compression.Zlib.Raw_Deflate,
-                     Limits =>
-                       (Max_Output_Bytes => Item.Uncompressed.Value,
-                        Max_Ratio        => 1_000));
-                  declare
-                     Append_Result : constant Archive.Compression.Zlib.Stream_Step_Result :=
-                       Archive.Compression.Zlib.Append_Chunks
-                         (Inflater, Deflated, Forward'Access);
-                  begin
-                     if Append_Result.Status /= Archive.Archives.Errors.Ok then
-                        Close_Result := Archive.Compression.Zlib.Close (Inflater);
-                        return (Status => Append_Result.Status,
-                                Integrity => Archive.Archives.Entries.Failed,
-                                Bytes_Written =>
-                                  Archive.Types.Uncompressed_Size
-                                    (Append_Result.Total_Output_Bytes));
-                     end if;
-                  end;
+                  Close_Result := Archive.Compression.Zlib.Close (Inflater);
+                  if Finish_Result.Status /= Archive.Archives.Errors.Ok
+                    or else Close_Result.Status /= Archive.Archives.Errors.Ok
+                    or else not Close_Result.Stream_Ended
+                    or else Total_Output /= Item.Uncompressed.Value
+                  then
+                     return (Status =>
+                               (if Finish_Result.Status /= Archive.Archives.Errors.Ok
+                                then Finish_Result.Status
+                                elsif Close_Result.Status /= Archive.Archives.Errors.Ok
+                                then Close_Result.Status
+                                else Archive.Archives.Errors.Invalid_Format),
+                             Integrity => Archive.Archives.Entries.Failed,
+                             Bytes_Written => Total_Output);
+                  end if;
 
-                  declare
-                     Finish_Result : constant Archive.Compression.Zlib.Stream_Step_Result :=
-                       Archive.Compression.Zlib.Finish_Chunks
-                         (Inflater, Forward'Access);
-                  begin
-                     Close_Result := Archive.Compression.Zlib.Close (Inflater);
-                     if Finish_Result.Status /= Archive.Archives.Errors.Ok
-                       or else Close_Result.Status /= Archive.Archives.Errors.Ok
-                       or else not Close_Result.Stream_Ended
-                       or else Finish_Result.Total_Output_Bytes /=
-                         Natural (Item.Uncompressed.Value)
-                     then
-                        return (Status =>
-                                  (if Finish_Result.Status /= Archive.Archives.Errors.Ok
-                                   then Finish_Result.Status
-                                   elsif Close_Result.Status /= Archive.Archives.Errors.Ok
-                                   then Close_Result.Status
-                                   else Archive.Archives.Errors.Invalid_Format),
-                                Integrity => Archive.Archives.Entries.Failed,
-                                Bytes_Written =>
-                                  Archive.Types.Uncompressed_Size
-                                    (Finish_Result.Total_Output_Bytes));
-                     end if;
-
-                     return
-                       (Status => Archive.Archives.Errors.Ok,
-                        Integrity => Archive.Archives.Entries.Verified,
-                        Bytes_Written =>
-                          Archive.Types.Uncompressed_Size
-                            (Finish_Result.Total_Output_Bytes));
-                  end;
+                  return
+                    (Status => Archive.Archives.Errors.Ok,
+                     Integrity => Archive.Archives.Entries.Verified,
+                     Bytes_Written => Total_Output);
                end;
             end;
          end;
