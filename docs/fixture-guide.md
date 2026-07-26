@@ -74,6 +74,8 @@ case id=<stable-id> kind=archive input=<generated-fixture-or-malformed-id> sourc
 Archive corpus `input` values must be registered generated fixture IDs or
 registered malformed-input IDs. Unknown archive corpus inputs fail the Ada release checks.
 
+Format corpus `input` values must be registered structural probe IDs. Unknown format corpus inputs fail the Ada release checks.
+
 `payload` is used when the format can publish an index but the malformed stream
 must fail when payload bytes are read.
 

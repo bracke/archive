@@ -848,6 +848,22 @@ procedure Release_Report is
       begin
          return Registered_Fixture_Id (Value);
       end Known_Archive_Input;
+
+      function Known_Format_Input (Value : String) return Boolean is
+      begin
+         return Value in
+           "7z-signature"
+           | "zstd-signature"
+           | "xz-signature"
+           | "bzip2-signature"
+           | "rar-signature"
+           | "random-bytes"
+           | "cab-signature"
+           | "cpio-newc-signature"
+           | "ar-signature"
+           | "split-zip-signature"
+           | "iso-signature";
+      end Known_Format_Input;
    begin
       if not Ada.Directories.Exists (Manifest) then
          Missing := Missing + 1;
@@ -894,6 +910,16 @@ procedure Release_Report is
                   Require_Field (Line, "input", Line_No);
                   Require_Field (Line, "expected", Line_No);
                   Require_Field (Line, "status", Line_No);
+                  if Field_Value (Line, "input") /= ""
+                    and then not Known_Format_Input (Field_Value (Line, "input"))
+                  then
+                     Invalid := Invalid + 1;
+                     Put_Line
+                       (Standard_Error,
+                        Manifest & ":" & Line_No'Image
+                        & ": unknown format corpus input "
+                        & Field_Value (Line, "input"));
+                  end if;
                   if Field_Value (Line, "status") = "Recognized_Unsupported" then
                      Has_Unsupported_Format := True;
                   end if;
