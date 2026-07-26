@@ -848,6 +848,12 @@ procedure Check_All is
       Require_Document_Text
         ("docs/FORMAT_SUPPORT.md", "ZIP DEFLATE");
       Require_Document_Text
+        ("docs/FORMAT_SUPPORT.md", "supported native 7z layouts");
+      Require_Document_Text
+        ("README.md", "supported for native zlib-backed layouts");
+      Require_Document_Text
+        ("share/archive.catalog", "native zlib-backed layouts");
+      Require_Document_Text
         ("docs/FORMAT_SUPPORT.md", "Save-in-place writes target the currently open archive path");
       Require_Document_Text
         ("docs/PRODUCT_SCOPE.md", "TAR parsing, traversal");
@@ -1105,6 +1111,24 @@ procedure Check_All is
         ("README.md", "Planned V1 support");
       Forbid_Document_Text
         ("README.md", "write-only POSIX USTAR library");
+      Forbid_Document_Text
+        ("README.md", "native zlib-backed subset");
+      Forbid_Document_Text
+        ("README.md", "supported 7z subset");
+      Forbid_Document_Text
+        ("README.md", "unsupported ZIP or 7z methods");
+      Forbid_Document_Text
+        ("docs/FORMAT_SUPPORT.md", "native zlib-backed subset");
+      Forbid_Document_Text
+        ("docs/FORMAT_SUPPORT.md", "outside the native subset");
+      Forbid_Document_Text
+        ("docs/PRODUCT_SCOPE.md", "supported zlib subset");
+      Forbid_Document_Text
+        ("docs/PRODUCT_SCOPE.md", "7z subset");
+      Forbid_Document_Text
+        ("docs/PRODUCT_SCOPE.md", "unsupported ZIP or 7z compression methods");
+      Forbid_Document_Text
+        ("docs/ai-implementation-guide.md", "supported native subset");
       Forbid_Document_Text
         ("docs/ai-implementation-guide.md", "has no public reader API");
       Forbid_Document_Text

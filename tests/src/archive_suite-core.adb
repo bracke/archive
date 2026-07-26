@@ -521,7 +521,7 @@ package body Archive_Suite.Core is
       R := Detect_Bytes (Seven);
       Assert
         (R.Status = Archive.Archives.Formats.Detected,
-         "7z signature is detected for the supported zlib-backed subset");
+         "7z signature is detected for supported zlib-backed layouts");
       Assert (R.Format = Archive.Archives.Formats.Seven_Zip_Format, "7z format id");
 
       R := Detect_Bytes (Bz);

@@ -14,7 +14,7 @@ that registry and the AUnit format tests.
 | ZIP LZMA | supported for streams emitted by the zlib ZIP external-method bridge | supported through the zlib ZIP external-method bridge | supported with CRC-32 after decode before payload publication | supported through safe extraction planning/execution | supported for host-file publication and source-aware rewrite through the zlib ZIP external-method bridge | archive ZIP adapter + `zlib` |
 | ZIP Zstandard | supported through authoritative central directory plus local-header validation | supported through the zlib ZIP external-method bridge | supported with CRC-32 after decode before payload publication | supported through safe extraction planning/execution | supported for host-file publication and source-aware rewrite through the zlib ZIP external-method bridge | archive ZIP adapter + `zlib` |
 | gzip | supported as one logical regular-file archive | supported through gzip-wrapped zlib adapter | supported by zlib gzip trailer checks; bounded header CRC is validated during indexing | supported through safe extraction planning/execution | supported by gzip writer adapter | `zlib` |
-| 7z | supported for the native zlib-backed subset | supported through `zlib` native 7z extraction | supported through zlib header, size, CRC, and method validation | supported through safe extraction planning/execution | supported by Deflate file-list publication through `zlib` | `zlib` |
+| 7z | supported for native zlib-backed layouts | supported through `zlib` native 7z extraction | supported through zlib header, size, CRC, and method validation | supported through safe extraction planning/execution | supported by Deflate file-list publication through `zlib` | `zlib` |
 | bzip2 | supported as one logical regular-file archive | supported through `zlib` bzip2 decoding | supported by bzip2 block and combined CRC validation | supported through safe extraction planning/execution | supported by bzip2 writer adapter | `zlib` |
 | Zstandard | supported as one logical regular-file archive | supported through `zlib` Zstandard decoding | supported by zlib frame validation and optional content checksum | supported through safe extraction planning/execution | supported by Zstandard writer adapter | `zlib` |
 | AR | supported for stored members, symbol tables, GNU string tables, and BSD long names | supported for stored regular-file members | supported by bounded member header and size validation | supported through safe extraction planning/execution | not supported | archive AR adapter |
@@ -28,11 +28,12 @@ multi-disk rejection, duplicate ZIP names, explicit ZIP directories,
 gzip optional fields, gzip header CRC, unsafe gzip filename fallback, truncated
 gzip payload rejection, TAR duplicate paths, TAR symbolic and hard links, TAR
 device and FIFO metadata, PAX long paths, invalid TAR checksum, and TAR
-truncation, zlib-backed native 7z listing and payload extraction, and
-zlib-backed Deflate 7z file-list publication, zlib-backed bzip2 single-file
+truncation, zlib-backed native 7z listing and payload extraction for supported
+native layouts, supported native 7z layouts in documentation and validation,
+and zlib-backed Deflate 7z file-list publication, zlib-backed bzip2 single-file
 decoding and publication, and zlib-backed Zstandard single-file decoding and
-publication, stored Unix AR member indexing and payload streaming, and CPIO
-newc member indexing and payload streaming.
+publication, stored Unix AR member indexing and payload streaming, and CPIO newc
+member indexing and payload streaming.
 
 Recognized but unsupported:
 
@@ -43,9 +44,9 @@ Recognized but unsupported:
 - split ZIP / spanning ZIP
 
 Unsupported ZIP methods, including ZIP PPMd and non-bridge LZMA variants, remain
-visible as unsupported entries where the central directory can be safely parsed. Broader 7z layouts outside the native subset
-accepted by `zlib` fail closed with typed unsupported-method or invalid-format
-results.
+visible as unsupported entries where the central directory can be safely parsed.
+7z layouts outside the supported native layout set accepted by `zlib` fail closed
+with typed unsupported-method or invalid-format results.
 
 Save-in-place writes target the currently open archive path, validate the source
 fingerprint, stage the replacement archive beside the target, verify the staged
