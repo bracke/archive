@@ -231,6 +231,7 @@ package body Archive.Archives.Readers.Cab is
                         Date_Value : constant Natural := Read_U16_LE (Fixed, Fixed'First + 10);
                         Time_Value : constant Natural := Read_U16_LE (Fixed, Fixed'First + 12);
                         Attributes : constant Natural := Read_U16_LE (Fixed, Fixed'First + 14);
+                        Is_Directory : constant Boolean := (Attributes / 16) mod 2 = 1;
                         Name : constant String :=
                           Read_Nul_Terminated_Name
                             (File, Natural'Min (4_096, Natural (Size)), Name_Ok);
@@ -239,6 +240,7 @@ package body Archive.Archives.Readers.Cab is
                           or else Folder_Index /= 0
                           or else File_Offset > Block_Uncompressed
                           or else File_Size > Block_Uncompressed - File_Offset
+                          or else (Is_Directory and then File_Size /= 0)
                           or else (Compression = CAB_MSZIP and then File_Offset /= 0)
                         then
                            Result.Status := Archive.Archives.Errors.Invalid_Format;
@@ -253,16 +255,21 @@ package body Archive.Archives.Readers.Cab is
                            Item.Display_Name :=
                              To_Unbounded_String
                                (Archive.Archives.Paths.Safe_Display_Name (Name));
-                           Item.Kind := Archive.Archives.Entries.Regular_File;
+                           Item.Kind :=
+                             (if Is_Directory
+                              then Archive.Archives.Entries.Directory
+                              else Archive.Archives.Entries.Regular_File);
                            Item.Method :=
                              (if Compression = CAB_MSZIP
                               then Archive.Archives.Entries.Zip_Deflate
                               else Archive.Archives.Entries.No_Compression);
                            Item.Encryption := Archive.Archives.Entries.Not_Encrypted;
                            Item.Integrity := Archive.Archives.Entries.Not_Checked;
-                           Item.Data_Offset :=
-                             (Present => True,
-                              Value => Archive.Types.Source_Offset (Payload_Offset + File_Offset));
+                           if not Is_Directory then
+                              Item.Data_Offset :=
+                                (Present => True,
+                                 Value => Archive.Types.Source_Offset (Payload_Offset + File_Offset));
+                           end if;
                            Item.Compressed :=
                              (Present => True,
                               Value =>

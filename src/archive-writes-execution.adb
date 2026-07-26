@@ -2569,9 +2569,11 @@ package body Archive.Writes.Execution is
                       Archive.Writes.Plans.Remove_Entry
                   then
                      null;
-                  elsif Item.Kind = Archive.Archives.Entries.Regular_File then
+                  elsif Item.Kind in Archive.Archives.Entries.Regular_File
+                    | Archive.Archives.Entries.Directory
+                  then
                      Count := Count + 1;
-                  elsif Item.Kind /= Archive.Archives.Entries.Directory then
+                  else
                      return Natural'Last;
                   end if;
                end;
@@ -2580,10 +2582,10 @@ package body Archive.Writes.Execution is
 
          for Change of Plan.Changes loop
             if Change.Decision = Archive.Writes.Plans.Entry_Ready then
-               if Change.Request.Action = Archive.Writes.Plans.Add_File then
+               if Change.Request.Action in Archive.Writes.Plans.Add_File
+                 | Archive.Writes.Plans.Add_Directory
+               then
                   Count := Count + 1;
-               elsif Change.Request.Action = Archive.Writes.Plans.Add_Directory then
-                  return Natural'Last;
                end if;
             end if;
          end loop;
@@ -2605,7 +2607,8 @@ package body Archive.Writes.Execution is
                   Position : constant Natural := Source_Change_For (Plan, Id);
                begin
                   if Item.Synthetic
-                    or else Item.Kind /= Archive.Archives.Entries.Regular_File
+                    or else Item.Kind not in Archive.Archives.Entries.Regular_File
+                      | Archive.Archives.Entries.Directory
                     or else (Position > 0
                              and then Plan.Changes.Element (Position).Request.Action =
                                Archive.Writes.Plans.Remove_Entry)
@@ -2624,7 +2627,8 @@ package body Archive.Writes.Execution is
 
          for Change of Plan.Changes loop
             if Change.Decision = Archive.Writes.Plans.Entry_Ready
-              and then Change.Request.Action = Archive.Writes.Plans.Add_File
+              and then Change.Request.Action in Archive.Writes.Plans.Add_File
+                | Archive.Writes.Plans.Add_Directory
             then
                Total := Total + 16 + Length (Change.Request.Target_Path) + 1;
             end if;
@@ -2707,9 +2711,10 @@ package body Archive.Writes.Execution is
       end Write_Cab_Text;
 
       procedure Write_File_Record
-        (Name   : String;
-         Size   : Natural;
-         Offset : Natural)
+        (Name         : String;
+         Size         : Natural;
+         Offset       : Natural;
+         Is_Directory : Boolean := False)
       is
       begin
          Write_Cab_Text
@@ -2718,7 +2723,7 @@ package body Archive.Writes.Execution is
             & U16_LE_Text (0)
             & U16_LE_Text (0)
             & U16_LE_Text (0)
-            & U16_LE_Text (16#20#)
+            & U16_LE_Text ((if Is_Directory then 16#10# else 16#20#))
             & Name
             & Character'Val (0));
       end Write_File_Record;
@@ -2824,14 +2829,18 @@ package body Archive.Writes.Execution is
                Size : Natural := 0;
             begin
                if Item.Synthetic
-                 or else Item.Kind /= Archive.Archives.Entries.Regular_File
+                 or else Item.Kind not in Archive.Archives.Entries.Regular_File
+                   | Archive.Archives.Entries.Directory
                  or else (Position > 0
                           and then Plan.Changes.Element (Position).Request.Action =
                             Archive.Writes.Plans.Remove_Entry)
                then
                   null;
                else
-                  if Position > 0
+                  if Item.Kind = Archive.Archives.Entries.Directory then
+                     Size := 0;
+                     Size_OK := True;
+                  elsif Position > 0
                     and then Plan.Changes.Element (Position).Request.Action =
                       Archive.Writes.Plans.Replace_File
                   then
@@ -2846,7 +2855,9 @@ package body Archive.Writes.Execution is
                      Failed := Archive.Archives.Errors.Read_Failed;
                      exit;
                   end if;
-                  Write_File_Record (Planned_Name (Item, Position), Size, Offset);
+                  Write_File_Record
+                    (Planned_Name (Item, Position), Size, Offset,
+                     Is_Directory => Item.Kind = Archive.Archives.Entries.Directory);
                   Offset := Offset + Size;
                end if;
             end;
@@ -2872,8 +2883,9 @@ package body Archive.Writes.Execution is
          elsif Change.Decision = Archive.Writes.Plans.Entry_Ready
            and then Change.Request.Action = Archive.Writes.Plans.Add_Directory
          then
-            Failed := Archive.Archives.Errors.Unsupported_Method;
-            exit;
+            Write_File_Record
+              (To_String (Change.Request.Target_Path), 0, Offset,
+               Is_Directory => True);
          end if;
       end loop;
 

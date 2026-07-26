@@ -7513,10 +7513,17 @@ package body Archive_Suite.Core is
                   Replacement_Path => To_Unbounded_String ("docs/renamed.txt")));
             Cab_Requests.Append
               (Archive.Writes.Plans.Write_Request'
+                 (Action           => Archive.Writes.Plans.Add_Directory,
+                  Source_Entry     => Archive.Types.No_Entry,
+                  Host_Source      => Null_Unbounded_String,
+                  Target_Path      => To_Unbounded_String ("docs/extra"),
+                  Replacement_Path => Null_Unbounded_String));
+            Cab_Requests.Append
+              (Archive.Writes.Plans.Write_Request'
                  (Action           => Archive.Writes.Plans.Add_File,
                   Source_Entry     => Archive.Types.No_Entry,
                   Host_Source      => To_Unbounded_String (Second_File),
-                  Target_Path      => To_Unbounded_String ("docs/second.txt"),
+                  Target_Path      => To_Unbounded_String ("docs/extra/second.txt"),
                   Replacement_Path => Null_Unbounded_String));
 
             declare
@@ -7659,8 +7666,12 @@ package body Archive_Suite.Core is
                   then Stream_Dispatch_Payload_File
                     (Cab_Rewrite_Target,
                      Cab_Rewrite_Target,
-                     Entry_For_Path (Cab_Reopened.Index, "docs/second.txt"))
+                     Entry_For_Path (Cab_Reopened.Index, "docs/extra/second.txt"))
                   else Empty_Test_Stream (Archive.Archives.Errors.Invalid_Format));
+               Cab_Extra_Directory : constant Archive.Archives.Entries.Archive_Entry :=
+                 (if Cab_Reopened.Status = Archive.Archives.Errors.Ok
+                  then Entry_For_Path (Cab_Reopened.Index, "docs/extra")
+                  else (others => <>));
             begin
                Assert (Bzip2_Plan.Status = Archive.Writes.Plans.Write_Plan_Ready,
                        "write dispatch bzip2 replace plan is ready");
@@ -7758,8 +7769,11 @@ package body Archive_Suite.Core is
                Assert
                  (Cab_Reopened.Status = Archive.Archives.Errors.Ok
                   and then Cab_Reopened.Format = Archive.Archives.Formats.Cab_Format
-                  and then Archive.Archives.Index.Physical_Count (Cab_Reopened.Index) = 2,
+                  and then Archive.Archives.Index.Physical_Count (Cab_Reopened.Index) = 3,
                   "write dispatch cab rewrite reopens");
+               Assert
+                 (Cab_Extra_Directory.Kind = Archive.Archives.Entries.Directory,
+                  "write dispatch cab added directory round-trips");
                Assert
                  (Cab_Renamed_Payload.Status = Archive.Archives.Errors.Ok
                   and then Cab_Renamed_Payload.Bytes_Written = 2
