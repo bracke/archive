@@ -30,7 +30,8 @@ package body Archive.Archives.Capabilities is
         Item.Kind in Archive.Archives.Entries.Regular_File | Archive.Archives.Entries.Directory;
       Supported_Method : constant Boolean :=
         Item.Method in Archive.Archives.Entries.Zip_Stored | Archive.Archives.Entries.Zip_Deflate
-          | Archive.Archives.Entries.GZip_Deflate | Archive.Archives.Entries.No_Compression;
+          | Archive.Archives.Entries.GZip_Deflate | Archive.Archives.Entries.Zstd_Compression
+          | Archive.Archives.Entries.No_Compression;
       Safe : constant Boolean := Item.Safety = Archive.Archives.Entries.Safe_Path;
       Read_Available : constant Boolean :=
         Supported_Kind

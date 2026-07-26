@@ -87,6 +87,12 @@ package body Archive.Writes.Dispatch is
                Overwrite => Overwrite,
                Cancelled => Cancelled);
 
+         when Archive.Archives.Formats.Zstd_Format =>
+            return Archive.Writes.Execution.Publish_Zstd
+              (Destination_Path, Plan,
+               Overwrite => Overwrite,
+               Cancelled => Cancelled);
+
          when others =>
             return (Status => Archive.Writes.Results.Write_Blocked_By_Plan);
       end case;

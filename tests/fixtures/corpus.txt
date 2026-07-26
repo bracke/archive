@@ -23,6 +23,7 @@ case id=collision-windows-directory-case-fold kind=platform-collision left=Docs/
 case id=collision-macos-accent-normalization kind=platform-collision left=Café.txt right=Café.txt platform=MacOS collision=true
 case id=collision-posix-case-distinct kind=platform-collision left=Readme.txt right=README.TXT platform=POSIX collision=false
 case id=seven-zip-signature kind=format input=7z-signature expected=Seven_Zip_Format status=Detected
+case id=zstd-signature kind=format input=zstd-signature expected=Zstd_Format status=Detected
 case id=unsupported-rar kind=format input=rar-signature expected=Rar_Format status=Recognized_Unsupported
 case id=unsupported-cab kind=format input=cab-signature expected=Cab_Format status=Recognized_Unsupported
 case id=unsupported-cpio kind=format input=cpio-newc-signature expected=Cpio_Format status=Recognized_Unsupported

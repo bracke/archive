@@ -76,6 +76,7 @@ with Tarlib.Errors;
 with Tarlib.Outputs;
 with Tarlib.Writers;
 with Zlib;
+with Zlib.Zstd_Encoder;
 
 package body Archive_Suite.Core is
    use type Interfaces.Unsigned_32;
@@ -484,6 +485,8 @@ package body Archive_Suite.Core is
       Gz  : constant Zlib.Byte_Array := [1 => 16#1F#, 2 => 16#8B#, 3 => 16#08#, 4 => 16#00#];
       Seven : constant Zlib.Byte_Array :=
         [1 => 16#37#, 2 => 16#7A#, 3 => 16#BC#, 4 => 16#AF#, 5 => 16#27#, 6 => 16#1C#];
+      Zstd : constant Zlib.Byte_Array :=
+        [1 => 16#28#, 2 => 16#B5#, 3 => 16#2F#, 4 => 16#FD#];
       Cab : constant Zlib.Byte_Array :=
         [1 => Character'Pos ('M'), 2 => Character'Pos ('S'),
          3 => Character'Pos ('C'), 4 => Character'Pos ('F')];
@@ -514,6 +517,12 @@ package body Archive_Suite.Core is
          "7z signature is detected for the supported zlib-backed subset");
       Assert (R.Format = Archive.Archives.Formats.Seven_Zip_Format, "7z format id");
 
+      R := Detect_Bytes (Zstd);
+      Assert
+        (R.Status = Archive.Archives.Formats.Detected,
+         "zstd signature is detected for the supported zlib-backed single-file reader");
+      Assert (R.Format = Archive.Archives.Formats.Zstd_Format, "zstd format id");
+
       R := Detect_Bytes (Cab);
       Assert (R.Format = Archive.Archives.Formats.Cab_Format, "cab unsupported format id");
 
@@ -540,6 +549,8 @@ package body Archive_Suite.Core is
            Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Zip_Format);
          Gzip : constant Archive.Archives.Formats.Format_Capabilities :=
            Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.GZip_Format);
+         Zstd_Caps : constant Archive.Archives.Formats.Format_Capabilities :=
+           Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Zstd_Format);
          Xz : constant Archive.Archives.Formats.Format_Capabilities :=
            Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Xz_Format);
       begin
@@ -547,6 +558,8 @@ package body Archive_Suite.Core is
          Assert (Zip.Can_Create and then Zip.Supports_Random_Access, "zip exposes write capability");
          Assert (Gzip.Can_Create and then not Gzip.Can_Add_Entries,
                  "gzip supports single logical-file creation only");
+         Assert (Zstd_Caps.Can_Create and then not Zstd_Caps.Can_Add_Entries,
+                 "zstd supports single logical-file creation only");
          Assert (not Xz.Can_Create and then not Xz.Can_Index,
                  "unsupported formats do not advertise write capability");
          Assert
@@ -2293,11 +2306,15 @@ package body Archive_Suite.Core is
       Seven_Status : Zlib.Status_Code;
       Seven : constant Zlib.Byte_Array :=
         Zlib.Seven_Zip_Stored (Plain, "payload.bin", Seven_Status);
+      Zstd_Status : Zlib.Status_Code;
+      Zstd : constant Zlib.Byte_Array :=
+        Zlib.Zstd_Encoder.Encode (Plain, Zstd_Status);
       Tar : constant Zlib.Byte_Array := One_File_Tar;
    begin
       Assert (Status = Zlib.Ok, "dispatch gzip fixture builds");
       Assert (Tar_Gz_Status = Zlib.Ok, "dispatch tar.gz fixture builds");
       Assert (Seven_Status = Zlib.Ok, "dispatch 7z fixture builds");
+      Assert (Zstd_Status = Zlib.Ok, "dispatch zstd fixture builds");
 
       declare
          Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
@@ -2398,6 +2415,28 @@ package body Archive_Suite.Core is
             and then Payload.Bytes_Written = 3
             and then Bytes_Of (Payload) (3) = Zlib.Byte (Character'Pos ('c')),
             "7z dispatch payload reads through zlib");
+      end;
+
+      declare
+         Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+           Open_Dispatch (Zstd, Source_Name => "sample.txt.zst");
+         Item : constant Archive.Archives.Entries.Archive_Entry :=
+           Archive.Archives.Index.Entry_For (Opened.Index, 2);
+         Payload : constant Test_Stream_Result :=
+           Stream_Dispatch_Payload (Zstd, "sample.txt.zst", Item);
+      begin
+         Assert (Opened.Status = Archive.Archives.Errors.Ok,
+                 "zstd dispatch succeeds through zlib decoder");
+         Assert (Opened.Format = Archive.Archives.Formats.Zstd_Format,
+                 "zstd dispatch records format");
+         Assert (Archive.Archives.Index.Physical_Count (Opened.Index) = 1,
+                 "zstd dispatch publishes logical entry");
+         Assert
+           (Payload.Status = Archive.Archives.Errors.Ok
+            and then Payload.Integrity = Archive.Archives.Entries.Verified
+            and then Payload.Bytes_Written = 3
+            and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('b')),
+            "zstd dispatch payload reads through zlib");
       end;
    end Test_Reader_Dispatch;
 
@@ -5845,6 +5884,7 @@ package body Archive_Suite.Core is
       Zip_Target : constant String := Root & "/dispatch-stream.zip";
       Tar_Gz_Target : constant String := Root & "/dispatch-stream.tar.gz";
       Seven_Zip_Target : constant String := Root & "/dispatch-stream.7z";
+      Zstd_Target : constant String := Root & "/dispatch-stream.zst";
       File : Ada.Streams.Stream_IO.File_Type;
       Host_Data : constant Ada.Streams.Stream_Element_Array :=
         [1 => Ada.Streams.Stream_Element (Character'Pos ('o')),
@@ -5863,6 +5903,9 @@ package body Archive_Suite.Core is
       end if;
       if Ada.Directories.Exists (Seven_Zip_Target) then
          Ada.Directories.Delete_File (Seven_Zip_Target);
+      end if;
+      if Ada.Directories.Exists (Zstd_Target) then
+         Ada.Directories.Delete_File (Zstd_Target);
       end if;
 
       Ada.Streams.Stream_IO.Create (File, Ada.Streams.Stream_IO.Out_File, Host_File);
@@ -5914,6 +5957,11 @@ package body Archive_Suite.Core is
              (Archive.Archives.Formats.Seven_Zip_Format,
               Seven_Zip_Target,
               Plan);
+         Zstd_Published : constant Archive.Writes.Results.Publish_Result :=
+           Archive.Writes.Dispatch.Publish
+             (Archive.Archives.Formats.Zstd_Format,
+              Zstd_Target,
+              Plan);
          Zip_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
            Archive.Archives.Readers.Dispatch.Open_File (Zip_Target);
          Tar_Gz_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
@@ -5921,6 +5969,9 @@ package body Archive_Suite.Core is
              (Tar_Gz_Target, Source_Name => Tar_Gz_Target, Retain_Backing => True);
          Seven_Zip_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
            Archive.Archives.Readers.Dispatch.Open_File (Seven_Zip_Target);
+         Zstd_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+           Archive.Archives.Readers.Dispatch.Open_File
+             (Zstd_Target, Source_Name => "dispatch-stream.zst");
       begin
          Assert
            (Zip_Published.Status = Archive.Writes.Results.Write_Completed,
@@ -5931,6 +5982,9 @@ package body Archive_Suite.Core is
          Assert
            (Seven_Zip_Published.Status = Archive.Writes.Results.Write_Completed,
             "write dispatch publishes 7z archive through zlib");
+         Assert
+           (Zstd_Published.Status = Archive.Writes.Results.Write_Completed,
+            "write dispatch publishes zstd archive through zlib");
          Assert
            (Zip_Opened.Status = Archive.Archives.Errors.Ok
             and then Zip_Opened.Format = Archive.Archives.Formats.Zip_Format,
@@ -5944,6 +5998,11 @@ package body Archive_Suite.Core is
             and then Seven_Zip_Opened.Format = Archive.Archives.Formats.Seven_Zip_Format
             and then Archive.Archives.Index.Physical_Count (Seven_Zip_Opened.Index) = 1,
             "write dispatch 7z publication reopens");
+         Assert
+           (Zstd_Opened.Status = Archive.Archives.Errors.Ok
+            and then Zstd_Opened.Format = Archive.Archives.Formats.Zstd_Format
+            and then Archive.Archives.Index.Physical_Count (Zstd_Opened.Index) = 1,
+            "write dispatch zstd publication reopens");
       end;
    end Test_Write_Dispatch;
 

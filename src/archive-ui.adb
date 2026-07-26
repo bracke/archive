@@ -366,6 +366,7 @@ package body Archive.UI is
          when Archive.Archives.Entries.GZip_Deflate => return "gzip-deflate";
          when Archive.Archives.Entries.Zip_Stored => return "zip-store";
          when Archive.Archives.Entries.Zip_Deflate => return "zip-deflate";
+         when Archive.Archives.Entries.Zstd_Compression => return "zstandard";
          when Archive.Archives.Entries.Unsupported_Compression => return "unsupported";
          when Archive.Archives.Entries.Unknown_Compression => return "unknown";
       end case;

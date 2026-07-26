@@ -151,6 +151,24 @@ package body Archive.Archives.Formats is
                Can_Remove_Entries          => True,
                Can_Rename_Entries          => True,
                Requires_Rewrite_For_Update => True);
+         when Zstd_Format =>
+            return
+              (Can_Index                   => True,
+               Can_Open_Entry_Streams      => True,
+               Can_Verify_Metadata         => False,
+               Can_Verify_Payload          => True,
+               Supports_Duplicates         => False,
+               Supports_Symbolic_Links     => False,
+               Supports_Hard_Links         => False,
+               Supports_Encryption         => False,
+               Supports_Random_Access      => False,
+               Requires_Temporary_Backing  => False,
+               Can_Create                  => True,
+               Can_Add_Entries             => False,
+               Can_Replace_Entries         => False,
+               Can_Remove_Entries          => False,
+               Can_Rename_Entries          => True,
+               Requires_Rewrite_For_Update => True);
          when others =>
             return (others => False);
       end case;
@@ -196,7 +214,7 @@ package body Archive.Archives.Formats is
         and then B (Bytes, 2) = 16#2F#
         and then B (Bytes, 3) = 16#FD#
       then
-         return (Recognized_Unsupported, Zstd_Format);
+         return (Detected, Zstd_Format);
       elsif Bytes'Length >= 3
         and then B (Bytes, 0) = 16#42#
         and then B (Bytes, 1) = 16#5A#
