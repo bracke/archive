@@ -223,6 +223,24 @@ package body Archive.Archives.Formats is
                Can_Remove_Entries          => False,
                Can_Rename_Entries          => False,
                Requires_Rewrite_For_Update => False);
+         when Cab_Format =>
+            return
+              (Can_Index                   => True,
+               Can_Open_Entry_Streams      => True,
+               Can_Verify_Metadata         => True,
+               Can_Verify_Payload          => True,
+               Supports_Duplicates         => True,
+               Supports_Symbolic_Links     => False,
+               Supports_Hard_Links         => False,
+               Supports_Encryption         => False,
+               Supports_Random_Access      => True,
+               Requires_Temporary_Backing  => False,
+               Can_Create                  => False,
+               Can_Add_Entries             => False,
+               Can_Replace_Entries         => False,
+               Can_Remove_Entries          => False,
+               Can_Rename_Entries          => False,
+               Requires_Rewrite_For_Update => False);
          when Iso_Format =>
             return
               (Can_Index                   => True,
@@ -299,7 +317,7 @@ package body Archive.Archives.Formats is
         and then B (Bytes, 2) = Character'Pos ('C')
         and then B (Bytes, 3) = Character'Pos ('F')
       then
-         return (Recognized_Unsupported, Cab_Format);
+         return (Detected, Cab_Format);
       elsif Bytes'Length >= 6
         and then B (Bytes, 0) = Character'Pos ('0')
         and then B (Bytes, 1) = Character'Pos ('7')

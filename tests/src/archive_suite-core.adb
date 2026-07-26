@@ -21,6 +21,7 @@ with Archive.Archives.Opening;
 with Archive.Archives.Opening.Tasks;
 with Archive.Archives.Paths;
 with Archive.Archives.Readers.Ar;
+with Archive.Archives.Readers.Cab;
 with Archive.Archives.Readers.Cpio;
 with Archive.Archives.Readers.Gzip;
 with Archive.Archives.Readers.Iso;
@@ -205,6 +206,7 @@ package body Archive_Suite.Core is
      (Bytes : Zlib.Byte_Array)
       return Archive.Archives.Readers.Tar.Tar_Index_Result;
    function One_File_Ar return Zlib.Byte_Array;
+   function One_File_Cab return Zlib.Byte_Array;
    function One_File_Cpio return Zlib.Byte_Array;
    function One_File_Iso return Zlib.Byte_Array;
    function Index_Gzip
@@ -540,7 +542,8 @@ package body Archive_Suite.Core is
       Assert (R.Format = Archive.Archives.Formats.Zstd_Format, "zstd format id");
 
       R := Detect_Bytes (Cab);
-      Assert (R.Format = Archive.Archives.Formats.Cab_Format, "cab unsupported format id");
+      Assert (R.Status = Archive.Archives.Formats.Detected, "cab signature is detected");
+      Assert (R.Format = Archive.Archives.Formats.Cab_Format, "cab format id");
 
       R := Detect_Bytes (Cpio);
       Assert (R.Status = Archive.Archives.Formats.Detected, "cpio newc signature is detected");
@@ -579,6 +582,8 @@ package body Archive_Suite.Core is
            Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Ar_Format);
          Cpio_Caps : constant Archive.Archives.Formats.Format_Capabilities :=
            Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Cpio_Format);
+         Cab_Caps : constant Archive.Archives.Formats.Format_Capabilities :=
+           Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Cab_Format);
          Iso_Caps : constant Archive.Archives.Formats.Format_Capabilities :=
            Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Iso_Format);
          Xz : constant Archive.Archives.Formats.Format_Capabilities :=
@@ -599,6 +604,10 @@ package body Archive_Suite.Core is
                  and then Cpio_Caps.Supports_Symbolic_Links
                  and then not Cpio_Caps.Can_Create,
                  "cpio supports read workflows without advertising write capability");
+         Assert (Cab_Caps.Can_Index and then Cab_Caps.Can_Open_Entry_Streams
+                 and then Cab_Caps.Supports_Random_Access
+                 and then not Cab_Caps.Can_Create,
+                 "cab supports read workflows without advertising write capability");
          Assert (Iso_Caps.Can_Index and then Iso_Caps.Can_Open_Entry_Streams
                  and then Iso_Caps.Supports_Random_Access
                  and then not Iso_Caps.Can_Create,
@@ -703,6 +712,25 @@ package body Archive_Suite.Core is
       Bytes (72) := Zlib.Byte (Character'Pos (ASCII.LF));
       return Bytes;
    end One_File_Ar;
+
+   function One_File_Cab return Zlib.Byte_Array is
+      Bytes : Zlib.Byte_Array (1 .. 77) := [others => 0];
+   begin
+      Put_Text (Bytes, 0, "MSCF");
+      Put32 (Bytes, 8, 77);
+      Put32 (Bytes, 16, 44);
+      Put16 (Bytes, 26, 1);
+      Put16 (Bytes, 28, 1);
+      Put32 (Bytes, 36, 66);
+      Put16 (Bytes, 40, 1);
+      Put32 (Bytes, 44, 3);
+      Put16 (Bytes, 52, 0);
+      Put_Text (Bytes, 60, "a.txt" & Character'Val (0));
+      Put16 (Bytes, 70, 3);
+      Put16 (Bytes, 72, 3);
+      Put_Text (Bytes, 74, "abc");
+      return Bytes;
+   end One_File_Cab;
 
    function One_File_Cpio return Zlib.Byte_Array is
       Header_Length : constant Natural := 110;
@@ -2644,6 +2672,7 @@ package body Archive_Suite.Core is
         Zlib.Zstd_Encoder.Encode (Plain, Zstd_Status);
       Tar : constant Zlib.Byte_Array := One_File_Tar;
       Ar : constant Zlib.Byte_Array := One_File_Ar;
+      Cab : constant Zlib.Byte_Array := One_File_Cab;
       Cpio : constant Zlib.Byte_Array := One_File_Cpio;
       Iso : constant Zlib.Byte_Array := One_File_Iso;
    begin
@@ -2753,6 +2782,27 @@ package body Archive_Suite.Core is
             and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('a'))
             and then Bytes_Of (Payload) (3) = Zlib.Byte (Character'Pos ('c')),
             "cpio dispatch streams stored member payload");
+      end;
+
+      declare
+         Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+           Open_Dispatch (Cab, Source_Name => "sample.cab");
+         Item : constant Archive.Archives.Entries.Archive_Entry :=
+           Archive.Archives.Index.Entry_For (Opened.Index, 2);
+         Payload : constant Test_Stream_Result :=
+           Stream_Dispatch_Payload (Cab, "sample.cab", Item);
+      begin
+         Assert (Opened.Status = Archive.Archives.Errors.Ok, "cab dispatch succeeds");
+         Assert (Opened.Format = Archive.Archives.Formats.Cab_Format, "cab dispatch records format");
+         Assert (Archive.Archives.Index.Physical_Count (Opened.Index) = 1,
+                 "cab dispatch publishes physical entry");
+         Assert
+           (Payload.Status = Archive.Archives.Errors.Ok
+            and then Payload.Integrity = Archive.Archives.Entries.Verified
+            and then Payload.Bytes_Written = 3
+            and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('a'))
+            and then Bytes_Of (Payload) (3) = Zlib.Byte (Character'Pos ('c')),
+            "cab dispatch streams stored file payload");
       end;
 
       declare

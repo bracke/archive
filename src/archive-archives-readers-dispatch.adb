@@ -3,6 +3,7 @@ with Ada.Strings.Unbounded;
 
 with Archive.Archives.Readers.Ar;
 with Archive.Archives.Readers.BZip2;
+with Archive.Archives.Readers.Cab;
 with Archive.Archives.Readers.Cpio;
 with Archive.Archives.Readers.Gzip;
 with Archive.Archives.Readers.Iso;
@@ -271,6 +272,17 @@ package body Archive.Archives.Readers.Dispatch is
                end if;
                return Result;
             end;
+         elsif Detection.Format = Archive.Archives.Formats.Cab_Format then
+            declare
+               Parsed : constant Archive.Archives.Readers.Cab.Cab_Index_Result :=
+                 Archive.Archives.Readers.Cab.Index_File (Path);
+            begin
+               Result.Status := Parsed.Status;
+               if Parsed.Status = Archive.Archives.Errors.Ok then
+                  Result.Index := Archive.Archives.Index.Build (Parsed.Entries).Index;
+               end if;
+               return Result;
+            end;
          elsif Detection.Format = Archive.Archives.Formats.Iso_Format then
             declare
                Parsed : constant Archive.Archives.Readers.Iso.Iso_Index_Result :=
@@ -499,6 +511,24 @@ package body Archive.Archives.Readers.Dispatch is
 
                Payload : constant Archive.Archives.Readers.Cpio.Stream_Result :=
                  Archive.Archives.Readers.Cpio.Stream_Payload_File
+                   (Path, Item, Forward'Access);
+            begin
+               return (Status => Payload.Status,
+                       Integrity => Payload.Integrity,
+                       Bytes_Written => Payload.Bytes_Written);
+            end;
+
+         when Archive.Archives.Formats.Cab_Format =>
+            declare
+               procedure Forward
+                 (Bytes : Zlib.Byte_Array;
+                  Continue : in out Boolean) is
+               begin
+                  Consumer.all (Bytes, Continue);
+               end Forward;
+
+               Payload : constant Archive.Archives.Readers.Cab.Stream_Result :=
+                 Archive.Archives.Readers.Cab.Stream_Payload_File
                    (Path, Item, Forward'Access);
             begin
                return (Status => Payload.Status,

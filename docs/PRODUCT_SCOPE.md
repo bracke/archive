@@ -59,6 +59,7 @@ Required V1 read workflows:
 | gzip | required | required | required | required | `zlib` |
 | AR | supported | supported | supported | supported | archive AR adapter |
 | CPIO newc | supported | supported | supported | supported | archive CPIO adapter |
+| CAB stored | supported | supported | supported | supported | archive CAB adapter |
 | ISO 9660 | supported | supported | supported | supported | archive ISO adapter |
 
 Required V1 write workflows:
@@ -163,9 +164,9 @@ Recent archive paths are persisted as stable data, not localized display labels,
 and shell snapshots expose the recent count and ordered path list through the
 settings snapshot for menu construction.
 
-Recognized unsupported formats include RAR, XZ, CAB,
-split ZIP, multi-volume ZIP, encrypted entries outside supported 7z
-layouts, ZIP PPMd, and unsupported ZIP methods or 7z layouts.
+Recognized unsupported formats include RAR, XZ, split ZIP, multi-volume ZIP,
+encrypted entries outside supported 7z layouts, compressed CAB folders, ZIP
+PPMd, and unsupported ZIP methods or 7z layouts.
 
 ## Non-Negotiable Invariants
 

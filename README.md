@@ -21,9 +21,10 @@ Current V1 support:
 | Zstandard | supported as one logical file | supported | supported | supported | supported single-file replacement | `zlib` |
 | AR | supported for stored members | supported | supported | supported | not supported | archive AR adapter |
 | CPIO newc | supported for stored members | supported | supported | supported | not supported | archive CPIO adapter |
+| CAB stored | supported for bounded stored folders | supported | supported | supported | not supported | archive CAB adapter |
 | ISO 9660 | supported for stored directory records and files | supported | supported | supported | not supported | archive ISO adapter |
 
-Recognized but unsupported in V1: RAR, XZ, CAB, split ZIP, multi-volume ZIP, encrypted entries outside supported 7z layouts, ZIP PPMd, and unsupported ZIP methods or 7z layouts.
+Recognized but unsupported in V1: RAR, XZ, split ZIP, multi-volume ZIP, encrypted entries outside supported 7z layouts, compressed CAB folders, ZIP PPMd, and unsupported ZIP methods or 7z layouts.
 
 ## Current Implementation Status
 
