@@ -485,6 +485,129 @@ procedure Release_Report is
                & ": fixture record is missing " & Field);
          end if;
       end Require_Field;
+
+      type Generated_Fixture_Metadata is record
+         Known : Boolean := False;
+         Size  : Natural := 0;
+         CRC   : String (1 .. 8) := "00000000";
+      end record;
+
+      function Generated_Metadata (Id : String) return Generated_Fixture_Metadata is
+      begin
+         if Id = "tar-basic" then
+            return (True, 2_048, "AE42BDC4");
+         elsif Id = "tar-gzip-basic" then
+            return (True, 98, "322CAE1E");
+         elsif Id = "tar-duplicate-path" then
+            return (True, 3_072, "1A4AF7A3");
+         elsif Id = "zip-stored-basic" then
+            return (True, 111, "91E2A6FC");
+         elsif Id = "zip-deflate-basic" then
+            return (True, 113, "9ABAE3AF");
+         elsif Id = "zip-data-descriptor" then
+            return (True, 127, "9B0623BB");
+         elsif Id = "zip-zip64-basic" then
+            return (True, 151, "8777E7F4");
+         elsif Id = "zip-unicode-path" then
+            return (True, 131, "4DFF89CE");
+         elsif Id = "gzip-basic" then
+            return (True, 23, "BB1C56C2");
+         elsif Id = "gzip-empty" then
+            return (True, 20, "45378550");
+         elsif Id = "zip-bad-crc" then
+            return (True, 111, "BB182EBC");
+         elsif Id = "zip-unsupported-method" then
+            return (True, 111, "D97324F5");
+         elsif Id = "zip-encrypted" then
+            return (True, 111, "CFBFD41F");
+         elsif Id = "zip-multi-disk" then
+            return (True, 111, "D0D8818C");
+         elsif Id = "gzip-bad-trailer" then
+            return (True, 23, "941F1893");
+         else
+            return (Known => False, Size => 0, CRC => "00000000");
+         end if;
+      end Generated_Metadata;
+
+      procedure Validate_Fixture_Record (Line : String; Line_Number : Natural) is
+         Id        : constant String := Field_Value (Line, "id");
+         Path      : constant String := Field_Value (Line, "path");
+         Size_Text : constant String := Field_Value (Line, "size");
+         CRC_Text  : constant String := Field_Value (Line, "crc32");
+         Expected_Size : Natural;
+      begin
+         if Id = "" or else Path = "" or else Size_Text = "" or else CRC_Text = "" then
+            return;
+         end if;
+
+         Expected_Size := Natural'Value (Size_Text);
+
+         if Starts_With (Path, "generated:") then
+            declare
+               Expected : constant Generated_Fixture_Metadata :=
+                 Generated_Metadata (Id);
+            begin
+               if not Expected.Known then
+                  Invalid := Invalid + 1;
+                  Put_Line
+                    (Standard_Error,
+                     Manifest & ":" & Line_Number'Image
+                     & ": unknown generated fixture id " & Id);
+               elsif Expected_Size /= Expected.Size then
+                  Invalid := Invalid + 1;
+                  Put_Line
+                    (Standard_Error,
+                     Manifest & ":" & Line_Number'Image
+                     & ": generated fixture size mismatch for " & Id);
+               elsif CRC_Text /= Expected.CRC then
+                  Invalid := Invalid + 1;
+                  Put_Line
+                    (Standard_Error,
+                     Manifest & ":" & Line_Number'Image
+                     & ": generated fixture CRC mismatch for " & Id);
+               end if;
+            end;
+         else
+            if not Starts_With (Path, "tests/fixtures/") then
+               Invalid := Invalid + 1;
+               Put_Line
+                 (Standard_Error,
+                  Manifest & ":" & Line_Number'Image
+                  & ": checked-in fixture path must stay under tests/fixtures");
+            elsif not Ada.Directories.Exists (Root & "/" & Path) then
+               Missing := Missing + 1;
+               Put_Line
+                 (Standard_Error,
+                  Root & "/" & Path & ": listed fixture is missing");
+            else
+               declare
+                  Hashed     : constant File_CRC_Result :=
+                    Compute_File_CRC32 (Root & "/" & Path);
+                  Actual_CRC : constant String :=
+                    To_Hex8 (Interfaces.Unsigned_32 (Hashed.CRC));
+               begin
+                  if Hashed.Bytes /= Expected_Size then
+                     Invalid := Invalid + 1;
+                     Put_Line
+                       (Standard_Error,
+                        Root & "/" & Path & ": fixture size mismatch");
+                  elsif CRC_Text /= Actual_CRC then
+                     Invalid := Invalid + 1;
+                     Put_Line
+                       (Standard_Error,
+                        Root & "/" & Path & ": fixture CRC32 mismatch");
+                  end if;
+               end;
+            end if;
+         end if;
+      exception
+         when Constraint_Error =>
+            Invalid := Invalid + 1;
+            Put_Line
+              (Standard_Error,
+               Manifest & ":" & Line_Number'Image
+               & ": invalid numeric fixture field");
+      end Validate_Fixture_Record;
    begin
       if not Ada.Directories.Exists (Manifest) then
          Missing := Missing + 1;
@@ -511,6 +634,7 @@ procedure Release_Report is
                Require_Field (Line, "purpose", Line_No);
                Require_Field (Line, "size", Line_No);
                Require_Field (Line, "crc32", Line_No);
+               Validate_Fixture_Record (Line, Line_No);
 
                if Id = "plain-ok" then
                   Has_Plain := True;
