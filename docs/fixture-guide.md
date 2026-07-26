@@ -22,6 +22,7 @@ tar-basic
 tar-gzip-basic
 tar-duplicate-path
 cab-unsupported-method
+xz-unsupported-check
 zip-stored-basic
 zip-deflate-basic
 zip-data-descriptor

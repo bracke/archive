@@ -1594,6 +1594,35 @@ procedure Check_All is
       return Bytes;
    end Generated_Cab;
 
+   function Generated_Xz_Unsupported_Check return Zlib.Byte_Array is
+      Status : Zlib.Status_Code := Zlib.Ok;
+      Result : Zlib.Byte_Array := Zlib.XZ_LZMA2 (Payload_ABC, Status);
+      Header_Flags : Zlib.Byte_Array (1 .. 2);
+      Footer_First : Natural;
+   begin
+      if Status /= Zlib.Ok then
+         Fail ("generated unsupported XZ check fixture failed");
+      end if;
+
+      Result (Result'First + 7) := 10;
+      Header_Flags (1) := Result (Result'First + 6);
+      Header_Flags (2) := Result (Result'First + 7);
+      Put32_U
+        (Result,
+         8,
+         Interfaces.Unsigned_32 (CRC32_Compute (Header_Flags)));
+
+      Footer_First := Result'Last - 11;
+      Result (Footer_First + 9) := 10;
+      Put32_U
+        (Result,
+         Footer_First - Result'First,
+         Interfaces.Unsigned_32
+           (CRC32_Compute (Result (Footer_First + 4 .. Footer_First + 9))));
+
+      return Result;
+   end Generated_Xz_Unsupported_Check;
+
    function Generated_Gzip return Zlib.Byte_Array is
       Status : Zlib.Status_Code;
       Result : constant Zlib.Byte_Array := Zlib.GZip (Payload_ABC, Zlib.Fixed, Status);
@@ -1940,6 +1969,8 @@ procedure Check_All is
          return Generated_Tar_Duplicate_Path;
       elsif Id = "cab-unsupported-method" then
          return Generated_Cab (2);
+      elsif Id = "xz-unsupported-check" then
+         return Generated_Xz_Unsupported_Check;
       elsif Id = "zip-stored-basic" then
          return Generated_Zip;
       elsif Id = "zip-deflate-basic" then
@@ -2060,6 +2091,10 @@ procedure Check_All is
          if Opened.Status /= Archive.Archives.Errors.Unsupported_Method then
             Fail ("generated unsupported CAB method should be rejected as unsupported");
          end if;
+      elsif Id = "xz-unsupported-check" then
+         if Opened.Status /= Archive.Archives.Errors.Unsupported_Method then
+            Fail ("generated unsupported XZ check should be rejected as unsupported");
+         end if;
       elsif Id = "zip-multi-disk" then
          if Opened.Status /= Archive.Archives.Errors.Unsupported_Format then
             Fail ("generated multi-disk ZIP should be rejected as unsupported");
@@ -2172,6 +2207,7 @@ procedure Check_All is
       Has_Gzip_Empty : Boolean := False;
       Has_Tar_Duplicate : Boolean := False;
       Has_Cab_Unsupported : Boolean := False;
+      Has_Xz_Unsupported : Boolean := False;
       Has_Zip_Bad_CRC : Boolean := False;
       Has_Zip_Central_CRC_Mismatch : Boolean := False;
       Has_Zip_Unicode_Bad_CRC : Boolean := False;
@@ -2220,6 +2256,8 @@ procedure Check_All is
                      Has_Tar_Duplicate := True;
                   elsif Id = "cab-unsupported-method" then
                      Has_Cab_Unsupported := True;
+                  elsif Id = "xz-unsupported-check" then
+                     Has_Xz_Unsupported := True;
                   elsif Id = "zip-stored-basic" then
                      Has_Zip_Stored := True;
                   elsif Id = "zip-deflate-basic" then
@@ -2278,6 +2316,7 @@ procedure Check_All is
         or else not Has_Zip_Deflate or else not Has_Gzip
         or else not Has_Tar_Duplicate
         or else not Has_Cab_Unsupported
+        or else not Has_Xz_Unsupported
         or else not Has_Zip_Descriptor or else not Has_Zip64
         or else not Has_Gzip_Empty
         or else not Has_Zip_Bad_CRC
