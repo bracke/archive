@@ -134,9 +134,27 @@ procedure Check_All is
 
    procedure Check_Ada_Source_File (Path : String) is
       Content : constant String := To_String (Read_Text_File (Path));
+      BZip2_Child_Encoder : constant String := "BZip2" & "_Encoder";
+      Zstd_Child_Encoder  : constant String := "Zstd" & "_Encoder";
+      XZ_Array_Encoder    : constant String := "Zlib." & "XZ_LZMA2 (";
    begin
       if Ends_With (Path, "/tests/src/check_all.adb") then
+         if Contains (Content, BZip2_Child_Encoder)
+           or else Contains (Content, Zstd_Child_Encoder)
+           or else Contains (Content, XZ_Array_Encoder)
+         then
+            Fail (Path & ": release tooling must use root zlib file encoders for standalone fixtures");
+         end if;
          return;
+      end if;
+
+      if Ends_With (Path, "/tests/src/archive_suite-core.adb")
+        and then
+          (Contains (Content, BZip2_Child_Encoder)
+           or else Contains (Content, Zstd_Child_Encoder)
+           or else Contains (Content, XZ_Array_Encoder))
+      then
+         Fail (Path & ": AUnit fixtures must use root zlib file encoders for standalone fixtures");
       end if;
 
       if Contains (Path, "/archive/src/") then
