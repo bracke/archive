@@ -577,9 +577,9 @@ package body Archive_Suite.Core is
 
       R := Detect_Bytes (Split_Zip);
       Assert
-        (R.Status = Archive.Archives.Formats.Recognized_Unsupported,
-         "split zip marker is recognized but unsupported");
-      Assert (R.Format = Archive.Archives.Formats.Split_Zip_Format, "split zip unsupported format id");
+        (R.Status = Archive.Archives.Formats.Detected,
+         "split zip marker is detected for bounded reassembly");
+      Assert (R.Format = Archive.Archives.Formats.Split_Zip_Format, "split zip format id");
 
       R := Detect_Bytes (Tar_Bytes);
       Assert (R.Status = Archive.Archives.Formats.Detected, "tarlib-generated tar is detected");
@@ -604,6 +604,8 @@ package body Archive_Suite.Core is
            Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Cab_Format);
          Iso_Caps : constant Archive.Archives.Formats.Format_Capabilities :=
            Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Iso_Format);
+         Split_Zip_Caps : constant Archive.Archives.Formats.Format_Capabilities :=
+           Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Split_Zip_Format);
          Xz : constant Archive.Archives.Formats.Format_Capabilities :=
            Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Xz_Format);
       begin
@@ -635,6 +637,12 @@ package body Archive_Suite.Core is
                  and then Iso_Caps.Can_Create
                  and then Iso_Caps.Can_Add_Entries,
                  "iso exposes flat image rewrite capability");
+         Assert
+           (Split_Zip_Caps.Can_Index
+            and then Split_Zip_Caps.Can_Open_Entry_Streams
+            and then Split_Zip_Caps.Requires_Temporary_Backing
+            and then not Split_Zip_Caps.Can_Create,
+            "split zip exposes read-only backed capability");
          Assert
            (Archive.Archives.Formats.Description_Key (Archive.Archives.Formats.Zip_Format) =
             "format.zip.description",
@@ -2988,6 +2996,34 @@ package body Archive_Suite.Core is
       Cab_MSZIP : constant Zlib.Byte_Array := One_File_Cab (MSZIP => True);
       Cpio : constant Zlib.Byte_Array := One_File_Cpio;
       Iso : constant Zlib.Byte_Array := One_File_Iso;
+
+      procedure Write_Split_Zip_Set (Base : String; Bytes : Zlib.Byte_Array) is
+         First_Count  : constant Natural := 20;
+         Second_Count : constant Natural := 30;
+         First        : Zlib.Byte_Array (1 .. First_Count + 4);
+         Second       : Zlib.Byte_Array (1 .. Second_Count);
+         Last_Count   : constant Natural := Bytes'Length - First_Count - Second_Count;
+         Last         : Zlib.Byte_Array (1 .. Last_Count);
+      begin
+         First (1) := 16#50#;
+         First (2) := 16#4B#;
+         First (3) := 16#07#;
+         First (4) := 16#08#;
+         for Index in 1 .. First_Count loop
+            First (Index + 4) := Bytes (Bytes'First + Index - 1);
+         end loop;
+         for Index in 1 .. Second_Count loop
+            Second (Index) := Bytes (Bytes'First + First_Count + Index - 1);
+         end loop;
+         for Index in 1 .. Last_Count loop
+            Last (Index) :=
+              Bytes (Bytes'First + First_Count + Second_Count + Index - 1);
+         end loop;
+
+         Write_Bytes (Base & ".z01", First);
+         Write_Bytes (Base & ".z02", Second);
+         Write_Bytes (Base & ".zip", Last);
+      end Write_Split_Zip_Set;
    begin
       Assert (Status = Zlib.Ok, "dispatch gzip fixture builds");
       Assert (Tar_Gz_Status = Zlib.Ok, "dispatch tar.gz fixture builds");
@@ -3054,6 +3090,58 @@ package body Archive_Suite.Core is
             and then Payload.Bytes_Written = 3
             and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('a')),
             "zip dispatch payload reads");
+      end;
+
+      declare
+         Root       : constant String := "obj/split-zip-dispatch";
+         Base       : constant String := Root & "/sample";
+         First_Path : constant String := Base & ".z01";
+         Final_Path : constant String := Base & ".zip";
+      begin
+         Ada.Directories.Create_Path (Root);
+         Write_Split_Zip_Set (Base, One_File_Zip);
+
+         declare
+            Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+              Archive.Archives.Readers.Dispatch.Open_File
+                (First_Path, Source_Name => "sample.z01");
+            Item : constant Archive.Archives.Entries.Archive_Entry :=
+              Archive.Archives.Index.Entry_For (Opened.Index, 2);
+            Payload : constant Test_Stream_Result :=
+              Stream_Dispatch_Payload_File (First_Path, "sample.z01", Item);
+         begin
+            Assert
+              (Opened.Status = Archive.Archives.Errors.Ok
+               and then Opened.Format = Archive.Archives.Formats.Split_Zip_Format,
+               "split zip first volume opens through bounded reassembly");
+            Assert
+              (Payload.Status = Archive.Archives.Errors.Ok
+               and then Payload.Integrity = Archive.Archives.Entries.Verified
+               and then Payload.Bytes_Written = 3
+               and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('a')),
+               "split zip first volume payload streams through backing");
+         end;
+
+         declare
+            Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+              Archive.Archives.Readers.Dispatch.Open_File
+                (Final_Path, Source_Name => "sample.zip");
+            Item : constant Archive.Archives.Entries.Archive_Entry :=
+              Archive.Archives.Index.Entry_For (Opened.Index, 2);
+            Payload : constant Test_Stream_Result :=
+              Stream_Dispatch_Payload_File (Final_Path, "sample.zip", Item);
+         begin
+            Assert
+              (Opened.Status = Archive.Archives.Errors.Ok
+               and then Opened.Format = Archive.Archives.Formats.Split_Zip_Format,
+               "split zip final volume opens when numbered companions exist");
+            Assert
+              (Payload.Status = Archive.Archives.Errors.Ok
+               and then Payload.Integrity = Archive.Archives.Entries.Verified
+               and then Payload.Bytes_Written = 3
+               and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('b')),
+               "split zip final volume payload streams through backing");
+         end;
       end;
 
       declare

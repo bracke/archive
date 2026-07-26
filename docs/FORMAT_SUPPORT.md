@@ -14,6 +14,7 @@ that registry and the AUnit format tests.
 | ZIP LZMA | supported for streams emitted by the zlib ZIP external-method bridge | supported through the zlib ZIP external-method bridge | supported with CRC-32 after decode before payload publication | supported through safe extraction planning/execution | supported for host-file publication and source-aware rewrite through the zlib ZIP external-method bridge | archive ZIP adapter + `zlib` |
 | ZIP Zstandard | supported through authoritative central directory plus local-header validation | supported through the zlib ZIP external-method bridge | supported with CRC-32 after decode before payload publication | supported through safe extraction planning/execution | supported for host-file publication and source-aware rewrite through the zlib ZIP external-method bridge | archive ZIP adapter + `zlib` |
 | ZIP PPMd | supported for default-parameter PPMd streams emitted by the zlib ZIP external-method bridge | supported through the zlib ZIP external-method bridge | supported with CRC-32 after decode before payload publication | supported through safe extraction planning/execution | supported for host-file publication and source-aware rewrite through the zlib ZIP external-method bridge | archive ZIP adapter + `zlib` |
+| split ZIP / spanning ZIP | supported by bounded `.z01`, `.z02`, ... plus final `.zip` reassembly into a retained backing file | supported through the normal ZIP reader after reassembly | supported through normal ZIP CRC and metadata validation after reassembly | supported through safe extraction planning/execution | not supported; update by saving as a non-split ZIP archive | archive ZIP adapter |
 | gzip | supported as one logical regular-file archive | supported through gzip-wrapped zlib adapter | supported by zlib gzip trailer checks; bounded header CRC is validated during indexing | supported through safe extraction planning/execution | supported by gzip writer adapter | `zlib` |
 | 7z | supported for native zlib-backed layouts, including bounded `.7z.001` first-volume reassembly | supported through `zlib` native 7z extraction, including bounded multi-volume reassembly | supported through zlib header, size, CRC, method, and joined-volume limit validation | supported through safe extraction planning/execution | supported by Deflate file-list publication through `zlib` | `zlib` |
 | bzip2 | supported as one logical regular-file archive | supported through `zlib` bzip2 decoding | supported by bzip2 block and combined CRC validation | supported through safe extraction planning/execution | supported by bzip2 writer adapter | `zlib` |
@@ -34,6 +35,8 @@ gzip payload rejection, TAR duplicate paths, TAR symbolic and hard links, TAR
 device and FIFO metadata, PAX long paths, invalid TAR checksum, and TAR
 truncation, zlib-backed native 7z listing and payload extraction for supported
 native layouts, bounded 7z first-volume reassembly for `.7z.001` sources,
+bounded split ZIP reassembly for contiguous numbered `.z01`, `.z02`, ... sets
+with a final `.zip` segment,
 supported native 7z layouts in documentation and validation,
 and zlib-backed Deflate 7z file-list publication, zlib-backed bzip2 single-file
 decoding and publication, zlib-backed Zstandard single-file decoding and
@@ -42,7 +45,6 @@ publication, zlib-backed XZ one-block LZMA2 decoding and publication, supported 
 Recognized but unsupported:
 
 - RAR
-- split ZIP / spanning ZIP
 
 Unsupported ZIP methods, including non-bridge PPMd variants and non-bridge
 LZMA variants, remain visible as unsupported entries where the central

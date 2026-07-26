@@ -277,6 +277,24 @@ package body Archive.Archives.Formats is
                Can_Remove_Entries          => True,
                Can_Rename_Entries          => True,
                Requires_Rewrite_For_Update => True);
+         when Split_Zip_Format =>
+            return
+              (Can_Index                   => True,
+               Can_Open_Entry_Streams      => True,
+               Can_Verify_Metadata         => True,
+               Can_Verify_Payload          => True,
+               Supports_Duplicates         => True,
+               Supports_Symbolic_Links     => False,
+               Supports_Hard_Links         => False,
+               Supports_Encryption         => True,
+               Supports_Random_Access      => True,
+               Requires_Temporary_Backing  => True,
+               Can_Create                  => False,
+               Can_Add_Entries             => False,
+               Can_Replace_Entries         => False,
+               Can_Remove_Entries          => False,
+               Can_Rename_Entries          => False,
+               Requires_Rewrite_For_Update => False);
          when others =>
             return (others => False);
       end case;
@@ -363,7 +381,7 @@ package body Archive.Archives.Formats is
         and then B (Bytes, 2) = 16#07#
         and then B (Bytes, 3) = 16#08#
       then
-         return (Recognized_Unsupported, Split_Zip_Format);
+         return (Detected, Split_Zip_Format);
       elsif Bytes'Length >= 4
         and then B (Bytes, 0) = 16#50#
         and then B (Bytes, 1) = 16#4B#

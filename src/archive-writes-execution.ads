@@ -9,6 +9,12 @@ package Archive.Writes.Execution is
       Target_Path : String)
       return Archive.Archives.Errors.Error_Code;
 
+   function Stage_Split_Zip
+     (Source_Path : String;
+      Target_Path : String;
+      Max_Bytes   : Positive)
+      return Archive.Archives.Errors.Error_Code;
+
    function Publish_Archive_From_File
      (Destination_Path    : String;
       Plan                : Archive.Writes.Plans.Write_Plan;

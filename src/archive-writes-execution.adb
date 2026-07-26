@@ -1755,6 +1755,200 @@ package body Archive.Writes.Execution is
          return Archive.Archives.Errors.Read_Failed;
    end Stage_Gzip_As_Tar;
 
+   function Stage_Split_Zip
+     (Source_Path : String;
+      Target_Path : String;
+      Max_Bytes   : Positive)
+      return Archive.Archives.Errors.Error_Code
+   is
+      use type Ada.Streams.Stream_Element;
+      use type Ada.Streams.Stream_IO.Count;
+
+      function Lower (Value : String) return String is
+         Result : String := Value;
+      begin
+         for C of Result loop
+            if C in 'A' .. 'Z' then
+               C := Character'Val (Character'Pos (C) + Character'Pos ('a') - Character'Pos ('A'));
+            end if;
+         end loop;
+         return Result;
+      end Lower;
+
+      function Has_Suffix (Value : String; Suffix : String) return Boolean is
+         L : constant String := Lower (Value);
+      begin
+         return L'Length >= Suffix'Length
+           and then L (L'Last - Suffix'Length + 1 .. L'Last) = Suffix;
+      end Has_Suffix;
+
+      function Looks_Like_Zip_Split_Volume (Path : String) return Boolean is
+         L : constant String := Lower (Path);
+      begin
+         return L'Length >= 4
+           and then L (L'Last - 3) = '.'
+           and then L (L'Last - 2) = 'z'
+           and then L (L'Last - 1) in '0' .. '9'
+           and then L (L'Last) in '0' .. '9';
+      end Looks_Like_Zip_Split_Volume;
+
+      function Split_Zip_Base (Path : String) return String is
+      begin
+         if Has_Suffix (Path, ".zip") or else Looks_Like_Zip_Split_Volume (Path) then
+            return Path (Path'First .. Path'Last - 4);
+         end if;
+         return "";
+      end Split_Zip_Base;
+
+      function Split_Zip_Part_Path (Base : String; Part : Positive) return String is
+         Tens : constant Natural := (Part / 10) mod 10;
+         Ones : constant Natural := Part mod 10;
+      begin
+         if Part > 99 then
+            return "";
+         end if;
+
+         return Base & ".z"
+           & Character'Val (Character'Pos ('0') + Tens)
+           & Character'Val (Character'Pos ('0') + Ones);
+      end Split_Zip_Part_Path;
+
+      Base       : constant String := Split_Zip_Base (Source_Path);
+      Final_Path : constant String := (if Base'Length > 0 then Base & ".zip" else "");
+      Out_File   : Ada.Streams.Stream_IO.File_Type;
+      Total      : Ada.Directories.File_Size := 0;
+      Local_Chunk : constant Ada.Streams.Stream_Element_Offset := 32_768;
+
+      function Split_Marker_Present (Part_Path : String) return Boolean is
+         In_File : Ada.Streams.Stream_IO.File_Type;
+         Raw     : Ada.Streams.Stream_Element_Array (1 .. 4);
+         Last    : Ada.Streams.Stream_Element_Offset := 0;
+      begin
+         if Ada.Directories.Size (Part_Path) < 4 then
+            return False;
+         end if;
+
+         Ada.Streams.Stream_IO.Open (In_File, Ada.Streams.Stream_IO.In_File, Part_Path);
+         Ada.Streams.Stream_IO.Read (In_File, Raw, Last);
+         Ada.Streams.Stream_IO.Close (In_File);
+         return Last = 4
+           and then Raw (1) = 16#50#
+           and then Raw (2) = 16#4B#
+           and then Raw (3) = 16#07#
+           and then Raw (4) = 16#08#;
+      exception
+         when others =>
+            if Ada.Streams.Stream_IO.Is_Open (In_File) then
+               Ada.Streams.Stream_IO.Close (In_File);
+            end if;
+            return False;
+      end Split_Marker_Present;
+
+      procedure Append_File
+        (Part_Path : String;
+         Skip      : Ada.Streams.Stream_IO.Count := 0)
+      is
+         In_File   : Ada.Streams.Stream_IO.File_Type;
+         Remaining : Ada.Directories.File_Size := Ada.Directories.Size (Part_Path);
+      begin
+         if Skip > 0 then
+            if Remaining < Ada.Directories.File_Size (Skip) then
+               raise Constraint_Error;
+            end if;
+            Remaining := Remaining - Ada.Directories.File_Size (Skip);
+         end if;
+
+         if Total > Ada.Directories.File_Size (Max_Bytes)
+           or else Remaining > Ada.Directories.File_Size (Max_Bytes) - Total
+           or else Total > Ada.Directories.File_Size (Natural'Last)
+           or else Remaining > Ada.Directories.File_Size (Natural'Last) - Total
+         then
+            raise Storage_Error;
+         end if;
+
+         Ada.Streams.Stream_IO.Open (In_File, Ada.Streams.Stream_IO.In_File, Part_Path);
+         if Skip > 0 then
+            Ada.Streams.Stream_IO.Set_Index
+              (In_File, Skip + Ada.Streams.Stream_IO.Count (1));
+         end if;
+
+         while Remaining > 0 loop
+            declare
+               This_Count : constant Ada.Streams.Stream_Element_Offset :=
+                 Ada.Streams.Stream_Element_Offset'Min
+                   (Local_Chunk, Ada.Streams.Stream_Element_Offset (Remaining));
+               Raw  : Ada.Streams.Stream_Element_Array (1 .. This_Count);
+               Last : Ada.Streams.Stream_Element_Offset := 0;
+            begin
+               Ada.Streams.Stream_IO.Read (In_File, Raw, Last);
+               if Last /= This_Count then
+                  raise Constraint_Error;
+               end if;
+               Ada.Streams.Stream_IO.Write (Out_File, Raw);
+               Remaining := Remaining - Ada.Directories.File_Size (This_Count);
+               Total := Total + Ada.Directories.File_Size (This_Count);
+            end;
+         end loop;
+
+         Ada.Streams.Stream_IO.Close (In_File);
+      exception
+         when others =>
+            if Ada.Streams.Stream_IO.Is_Open (In_File) then
+               Ada.Streams.Stream_IO.Close (In_File);
+            end if;
+            raise;
+      end Append_File;
+   begin
+      if Base'Length = 0
+        or else Target_Path'Length = 0
+        or else not Ada.Directories.Exists (Split_Zip_Part_Path (Base, 1))
+        or else not Ada.Directories.Exists (Final_Path)
+      then
+         return Archive.Archives.Errors.Unsupported_Format;
+      end if;
+
+      if Ada.Directories.Exists (Target_Path) then
+         Ada.Directories.Delete_File (Target_Path);
+      end if;
+
+      Ada.Streams.Stream_IO.Create (Out_File, Ada.Streams.Stream_IO.Out_File, Target_Path);
+
+      for Part in Positive range 1 .. 99 loop
+         declare
+            Part_Path : constant String := Split_Zip_Part_Path (Base, Part);
+         begin
+            exit when Part_Path'Length = 0 or else not Ada.Directories.Exists (Part_Path);
+            Append_File
+              (Part_Path,
+               Skip =>
+                 (if Part = 1 and then Split_Marker_Present (Part_Path)
+                  then 4
+                  else 0));
+         end;
+      end loop;
+
+      Append_File (Final_Path);
+      Ada.Streams.Stream_IO.Close (Out_File);
+      return Archive.Archives.Errors.Ok;
+   exception
+      when Storage_Error =>
+         if Ada.Streams.Stream_IO.Is_Open (Out_File) then
+            Ada.Streams.Stream_IO.Close (Out_File);
+         end if;
+         if Target_Path'Length > 0 and then Ada.Directories.Exists (Target_Path) then
+            Ada.Directories.Delete_File (Target_Path);
+         end if;
+         return Archive.Archives.Errors.Limit_Exceeded;
+      when others =>
+         if Ada.Streams.Stream_IO.Is_Open (Out_File) then
+            Ada.Streams.Stream_IO.Close (Out_File);
+         end if;
+         if Target_Path'Length > 0 and then Ada.Directories.Exists (Target_Path) then
+            Ada.Directories.Delete_File (Target_Path);
+         end if;
+         return Archive.Archives.Errors.Read_Failed;
+   end Stage_Split_Zip;
+
    function Publish_Tar_Gzip_Internal
      (Destination_Path : String;
       Plan             : Archive.Writes.Plans.Write_Plan;

@@ -31,7 +31,7 @@ case id=supported-cab kind=format input=cab-signature expected=Cab_Format status
 case id=cpio-newc-signature kind=format input=cpio-newc-signature expected=Cpio_Format status=Detected
 case id=supported-iso kind=format input=iso-signature expected=Iso_Format status=Detected
 case id=ar-signature kind=format input=ar-signature expected=Ar_Format status=Detected
-case id=unsupported-split-zip kind=format input=split-zip-signature expected=Split_Zip_Format status=Recognized_Unsupported
+case id=unsupported-split-zip kind=format input=split-zip-signature expected=Split_Zip_Format status=Detected
 case id=invalid-random kind=format input=random-bytes expected=Unknown_Format status=Invalid
 case id=archive-tar-basic kind=archive input=tar-basic source=fixture.tar open=Ok entries=1
 case id=archive-tar-gzip-basic kind=archive input=tar-gzip-basic source=fixture.tar.gz open=Ok entries=1

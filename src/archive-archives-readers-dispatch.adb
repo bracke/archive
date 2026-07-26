@@ -12,6 +12,7 @@ with Archive.Archives.Readers.Tar;
 with Archive.Archives.Readers.Zip;
 with Archive.Archives.Readers.Xz;
 with Archive.Archives.Readers.Zstd;
+with Archive.Temporary_Resources;
 with Archive.Writes.Execution;
 
 package body Archive.Archives.Readers.Dispatch is
@@ -53,6 +54,21 @@ package body Archive.Archives.Readers.Dispatch is
         or else Has_Suffix (Source_Name, ".001");
    end Looks_Like_Seven_Zip_First_Volume;
 
+   function Looks_Like_Zip_Final_Volume (Source_Name : String) return Boolean is
+   begin
+      return Has_Suffix (Source_Name, ".zip");
+   end Looks_Like_Zip_Final_Volume;
+
+   function Looks_Like_Zip_Split_Volume (Source_Name : String) return Boolean is
+      L : constant String := Lower (Source_Name);
+   begin
+      return L'Length >= 4
+        and then L (L'Last - 3) = '.'
+        and then L (L'Last - 2) = 'z'
+        and then L (L'Last - 1) in '0' .. '9'
+        and then L (L'Last) in '0' .. '9';
+   end Looks_Like_Zip_Split_Volume;
+
    function Tar_Backing_Path (Path : String) return String is
       Size_Image : constant String := Ada.Directories.File_Size'Image (Ada.Directories.Size (Path));
       Hash       : Natural := 0;
@@ -72,6 +88,68 @@ package body Archive.Archives.Readers.Dispatch is
          return "/tmp/archive-open-tar.tmp";
    end Tar_Backing_Path;
 
+   function Split_Zip_Base (Path : String) return String is
+   begin
+      if Looks_Like_Zip_Final_Volume (Path) then
+         return Path (Path'First .. Path'Last - 4);
+      elsif Looks_Like_Zip_Split_Volume (Path) then
+         return Path (Path'First .. Path'Last - 4);
+      else
+         return "";
+      end if;
+   end Split_Zip_Base;
+
+   function Split_Zip_Final_Path (Path : String) return String is
+      Base : constant String := Split_Zip_Base (Path);
+   begin
+      if Base'Length = 0 then
+         return "";
+      end if;
+      return Base & ".zip";
+   end Split_Zip_Final_Path;
+
+   function Split_Zip_Part_Path (Base : String; Part : Positive) return String is
+      Tens : constant Natural := (Part / 10) mod 10;
+      Ones : constant Natural := Part mod 10;
+   begin
+      if Part > 99 then
+         return "";
+      end if;
+
+      return Base & ".z"
+        & Character'Val (Character'Pos ('0') + Tens)
+        & Character'Val (Character'Pos ('0') + Ones);
+   end Split_Zip_Part_Path;
+
+   function Has_Split_Zip_Companion (Path : String) return Boolean is
+      Base : constant String := Split_Zip_Base (Path);
+   begin
+      return Base'Length > 0
+        and then Ada.Directories.Exists (Split_Zip_Part_Path (Base, 1))
+        and then Ada.Directories.Exists (Split_Zip_Final_Path (Path));
+   end Has_Split_Zip_Companion;
+
+   function Containing_Directory (Path : String) return String is
+   begin
+      for Index in reverse Path'Range loop
+         if Path (Index) = '/' then
+            if Index = Path'First then
+               return "/";
+            end if;
+            return Path (Path'First .. Index - 1);
+         end if;
+      end loop;
+      return ".";
+   end Containing_Directory;
+
+   function Split_Zip_Backing_Path (Path : String) return String is
+      Final_Path : constant String := Split_Zip_Final_Path (Path);
+      Target     : constant String := (if Final_Path'Length > 0 then Final_Path else Path);
+   begin
+      return Archive.Temporary_Resources.Fresh_Sibling_Path
+        (Containing_Directory (Target), Target, "split-zip");
+   end Split_Zip_Backing_Path;
+
    function Open_File
      (Path      : String;
       Max_Bytes : Positive := 256 * 1_024 * 1_024;
@@ -85,7 +163,52 @@ package body Archive.Archives.Readers.Dispatch is
    begin
          Result.Format := Detection.Format;
 
-         if Detection.Status = Archive.Archives.Formats.Recognized_Unsupported then
+         if Detection.Status /= Archive.Archives.Formats.Detected
+           and then Looks_Like_Zip_Final_Volume
+             ((if Source_Name'Length > 0 then Source_Name else Path))
+           and then Has_Split_Zip_Companion (Path)
+         then
+            declare
+               Backing : constant String := Split_Zip_Backing_Path (Path);
+               Stage_Status : constant Archive.Archives.Errors.Error_Code :=
+                 (if Backing'Length = 0
+                  then Archive.Archives.Errors.Limit_Exceeded
+                  else Archive.Writes.Execution.Stage_Split_Zip (Path, Backing, Max_Bytes));
+            begin
+               Result.Format := Archive.Archives.Formats.Split_Zip_Format;
+               if Stage_Status /= Archive.Archives.Errors.Ok then
+                  Result.Status := Stage_Status;
+                  return Result;
+               end if;
+
+               declare
+                  Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
+                    Archive.Archives.Readers.Zip.Index_File (Backing);
+               begin
+                  Result.Status := Parsed.Status;
+                  if Parsed.Status = Archive.Archives.Errors.Ok then
+                     Result.Index := Archive.Archives.Index.Build (Parsed.Entries).Index;
+                     if Retain_Backing then
+                        Result.Backing_Path := To_Unbounded_String (Backing);
+                     end if;
+                  end if;
+               end;
+
+               if (not Retain_Backing or else Result.Status /= Archive.Archives.Errors.Ok)
+                 and then Ada.Directories.Exists (Backing)
+               then
+                  Ada.Directories.Delete_File (Backing);
+               end if;
+               return Result;
+            exception
+               when others =>
+                  if Backing'Length > 0 and then Ada.Directories.Exists (Backing) then
+                     Ada.Directories.Delete_File (Backing);
+                  end if;
+                  Result.Status := Archive.Archives.Errors.Read_Failed;
+                  return Result;
+            end;
+         elsif Detection.Status = Archive.Archives.Formats.Recognized_Unsupported then
             Result.Status := Archive.Archives.Errors.Unsupported_Format;
             return Result;
          elsif Detection.Status /= Archive.Archives.Formats.Detected then
@@ -93,7 +216,48 @@ package body Archive.Archives.Readers.Dispatch is
             return Result;
          end if;
 
-         if Detection.Format = Archive.Archives.Formats.Tar_Format then
+         if Detection.Format = Archive.Archives.Formats.Split_Zip_Format then
+            declare
+               Backing : constant String := Split_Zip_Backing_Path (Path);
+               Stage_Status : constant Archive.Archives.Errors.Error_Code :=
+                 (if Backing'Length = 0
+                  then Archive.Archives.Errors.Limit_Exceeded
+                  else Archive.Writes.Execution.Stage_Split_Zip (Path, Backing, Max_Bytes));
+            begin
+               Result.Format := Archive.Archives.Formats.Split_Zip_Format;
+               if Stage_Status /= Archive.Archives.Errors.Ok then
+                  Result.Status := Stage_Status;
+                  return Result;
+               end if;
+
+               declare
+                  Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
+                    Archive.Archives.Readers.Zip.Index_File (Backing);
+               begin
+                  Result.Status := Parsed.Status;
+                  if Parsed.Status = Archive.Archives.Errors.Ok then
+                     Result.Index := Archive.Archives.Index.Build (Parsed.Entries).Index;
+                     if Retain_Backing then
+                        Result.Backing_Path := To_Unbounded_String (Backing);
+                     end if;
+                  end if;
+               end;
+
+               if (not Retain_Backing or else Result.Status /= Archive.Archives.Errors.Ok)
+                 and then Ada.Directories.Exists (Backing)
+               then
+                  Ada.Directories.Delete_File (Backing);
+               end if;
+               return Result;
+            exception
+               when others =>
+                  if Backing'Length > 0 and then Ada.Directories.Exists (Backing) then
+                     Ada.Directories.Delete_File (Backing);
+                  end if;
+                  Result.Status := Archive.Archives.Errors.Read_Failed;
+                  return Result;
+            end;
+         elsif Detection.Format = Archive.Archives.Formats.Tar_Format then
             declare
                Parsed : constant Archive.Archives.Readers.Tar.Tar_Index_Result :=
                  Archive.Archives.Readers.Tar.Index_File (Path);
@@ -409,6 +573,24 @@ package body Archive.Archives.Readers.Dispatch is
                Payload : constant Archive.Archives.Readers.Zip.Stream_Result :=
                  Archive.Archives.Readers.Zip.Stream_Payload_File
                    (Path, Item, Forward'Access);
+            begin
+               return (Status => Payload.Status,
+                       Integrity => Payload.Integrity,
+                       Bytes_Written => Payload.Bytes_Written);
+            end;
+
+         when Archive.Archives.Formats.Split_Zip_Format =>
+            declare
+               procedure Forward
+                 (Bytes : Zlib.Byte_Array;
+                  Continue : in out Boolean) is
+               begin
+                  Consumer.all (Bytes, Continue);
+               end Forward;
+
+               Payload : constant Archive.Archives.Readers.Zip.Stream_Result :=
+                 Archive.Archives.Readers.Zip.Stream_Payload_File
+                   (To_String (Opened.Backing_Path), Item, Forward'Access);
             begin
                return (Status => Payload.Status,
                        Integrity => Payload.Integrity,

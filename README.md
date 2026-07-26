@@ -15,6 +15,7 @@ Current V1 support:
 | ZIP stored | supported | supported | supported | supported | supported by save-in-place and save-as publication | archive ZIP adapter |
 | ZIP DEFLATE | supported | supported | supported | supported | supported by save-in-place and save-as publication | archive ZIP adapter + `zlib` |
 | ZIP BZip2 / LZMA / Zstandard | supported | supported | supported | supported | supported for host-file publication | archive ZIP adapter + `zlib` |
+| split ZIP / spanning ZIP | supported by bounded numbered-volume reassembly | supported | supported | supported | save as non-split ZIP | archive ZIP adapter |
 | gzip | supported | supported | supported | supported | supported single-file replacement | `zlib` |
 | 7z | supported for native zlib-backed layouts | supported | supported | supported | supported by stored file-list publication | `zlib` |
 | bzip2 | supported as one logical file | supported | supported | supported | supported single-file replacement | `zlib` |
@@ -25,7 +26,7 @@ Current V1 support:
 | CAB stored / MSZIP | supported for bounded single-folder archives | supported | supported | supported | supported by stored-cabinet rewrite publication | archive CAB adapter + `zlib` |
 | ISO 9660 | supported for stored directory records and files | supported | supported | supported | supported by flat-image rewrite publication | archive ISO adapter |
 
-Recognized but unsupported in V1: RAR, split ZIP, multi-volume ZIP, encrypted entries outside supported 7z layouts, unsupported XZ layouts, unsupported CAB folder methods, unsupported non-bridge ZIP PPMd variants, and unsupported ZIP methods or 7z layouts.
+Recognized but unsupported in V1: RAR, non-contiguous multi-volume ZIP sets, encrypted entries outside supported 7z layouts, unsupported XZ layouts, unsupported CAB folder methods, unsupported non-bridge ZIP PPMd variants, and unsupported ZIP methods or 7z layouts.
 
 ## Current Implementation Status
 

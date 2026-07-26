@@ -56,6 +56,7 @@ Required V1 read workflows:
 | ZIP stored | required | required | required | required | archive ZIP adapter |
 | ZIP DEFLATE | required | required | required | required | archive ZIP adapter + `zlib` |
 | ZIP BZip2 / LZMA / Zstandard | supported | supported | supported | supported | archive ZIP adapter + `zlib` |
+| split ZIP / spanning ZIP | supported through bounded numbered-volume reassembly | supported | supported | supported | archive ZIP adapter |
 | gzip | required | required | required | required | `zlib` |
 | XZ | supported | supported | supported | supported, including single-file replacement | `zlib` |
 | AR | supported | supported | supported | supported | archive AR adapter |
@@ -172,8 +173,8 @@ Recent archive paths are persisted as stable data, not localized display labels,
 and shell snapshots expose the recent count and ordered path list through the
 settings snapshot for menu construction.
 
-Recognized unsupported formats include RAR, split ZIP, multi-volume ZIP,
-encrypted entries outside supported 7z layouts, unsupported XZ layouts,
+Recognized unsupported formats include RAR, multi-volume ZIP sets with missing
+or non-contiguous numbered segments, encrypted entries outside supported 7z layouts, unsupported XZ layouts,
 unsupported CAB folder methods, unsupported non-bridge ZIP PPMd variants, and
 unsupported ZIP methods or 7z layouts. 7z first-volume sources (`.7z.001`) are
 supported only for bounded volume sets whose joined archive image remains
