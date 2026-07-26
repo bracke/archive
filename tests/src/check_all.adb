@@ -1811,15 +1811,12 @@ procedure Check_All is
    end Generated_Iso;
 
    function Generated_Xz_Unsupported_Check return Zlib.Byte_Array is
-      Status : Zlib.Status_Code := Zlib.Ok;
-      Result : Zlib.Byte_Array := Zlib.XZ_LZMA2 (Payload_ABC, Status);
+      Result : Zlib.Byte_Array :=
+        Generated_By_File_Encoder
+          (Payload_ABC, "xz-unsupported-check", Zlib.XZ_LZMA2_File'Access);
       Header_Flags : Zlib.Byte_Array (1 .. 2);
       Footer_First : Natural;
    begin
-      if Status /= Zlib.Ok then
-         Fail ("generated unsupported XZ check fixture failed");
-      end if;
-
       Result (Result'First + 7) := 10;
       Header_Flags (1) := Result (Result'First + 6);
       Header_Flags (2) := Result (Result'First + 7);
