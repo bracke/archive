@@ -37,6 +37,10 @@ streams, reserved names, case folding, macOS-style normalization, recognized
 unsupported signatures, invalid random input, TAR, TAR.GZ, ZIP stored, ZIP
 DEFLATE, standalone gzip, unsupported ZIP compression methods, encrypted ZIP
 entries, corrupt ZIP CRCs, corrupt gzip trailers, and malformed archive inputs.
+The in-repository corpus is deterministic and network-free; it includes
+local-header mismatch/signature cases and normalized safe-path cases in
+addition to attack paths. Larger externally sourced corpora can be added only
+as checked-in or generated records with stable hashes and Ada validation.
 
 Archive corpus records use this form:
 

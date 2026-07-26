@@ -5088,6 +5088,81 @@ package body Archive_Suite.Core is
       Ada.Streams.Stream_IO.Write (File, Host_Data);
       Ada.Streams.Stream_IO.Close (File);
 
+      declare
+         Seed_Status : Zlib.Status_Code;
+         Seed_Gzip : constant Zlib.Byte_Array := Zlib.GZip (Plain, Zlib.Fixed, Seed_Status);
+         Seed_Path : constant String := Root & "/payload.txt.gz";
+         Target_Path : constant String := Root & "/payload-updated.txt.gz";
+      begin
+         Assert (Seed_Status = Zlib.Ok, "standalone gzip seed builds through zlib");
+         Write_Bytes (Seed_Path, Seed_Gzip);
+
+         declare
+            Seed_Open : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+              Archive.Archives.Readers.Dispatch.Open_File
+                (Seed_Path, Source_Name => "payload.txt.gz");
+            Source_Id : constant Archive.Types.Entry_Id :=
+              Entry_Id_For (Seed_Open.Index, "payload.txt");
+         begin
+            Assert
+              (Seed_Open.Status = Archive.Archives.Errors.Ok
+               and then Seed_Open.Format = Archive.Archives.Formats.GZip_Format,
+               "standalone gzip seed opens through dispatch");
+            Assert (Source_Id /= Archive.Types.No_Entry,
+                    "standalone gzip seed exposes logical file entry");
+
+            Requests.Clear;
+            Requests.Append
+              (Archive.Writes.Plans.Write_Request'
+                 (Action           => Archive.Writes.Plans.Replace_File,
+                  Source_Entry     => Source_Id,
+                  Host_Source      => To_Unbounded_String (Host_File),
+                  Target_Path      => To_Unbounded_String ("payload.txt"),
+                  Replacement_Path => Null_Unbounded_String));
+
+            declare
+               Plan : constant Archive.Writes.Plans.Write_Plan :=
+                 Archive.Writes.Plans.Build (Seed_Open.Index, Requests, Session => 10);
+               Published : constant Archive.Writes.Results.Publish_Result :=
+                 Archive.Writes.Dispatch.Publish
+                   (Archive.Archives.Formats.GZip_Format,
+                    Target_Path,
+                    Plan,
+                    Overwrite => True);
+               Reopened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+                 Archive.Archives.Readers.Dispatch.Open_File
+                   (Target_Path, Source_Name => "payload-updated.txt.gz");
+               Reopened_Id : constant Archive.Types.Entry_Id :=
+                 Entry_Id_For (Reopened.Index, "payload-updated.txt");
+               Payload : constant Test_Stream_Result :=
+                 Stream_Dispatch_Payload_File
+                   (Target_Path,
+                    Target_Path,
+                    Archive.Archives.Index.Entry_For (Reopened.Index, Reopened_Id));
+            begin
+               Assert
+                 (Plan.Status = Archive.Writes.Plans.Write_Plan_Ready,
+                  "standalone gzip replacement plan is ready");
+               Assert
+                 (Published.Status = Archive.Writes.Results.Write_Completed,
+                  "standalone gzip dispatch publishes replacement payload");
+               Assert
+                 (Reopened.Status = Archive.Archives.Errors.Ok
+                  and then Reopened.Format = Archive.Archives.Formats.GZip_Format
+                  and then Archive.Archives.Index.Physical_Count (Reopened.Index) = 1,
+                  "standalone gzip dispatch output reopens as one logical archive entry");
+               Assert
+                 (Payload.Status = Archive.Archives.Errors.Ok
+                  and then Payload.Integrity = Archive.Archives.Entries.Verified
+                  and then Payload.Bytes_Written = 2
+                  and then Payload.Bytes (1) = Zlib.Byte (Character'Pos ('o'))
+                  and then Payload.Bytes (2) = Zlib.Byte (Character'Pos ('k')),
+                  "standalone gzip dispatch replacement streams verified payload");
+            end;
+         end;
+      end;
+
+      Requests.Clear;
       Requests.Append
         (Archive.Writes.Plans.Write_Request'
            (Action           => Archive.Writes.Plans.Add_File,
@@ -6663,6 +6738,7 @@ package body Archive_Suite.Core is
          Bytes       : Zlib.Byte_Array;
          Source_Name : String;
          Saveable    : Boolean;
+         Replace_On_Save : Boolean := False;
          Save_Method : Archive.Writes.Dispatch.Zip_Method :=
            Archive.Writes.Dispatch.Zip_Deflate_Method)
       is
@@ -6795,8 +6871,13 @@ package body Archive_Suite.Core is
             end;
 
             if Saveable then
-               Archive.Model.Plan_Add_File
-                 (Model, Host_File, "added-" & Label & ".txt");
+               if Replace_On_Save then
+                  Archive.Model.Select_Only (Model, Item.Id);
+                  Archive.Model.Plan_Selected_Replacement (Model, Host_File);
+               else
+                  Archive.Model.Plan_Add_File
+                    (Model, Host_File, "added-" & Label & ".txt");
+               end if;
                declare
                   Saved : constant Archive.Writes.Service.Save_Result :=
                     Archive.Writes.Service.Save_As
@@ -6845,7 +6926,9 @@ package body Archive_Suite.Core is
          Save_Method => Archive.Writes.Dispatch.Zip_Deflate_Method);
       Run_Case ("tar", One_File_Tar, "sample.tar", Saveable => True);
       Run_Case ("tar-gzip", Tar_Gzip_Bytes, "sample.tar.gz", Saveable => True);
-      Run_Case ("gzip", Gzip_Bytes, "payload.txt.gz", Saveable => False);
+      Run_Case
+        ("gzip", Gzip_Bytes, "payload.txt.gz", Saveable => True,
+         Replace_On_Save => True);
    end Test_Completion_Gate_Workflows;
 
    procedure Write_Bytes (Path : String; Bytes : Zlib.Byte_Array) is
@@ -10219,6 +10302,45 @@ package body Archive_Suite.Core is
       end;
 
       declare
+         Before : constant Archive.UI.Shell_Snapshot := Archive.GUI_Runtime.Snapshot (Runtime);
+         Result : constant Archive.UI.Dispatch_Result :=
+           Archive.GUI_Runtime.Dispatch_Command
+             (Runtime, Archive.Commands.Toggle_Preview_Command, Archive.UI.Menu_Source);
+         After : constant Archive.UI.Shell_Snapshot := Archive.GUI_Runtime.Snapshot (Runtime);
+      begin
+         Assert (Result.Matched and then Result.Accepted,
+                 "gui runtime toggles preview through central executor");
+         Assert
+           (After.Preview_Visible /= Before.Preview_Visible
+            and then After.Preview_Panel.Visible = After.Preview_Visible,
+            "gui runtime preview toggle updates shell and preview panel together");
+      end;
+
+      declare
+         Result : constant Archive.UI.Dispatch_Result :=
+           Archive.GUI_Runtime.Dispatch_Command
+             (Runtime, Archive.Commands.Open_Settings_Command, Archive.UI.Menu_Source);
+      begin
+         Assert (Result.Matched and then Result.Accepted,
+                 "gui runtime opens settings overlay through central executor");
+         Assert
+           (Archive.GUI_Runtime.Snapshot (Runtime).Overlay.Active =
+              Archive.Model.Settings_Overlay,
+            "gui runtime settings command publishes model-owned settings overlay");
+      end;
+
+      declare
+         Result : constant Archive.UI.Dispatch_Result :=
+           Archive.GUI_Runtime.Dispatch_Shortcut
+             (Runtime, Guikit.Input.Key_Escape, Guikit.Input.No_Modifiers);
+      begin
+         Assert (Result.Matched and then Result.Accepted,
+                 "gui runtime Escape closes settings overlay");
+         Assert (not Archive.GUI_Runtime.Snapshot (Runtime).Overlay.Visible,
+                 "gui runtime settings overlay is dismissed through keyboard dispatch");
+      end;
+
+      declare
          Result : constant Archive.UI.Dispatch_Result :=
            Archive.GUI_Runtime.Execute_Palette_Command (Runtime, "missing.command");
          Shell : constant Archive.UI.Shell_Snapshot := Archive.GUI_Runtime.Snapshot (Runtime);
@@ -10454,6 +10576,36 @@ package body Archive_Suite.Core is
                  "live smoke plan follows detected runtime capabilities");
          Assert (Plan.Width > 0 and then Plan.Height > 0,
                  "live smoke plan has bounded frame geometry");
+         Assert (Plan.Frame_Count >= 2 and then Plan.Input_Poll_Count >= 2,
+                 "live smoke plan exercises repeated event polling and rendering");
+         Assert (Plan.Resize_Width > 0 and then Plan.Resize_Height > 0,
+                 "live smoke plan includes a bounded resize step");
+      end;
+
+      declare
+         Executable_Plan : Archive.Application.Windows.Live_Smoke_Plan :=
+           Archive.Application.Windows.Default_Live_Smoke_Plan;
+         Result          : Archive.Application.Windows.Live_Smoke_Result;
+      begin
+         Executable_Plan.Can_Run := True;
+         Executable_Plan.Needs_Display := False;
+         Executable_Plan.Needs_Vulkan := False;
+         Executable_Plan.Frame_Count := 2;
+         Executable_Plan.Input_Poll_Count := 2;
+         Executable_Plan.Resize_Width := 640;
+         Executable_Plan.Resize_Height := 480;
+         Result := Archive.Application.Windows.Live_Smoke (Executable_Plan);
+         if Result.Attempted and then Result.Window_Created then
+            Assert (Result.Runtime_Validated,
+                    "attempted live smoke validates runtime before rendering");
+            Assert (Result.Frames_Attempted >= 1,
+                    "attempted live smoke renders at least one frame");
+            Assert (Result.Input_Polled,
+                    "attempted live smoke polls desktop events");
+         else
+            Assert (To_String (Result.Error_Key) = "runtime.live.failed",
+                    "unavailable native live smoke returns stable failure key");
+         end if;
       end;
 
       declare
@@ -10479,6 +10631,10 @@ package body Archive_Suite.Core is
                  "live runtime report includes smoke readiness");
          Assert (Ada.Strings.Fixed.Index (Report, "status=") > 0,
                  "live runtime report includes Vulkan status");
+         Assert (Ada.Strings.Fixed.Index (Report, "resized=") > 0,
+                 "live runtime report includes resize smoke state");
+         Assert (Ada.Strings.Fixed.Index (Report, "runtime_validated=") > 0,
+                 "live runtime report includes runtime validation state");
       end;
    end Test_Live_Runtime;
 

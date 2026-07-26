@@ -46,6 +46,19 @@ package Archive_Release_Proof is
          (Path_Accepted and then Under_Root and then Checksum_Verified
           and then Temporary_Closed and then not Cancellation_Point);
 
+   function Save_As_Publication_Allowed
+     (Plan_Ready       : Boolean;
+      Staging_Complete : Boolean;
+      Reopened_Cleanly : Boolean;
+      Source_Current   : Boolean;
+      Dirty_Cleared    : Boolean)
+      return Boolean
+   with
+     Post =>
+       Save_As_Publication_Allowed'Result =
+         (Plan_Ready and then Staging_Complete and then Reopened_Cleanly
+          and then Source_Current and then Dirty_Cleared);
+
    function Queue_Count_After_Coalesce
      (Current_Count : Bounded_Count;
       Capacity      : Bounded_Count;

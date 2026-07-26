@@ -2,6 +2,9 @@
 case id=safe-file kind=path input=dir/file.txt safety=Safe_Path decision=Path_Accepted platform=POSIX
 case id=empty-name kind=path input=__empty__ safety=Empty_Path decision=Path_Blocked_Empty platform=POSIX
 case id=dot-only kind=path input=. safety=Empty_Path decision=Path_Blocked_Empty platform=POSIX
+case id=repeated-separators kind=path input=dir//nested///file.txt safety=Safe_Path decision=Path_Accepted platform=POSIX
+case id=dot-component kind=path input=dir/./file.txt safety=Safe_Path decision=Path_Accepted platform=POSIX
+case id=trailing-separator-directory-key kind=path input=dir/subdir/ safety=Safe_Path decision=Path_Accepted platform=POSIX
 case id=parent-traversal kind=path input=../outside safety=Parent_Traversal decision=Path_Blocked_Unsafe platform=POSIX
 case id=repeated-traversal kind=path input=a/../../outside safety=Parent_Traversal decision=Path_Blocked_Unsafe platform=POSIX
 case id=absolute-posix kind=path input=/etc/passwd safety=Absolute_Path decision=Path_Blocked_Unsafe platform=POSIX
@@ -31,6 +34,8 @@ case id=archive-gzip-basic kind=archive input=gzip-basic source=fixture.gz open=
 case id=archive-zip-bad-crc kind=archive input=zip-bad-crc source=fixture.zip open=Ok entries=1
 case id=archive-zip-unsupported-method kind=archive input=zip-unsupported-method source=fixture.zip open=Ok entries=1 payload=Unsupported_Method
 case id=archive-zip-encrypted kind=archive input=zip-encrypted source=fixture.zip open=Ok entries=1 payload=Unsupported_Method
+case id=archive-zip-local-size-mismatch kind=archive input=zip-local-size-mismatch source=fixture.zip open=Invalid_Format entries=0
+case id=archive-zip-bad-local-signature kind=archive input=zip-bad-local-signature source=fixture.zip open=Invalid_Format entries=0
 case id=archive-zip-truncated-central kind=archive input=zip-truncated-central source=fixture.zip open=Invalid_Format entries=0
 case id=archive-gzip-truncated kind=archive input=gzip-truncated source=fixture.gz open=Ok entries=1 payload=Invalid_Format
 case id=archive-gzip-bad-trailer kind=archive input=gzip-bad-trailer source=fixture.gz open=Ok entries=1 payload=Invalid_Format

@@ -20,10 +20,14 @@ Current mandatory gates:
 - integration tests through a second explicit `./bin/archive_tests` run;
 - headless runtime smoke through `./bin/archive --headless-smoke`;
 - headless GUI runtime validation through `./bin/archive --headless-gui`.
+- live desktop smoke planning is validated in AUnit, and the bounded native
+  smoke path exercises repeated event polling, multiple render attempts,
+  runtime validation, and a resize step when a display/Vulkan host is available.
 - full graph release builds through root and tests `alr build --release`;
 - project-local GNATprove proof target through `gnatprove -P tests/proof/archive_release_proof.gpr`;
   the proof target includes checked count arithmetic, stable entry-position
-  bounds, output publication gating, and progress coalescing count invariants.
+  bounds, extraction output publication gating, save-as publication gating, and
+  progress coalescing count invariants.
 - packaged smoke test through the release-built `./bin/archive --headless-smoke`;
 - machine-readable release report validation through `./bin/release_report --check`;
 - persisted release report generation through `./bin/release_report --write obj/release-report.json`;

@@ -497,9 +497,12 @@ procedure Check_All is
    end Check_Architecture;
 
    function Catalog_Has_Key (Catalog : String; Key : String) return Boolean is
+      Localized_Key : constant String := "en." & Key & " =";
    begin
       return Starts_With (Catalog, Key & "=")
-        or else Contains (Catalog, ASCII.LF & Key & "=");
+        or else Contains (Catalog, ASCII.LF & Key & "=")
+        or else Starts_With (Catalog, Localized_Key)
+        or else Contains (Catalog, ASCII.LF & Localized_Key);
    end Catalog_Has_Key;
 
    procedure Require_Catalog_Key (Catalog : String; Key : String) is
@@ -1313,6 +1316,20 @@ procedure Check_All is
       return Bytes;
    end Generated_Zip;
 
+   function Generated_Zip_Local_Size_Mismatch return Zlib.Byte_Array is
+      Bytes : Zlib.Byte_Array := Generated_Zip;
+   begin
+      Put32 (Bytes, 18, 4);
+      return Bytes;
+   end Generated_Zip_Local_Size_Mismatch;
+
+   function Generated_Zip_Bad_Local_Signature return Zlib.Byte_Array is
+      Bytes : Zlib.Byte_Array := Generated_Zip;
+   begin
+      Put32 (Bytes, 0, 16#0403_4B51#);
+      return Bytes;
+   end Generated_Zip_Bad_Local_Signature;
+
    function Generated_Fixture (Id : String) return Zlib.Byte_Array is
    begin
       if Id = "tar-basic" then
@@ -1331,6 +1348,10 @@ procedure Check_All is
          return Generated_Zip (Method => 99);
       elsif Id = "zip-encrypted" then
          return Generated_Zip (Encrypted => True);
+      elsif Id = "zip-local-size-mismatch" then
+         return Generated_Zip_Local_Size_Mismatch;
+      elsif Id = "zip-bad-local-signature" then
+         return Generated_Zip_Bad_Local_Signature;
       elsif Id = "gzip-bad-trailer" then
          return Generated_Gzip_Bad_Trailer;
       else
@@ -1366,6 +1387,10 @@ procedure Check_All is
          return Generated_Fixture ("zip-unsupported-method");
       elsif Value = "zip-encrypted" then
          return Generated_Fixture ("zip-encrypted");
+      elsif Value = "zip-local-size-mismatch" then
+         return Generated_Fixture ("zip-local-size-mismatch");
+      elsif Value = "zip-bad-local-signature" then
+         return Generated_Fixture ("zip-bad-local-signature");
       elsif Value = "gzip-bad-trailer" then
          return Generated_Fixture ("gzip-bad-trailer");
       else
@@ -1555,12 +1580,14 @@ procedure Check_All is
       Require_Manifest_Text ("tests/alire.toml", "licenses = ""MIT OR Apache-2.0 WITH LLVM-exception""");
       Require_Manifest_Text ("alire.toml", "guikit = ""*""");
       Require_Manifest_Text ("alire.toml", "i18n = ""*""");
+      Require_Manifest_Text ("alire.toml", "messages = ""*""");
       Require_Manifest_Text ("alire.toml", "tarlib = ""*""");
       Require_Manifest_Text ("alire.toml", "zlib = ""*""");
       Require_Manifest_Text ("alire.toml", "cryptolib = ""*""");
       Require_Manifest_Text ("alire.toml", "hostkit = ""*""");
       Require_Manifest_Text ("alire.toml", "textrender = ""*""");
       Require_Manifest_Text ("tests/alire.toml", "archive = ""*""");
+      Require_Manifest_Text ("tests/alire.toml", "messages = ""*""");
       Require_Manifest_Text ("tests/alire.toml", "project_tools = ""*""");
       Require_Manifest_Text ("tests/alire.toml", "tarlib = ""*""");
       Require_Manifest_Text ("tests/alire.toml", "aunit = ""^26.0.0""");

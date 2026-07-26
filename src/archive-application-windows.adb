@@ -90,8 +90,10 @@ package body Archive.Application.Windows is
          Needs_Vulkan     => True,
          Width            => 1024,
          Height           => 768,
-         Frame_Count      => 1,
-         Input_Poll_Count => 1,
+         Frame_Count      => 2,
+         Input_Poll_Count => 2,
+         Resize_Width     => 800,
+         Resize_Height    => 600,
          Reason_Key       => To_Unbounded_String
            ((if Caps.Live_Window_Smoke_Ready then "runtime.live.ready"
              elsif not Caps.Display_Available then "runtime.live.no_display"
@@ -167,6 +169,7 @@ package body Archive.Application.Windows is
          Title  => Archive.Localization.Text ("application.title"));
       Result.Window_Created := True;
       Archive.GUI_Runtime.Initialize (Runtime, Width => Plan.Width, Height => Plan.Height);
+      Result.Runtime_Validated := Archive.GUI_Runtime.Validate (Runtime).Ready;
 
       for Poll_Index in 1 .. Plan.Input_Poll_Count loop
          Guikit.Vulkan.Poll_Events;
@@ -174,6 +177,14 @@ package body Archive.Application.Windows is
       end loop;
 
       for Frame_Index in 1 .. Plan.Frame_Count loop
+         if Frame_Index = 2 and then Plan.Resize_Width > 0 and then Plan.Resize_Height > 0 then
+            Glfw.Windows.Set_Size
+              (As_Window (Handle),
+               Glfw.Size (Plan.Resize_Width),
+               Glfw.Size (Plan.Resize_Height));
+            Archive.GUI_Runtime.Resize (Runtime, Plan.Resize_Width, Plan.Resize_Height);
+            Result.Resize_Applied := True;
+         end if;
          Render_Once (Runtime, As_Window (Handle), Vulkan, Result.Last_Status);
          Result.Frames_Attempted := Result.Frames_Attempted + 1;
          if Result.Last_Status = Guikit.Vulkan.Vulkan_Presented then
@@ -218,6 +229,8 @@ package body Archive.Application.Windows is
         & " frames=" & Natural'Image (Result.Frames_Attempted)
         & " presented=" & Natural'Image (Result.Frames_Presented)
         & " input_polled=" & Boolean'Image (Result.Input_Polled)
+        & " resized=" & Boolean'Image (Result.Resize_Applied)
+        & " runtime_validated=" & Boolean'Image (Result.Runtime_Validated)
         & " closed=" & Boolean'Image (Result.Closed_Cleanly)
         & " status=" & Guikit.Vulkan.Vulkan_Status'Image (Result.Last_Status)
         & " reason=" & To_String (Result.Error_Key);

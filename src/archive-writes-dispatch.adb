@@ -74,6 +74,12 @@ package body Archive.Writes.Dispatch is
                   Cancelled => Cancelled);
             end if;
 
+         when Archive.Archives.Formats.GZip_Format =>
+            return Archive.Writes.Execution.Publish_Gzip
+              (Destination_Path, Plan,
+               Overwrite => Overwrite,
+               Cancelled => Cancelled);
+
          when others =>
             return (Status => Archive.Writes.Results.Write_Blocked_By_Plan);
       end case;

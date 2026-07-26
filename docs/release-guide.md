@@ -43,6 +43,9 @@ The malformed-input corpus gate is enforced by Ada tooling: `check_all`
 executes the corpus against production path, extraction, and detection code,
 and `release_report` validates that the corpus manifest is present and
 well-formed.
+The corpus remains deterministic and network-free: newly added archive cases
+must be generated or checked in with stable identifiers, and local-header ZIP
+corruption is validated before release as part of the same Ada gate.
 
 Extraction security tests, deterministic mutation tests, and the per-format completion gate workflow
 are enforced by Ada tooling through named AUnit routines. The release report also marks
@@ -59,8 +62,8 @@ integration tests are enforced by Ada tooling.
 
 GNATprove is enforced by Ada tooling through the project-local
 `tests/proof/archive_release_proof.gpr` target. That target covers checked
-count arithmetic, stable entry-position bounds, output publication gating, and
-progress coalescing count invariants. The intended full-project
+count arithmetic, stable entry-position bounds, output publication gating,
+save-as publication gating, and progress coalescing count invariants. The intended full-project
 command is `alr exec -- gnatprove -P archive.gpr --level=0 --mode=check`; this
 currently reaches a GNATprove crash in the transitive `utilada` dependency, so
 the enforced release target proves the local release invariants that can be

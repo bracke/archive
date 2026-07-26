@@ -10,11 +10,11 @@ The repository now has an enforced Ada `check_all` gate and a named
 `completion gate format workflows` AUnit routine. That routine drives ZIP
 stored, ZIP DEFLATE, TAR, TAR.GZ, and standalone gzip through open, index,
 shell display, navigation, view switching, sorting, filtering, selection,
-preview, verification, extraction, and clean close. ZIP, TAR, and TAR.GZ also
-exercise update, save, reopen, and verification of the saved archive through
-the current write dispatcher. Standalone gzip remains read/extract/verify in
-the completion gate because dispatch publication is currently limited to ZIP,
-TAR, and TAR.GZ.
+preview, verification, extraction, update planning, save-as publication,
+reopen, verification of the saved archive, and clean close. ZIP stored, ZIP
+DEFLATE, TAR, TAR.GZ, and standalone gzip all exercise the write dispatcher in
+that gate; standalone gzip uses replacement publication because it models one
+logical file.
 
 Status by area:
 
@@ -33,9 +33,12 @@ Status by area:
   release report JSON, and CI delegation to Ada tooling.
 
 Remaining depth is tracked as expansion work, not as unchecked placeholder
-code: deeper live desktop interaction, broader malformed archive corpora,
-stronger SPARK contracts over production packages, and standalone gzip archive
-publication.
+code: live desktop smoke now validates repeated polling, multiple render
+attempts, runtime validation, and resize handling where display/Vulkan are
+available; the deterministic malformed/security corpus now includes additional
+safe-path normalization and ZIP local-header corruption cases; and release
+documentation now describes the current read/write gate without stale
+read-only or gzip-publication caveats.
 
 ## Phase 0: Baseline And Scope Lock
 

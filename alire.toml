@@ -23,8 +23,14 @@ guikit = { path = "../guikit" }
 [[depends-on]]
 i18n = "*"
 
+[[depends-on]]
+messages = "*"
+
 [[pins]]
 i18n = { path = "../i18n" }
+
+[[pins]]
+messages = { path = "../messages" }
 
 [[depends-on]]
 tarlib = "*"

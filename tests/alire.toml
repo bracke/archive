@@ -27,6 +27,12 @@ project_tools = "*"
 project_tools = { path = "../../project_tools" }
 
 [[depends-on]]
+messages = "*"
+
+[[pins]]
+messages = { path = "../../messages" }
+
+[[depends-on]]
 tarlib = "*"
 
 [[pins]]

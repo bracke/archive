@@ -1,6 +1,7 @@
 with Ada.Directories;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
+with Ada.Strings.Unbounded;
 
 with Archive.Archives.Readers.Dispatch;
 with Archive.Compression.Zlib;
@@ -16,7 +17,9 @@ package body Archive.Writes.Execution is
    use type Archive.Writes.Plans.Plan_Status;
    use type Archive.Archives.Errors.Error_Code;
    use type Archive.Archives.Formats.Format_Id;
+   use type Archive.Writes.Plans.Entry_Decision;
    use type Archive.Writes.Results.Write_Status;
+   use type Archive.Writes.Plans.Write_Action;
    use type Ada.Streams.Stream_Element_Offset;
 
    Chunk_Size : constant Ada.Streams.Stream_Element_Count := 32_768;
@@ -839,4 +842,156 @@ package body Archive.Writes.Execution is
          Overwrite => Overwrite,
          Cancelled => Cancelled);
    end Publish_Tar_Gzip;
+
+   function Publish_Gzip
+     (Destination_Path : String;
+      Plan             : Archive.Writes.Plans.Write_Plan;
+      Overwrite        : Boolean := False;
+      Cancelled        : Boolean := False)
+      return Archive.Writes.Results.Publish_Result
+   is
+      Root : constant String := Parent_Directory (Destination_Path);
+      Temp : constant String := Temp_Path_For (Destination_Path, Plan);
+      Status : constant Archive.Writes.Results.Write_Status :=
+        Preflight (Destination_Path, Plan, Root, Overwrite, Cancelled);
+      Input  : Ada.Streams.Stream_IO.File_Type;
+      Output : Ada.Streams.Stream_IO.File_Type;
+      Stream : Archive.Compression.Zlib.Deflate_Stream;
+      Data   : Ada.Streams.Stream_Element_Array (1 .. Chunk_Size);
+      Last   : Ada.Streams.Stream_Element_Offset := 0;
+      Source : Ada.Strings.Unbounded.Unbounded_String;
+      Write_Status : Archive.Archives.Errors.Error_Code := Archive.Archives.Errors.Ok;
+
+      function To_Bytes
+        (Slice : Ada.Streams.Stream_Element_Array)
+         return Zlib.Byte_Array
+      is
+         Result : Zlib.Byte_Array (1 .. Natural (Slice'Length));
+         Pos    : Natural := 1;
+      begin
+         for Item of Slice loop
+            Result (Pos) := Zlib.Byte (Item);
+            Pos := Pos + 1;
+         end loop;
+         return Result;
+      end To_Bytes;
+
+      procedure Fail_Cleanup is
+      begin
+         if Ada.Streams.Stream_IO.Is_Open (Input) then
+            Ada.Streams.Stream_IO.Close (Input);
+         end if;
+         if Ada.Streams.Stream_IO.Is_Open (Output) then
+            Ada.Streams.Stream_IO.Close (Output);
+         end if;
+         if Ada.Directories.Exists (Temp) then
+            Ada.Directories.Delete_File (Temp);
+         end if;
+      exception
+         when others =>
+            null;
+      end Fail_Cleanup;
+   begin
+      if Status /= Archive.Writes.Results.Write_Completed then
+         return (Status => Status);
+      end if;
+
+      if Natural (Plan.Changes.Length) /= 1 then
+         return (Status => Archive.Writes.Results.Write_Blocked_By_Plan);
+      end if;
+
+      declare
+         Change : constant Archive.Writes.Plans.Planned_Change :=
+           Plan.Changes.Element (Plan.Changes.First_Index);
+      begin
+         if Change.Decision /= Archive.Writes.Plans.Entry_Ready
+           or else Change.Request.Action not in Archive.Writes.Plans.Add_File
+             | Archive.Writes.Plans.Replace_File
+           or else Ada.Strings.Unbounded.To_String (Change.Request.Host_Source) = ""
+         then
+            return (Status => Archive.Writes.Results.Write_Blocked_By_Plan);
+         end if;
+
+         Source := Change.Request.Host_Source;
+      end;
+
+      if not Ada.Directories.Exists (Ada.Strings.Unbounded.To_String (Source)) then
+         return (Status => Archive.Writes.Results.Write_Failed_Staging);
+      end if;
+
+      Ada.Directories.Create_Path (Root);
+      Ada.Streams.Stream_IO.Open
+        (Input, Ada.Streams.Stream_IO.In_File,
+         Ada.Strings.Unbounded.To_String (Source));
+      Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Temp);
+      Archive.Compression.Zlib.Open
+        (Stream,
+         Archive.Compression.Zlib.Gzip_Wrapped,
+         Max_Output_Bytes => Archive.Types.Compressed_Size'Last);
+
+      loop
+         Ada.Streams.Stream_IO.Read (Input, Data, Last);
+         exit when Last < Data'First;
+         declare
+            Step : constant Archive.Compression.Zlib.Stream_Step_Result :=
+              Archive.Compression.Zlib.Append
+                (Stream, To_Bytes (Data (Data'First .. Last)));
+         begin
+            if Step.Status /= Archive.Archives.Errors.Ok then
+               declare
+                  Closed : constant Archive.Compression.Zlib.Stream_Close_Result :=
+                    Archive.Compression.Zlib.Close (Stream);
+               begin
+                  pragma Unreferenced (Closed);
+               end;
+               Fail_Cleanup;
+               return (Status => Archive.Writes.Results.Write_Failed_Staging);
+            end if;
+
+            Write_Zlib_Bytes (Output, Step.Bytes, Write_Status);
+            if Write_Status /= Archive.Archives.Errors.Ok then
+               declare
+                  Closed : constant Archive.Compression.Zlib.Stream_Close_Result :=
+                    Archive.Compression.Zlib.Close (Stream);
+               begin
+                  pragma Unreferenced (Closed);
+               end;
+               Fail_Cleanup;
+               return (Status => Archive.Writes.Results.Write_Failed_Staging);
+            end if;
+         end;
+         exit when Last < Data'Last;
+      end loop;
+      Ada.Streams.Stream_IO.Close (Input);
+
+      declare
+         Final : constant Archive.Compression.Zlib.Stream_Step_Result :=
+           Archive.Compression.Zlib.Finish (Stream);
+         Closed : Archive.Compression.Zlib.Stream_Close_Result;
+      begin
+         if Final.Status /= Archive.Archives.Errors.Ok then
+            Closed := Archive.Compression.Zlib.Close (Stream);
+            Fail_Cleanup;
+            return (Status => Archive.Writes.Results.Write_Failed_Staging);
+         end if;
+
+         Write_Zlib_Bytes (Output, Final.Bytes, Write_Status);
+         Ada.Streams.Stream_IO.Close (Output);
+         Closed := Archive.Compression.Zlib.Close (Stream);
+         if Write_Status /= Archive.Archives.Errors.Ok
+           or else Closed.Status /= Archive.Archives.Errors.Ok
+         then
+            Fail_Cleanup;
+            return (Status => Archive.Writes.Results.Write_Failed_Staging);
+         end if;
+      end;
+
+      return Finalize_Staged_Archive
+        (Destination_Path, Temp, Root, Overwrite,
+         Archive.Archives.Formats.GZip_Format, Destination_Path, Cancelled);
+   exception
+      when others =>
+         Fail_Cleanup;
+         return (Status => Archive.Writes.Results.Write_Failed_Staging);
+   end Publish_Gzip;
 end Archive.Writes.Execution;

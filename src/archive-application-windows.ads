@@ -25,6 +25,8 @@ package Archive.Application.Windows is
       Height           : Natural := 768;
       Frame_Count      : Positive := 1;
       Input_Poll_Count : Positive := 1;
+      Resize_Width     : Natural := 800;
+      Resize_Height    : Natural := 600;
       Reason_Key       : UString;
    end record;
 
@@ -35,6 +37,8 @@ package Archive.Application.Windows is
       Frames_Attempted : Natural := 0;
       Frames_Presented : Natural := 0;
       Input_Polled     : Boolean := False;
+      Resize_Applied   : Boolean := False;
+      Runtime_Validated : Boolean := False;
       Closed_Cleanly   : Boolean := False;
       Skipped_By_Plan  : Boolean := True;
       Last_Status      : Guikit.Vulkan.Vulkan_Status :=

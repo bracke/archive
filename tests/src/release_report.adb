@@ -602,9 +602,11 @@ procedure Release_Report is
       Require_Marker ("tests/alire.toml", "licenses = ""MIT OR Apache-2.0 WITH LLVM-exception""");
       Require_Marker ("alire.toml", "guikit = ""*""");
       Require_Marker ("alire.toml", "i18n = ""*""");
+      Require_Marker ("alire.toml", "messages = ""*""");
       Require_Marker ("alire.toml", "tarlib = ""*""");
       Require_Marker ("alire.toml", "zlib = ""*""");
       Require_Marker ("tests/alire.toml", "archive = ""*""");
+      Require_Marker ("tests/alire.toml", "messages = ""*""");
       Require_Marker ("tests/alire.toml", "project_tools = ""*""");
       Require_Marker ("tests/alire.toml", "aunit = ""^26.0.0""");
       Require_Marker ("docs/phase-0-dependency-audit.md", "`project_tools` exposes Ada process");
@@ -653,7 +655,7 @@ begin
    Require_Text ("docs/fixture-guide.md", "malformed/security corpus manifest");
    Require_Text ("docs/FORMAT_SUPPORT.md", "ZIP DEFLATE");
    Require_Text ("docs/IMPLEMENTATION_PLAN.md", "Completion Gate");
-   Require_Text ("share/archive.catalog", "application.title=");
+   Require_Text ("share/archive.catalog", "en.application.title =");
    Require_Text
      ("tests/fixtures/manifest.txt",
       "fixture id=plain-ok path=tests/fixtures/plain-ok.txt");
