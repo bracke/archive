@@ -19,7 +19,7 @@ that registry and the AUnit format tests.
 | Zstandard | supported as one logical regular-file archive | supported through `zlib` Zstandard decoding | supported by zlib frame validation and optional content checksum | supported through safe extraction planning/execution | supported by Zstandard writer adapter | `zlib` |
 | XZ | supported as one logical regular-file archive for one-stream, one-block LZMA2 files | supported through `zlib` XZ/LZMA2 decoding | supported by zlib XZ header, block, index, footer, and CRC32 validation | supported through safe extraction planning/execution | supported by XZ LZMA2 writer adapter | `zlib` |
 | AR | supported for stored members, symbol tables, GNU string tables, and BSD long names | supported for stored regular-file members | supported by bounded member header and size validation | supported through safe extraction planning/execution | supported by stored-member rewrite publication | archive AR adapter |
-| CPIO newc/crc | supported for stored members and trailer termination | supported for regular-file members | supported by bounded fixed-header, name, size, and alignment validation | supported through safe extraction planning/execution | not supported | archive CPIO adapter |
+| CPIO newc/crc | supported for stored members and trailer termination | supported for regular-file members | supported by bounded fixed-header, name, size, and alignment validation | supported through safe extraction planning/execution | supported by newc rewrite publication | archive CPIO adapter |
 | CAB stored / MSZIP | supported for one bounded stored or MSZIP folder | supported for stored file payloads and MSZIP raw-DEFLATE payloads through `zlib` | supported by bounded MSCF header, folder, file-record, data-block, and inflate-size validation | supported through safe extraction planning/execution | not supported | archive CAB adapter + `zlib` |
 | ISO 9660 | supported for primary-volume directory records | supported for stored regular-file extents | supported by bounded descriptor, directory-record, extent, and size validation | supported through safe extraction planning/execution | not supported | archive ISO adapter |
 
@@ -35,8 +35,7 @@ truncation, zlib-backed native 7z listing and payload extraction for supported
 native layouts, supported native 7z layouts in documentation and validation,
 and zlib-backed Deflate 7z file-list publication, zlib-backed bzip2 single-file
 decoding and publication, zlib-backed Zstandard single-file decoding and
-publication, zlib-backed XZ one-block LZMA2 decoding and publication, stored Unix AR member indexing, payload streaming, and rewrite publication, CPIO newc
-member indexing and payload streaming, bounded stored and MSZIP CAB folder
+publication, zlib-backed XZ one-block LZMA2 decoding and publication, stored Unix AR member indexing, payload streaming, and rewrite publication, CPIO newc member indexing, payload streaming, and rewrite publication, bounded stored and MSZIP CAB folder
 indexing and payload streaming, and ISO 9660 directory-record indexing with
 stored file-extent streaming.
 

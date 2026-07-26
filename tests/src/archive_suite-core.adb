@@ -614,8 +614,9 @@ package body Archive_Suite.Core is
                  "ar exposes stored-member rewrite capability");
          Assert (Cpio_Caps.Can_Index and then Cpio_Caps.Can_Open_Entry_Streams
                  and then Cpio_Caps.Supports_Symbolic_Links
-                 and then not Cpio_Caps.Can_Create,
-                 "cpio supports read workflows without advertising write capability");
+                 and then Cpio_Caps.Can_Create
+                 and then Cpio_Caps.Can_Add_Entries,
+                 "cpio exposes newc rewrite capability");
          Assert (Cab_Caps.Can_Index and then Cab_Caps.Can_Open_Entry_Streams
                  and then Cab_Caps.Supports_Random_Access
                  and then not Cab_Caps.Can_Create,
@@ -6497,6 +6498,8 @@ package body Archive_Suite.Core is
       Xz_Replace_Target : constant String := Root & "/dispatch-replace.xz";
       Ar_Target : constant String := Root & "/dispatch-stream.ar";
       Ar_Rewrite_Target : constant String := Root & "/dispatch-rewrite.ar";
+      Cpio_Target : constant String := Root & "/dispatch-stream.cpio";
+      Cpio_Rewrite_Target : constant String := Root & "/dispatch-rewrite.cpio";
       Second_File : constant String := Root & "/second.txt";
       Replacement_File : constant String := Root & "/replacement.txt";
       File : Ada.Streams.Stream_IO.File_Type;
@@ -6606,6 +6609,12 @@ package body Archive_Suite.Core is
       if Ada.Directories.Exists (Ar_Rewrite_Target) then
          Ada.Directories.Delete_File (Ar_Rewrite_Target);
       end if;
+      if Ada.Directories.Exists (Cpio_Target) then
+         Ada.Directories.Delete_File (Cpio_Target);
+      end if;
+      if Ada.Directories.Exists (Cpio_Rewrite_Target) then
+         Ada.Directories.Delete_File (Cpio_Rewrite_Target);
+      end if;
 
       Ada.Streams.Stream_IO.Create (File, Ada.Streams.Stream_IO.Out_File, Host_File);
       Ada.Streams.Stream_IO.Write (File, Host_Data);
@@ -6700,6 +6709,11 @@ package body Archive_Suite.Core is
              (Archive.Archives.Formats.Ar_Format,
               Ar_Target,
               Plan);
+         Cpio_Published : constant Archive.Writes.Results.Publish_Result :=
+           Archive.Writes.Dispatch.Publish
+             (Archive.Archives.Formats.Cpio_Format,
+              Cpio_Target,
+              Plan);
          Zip_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
            Archive.Archives.Readers.Dispatch.Open_File (Zip_Target);
          Zip_Bzip2_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
@@ -6735,6 +6749,8 @@ package body Archive_Suite.Core is
              (Xz_Target, Source_Name => "dispatch-stream.xz");
          Ar_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
            Archive.Archives.Readers.Dispatch.Open_File (Ar_Target);
+         Cpio_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+           Archive.Archives.Readers.Dispatch.Open_File (Cpio_Target);
       begin
          Assert
            (Zip_Published.Status = Archive.Writes.Results.Write_Completed,
@@ -6766,6 +6782,9 @@ package body Archive_Suite.Core is
          Assert
            (Ar_Published.Status = Archive.Writes.Results.Write_Completed,
             "write dispatch publishes ar archive");
+         Assert
+           (Cpio_Published.Status = Archive.Writes.Results.Write_Completed,
+            "write dispatch publishes cpio archive");
          Assert
            (Zip_Opened.Status = Archive.Archives.Errors.Ok
             and then Zip_Opened.Format = Archive.Archives.Formats.Zip_Format,
@@ -6847,6 +6866,13 @@ package body Archive_Suite.Core is
             and then Method_For (Ar_Opened.Index, "docs/readme.txt") =
               Archive.Archives.Entries.No_Compression,
             "write dispatch ar publication reopens");
+         Assert
+           (Cpio_Opened.Status = Archive.Archives.Errors.Ok
+            and then Cpio_Opened.Format = Archive.Archives.Formats.Cpio_Format
+            and then Archive.Archives.Index.Physical_Count (Cpio_Opened.Index) = 1
+            and then Method_For (Cpio_Opened.Index, "docs/readme.txt") =
+              Archive.Archives.Entries.No_Compression,
+            "write dispatch cpio publication reopens");
 
          declare
             Bzip2_Item : constant Archive.Archives.Entries.Archive_Entry :=
@@ -6865,6 +6891,7 @@ package body Archive_Suite.Core is
             Zstd_Requests : Archive.Writes.Plans.Write_Request_Vectors.Vector;
             Xz_Requests : Archive.Writes.Plans.Write_Request_Vectors.Vector;
             Ar_Requests : Archive.Writes.Plans.Write_Request_Vectors.Vector;
+            Cpio_Requests : Archive.Writes.Plans.Write_Request_Vectors.Vector;
          begin
             Bzip2_Requests.Append
               (Archive.Writes.Plans.Write_Request'
@@ -6902,6 +6929,28 @@ package body Archive_Suite.Core is
                   Host_Source      => To_Unbounded_String (Second_File),
                   Target_Path      => To_Unbounded_String ("docs/second.txt"),
                   Replacement_Path => Null_Unbounded_String));
+            Cpio_Requests.Append
+              (Archive.Writes.Plans.Write_Request'
+                 (Action           => Archive.Writes.Plans.Rename_Entry,
+                  Source_Entry     =>
+                    Entry_For_Path (Cpio_Opened.Index, "docs/readme.txt").Id,
+                  Host_Source      => Null_Unbounded_String,
+                  Target_Path      => To_Unbounded_String ("docs/readme.txt"),
+                  Replacement_Path => To_Unbounded_String ("docs/renamed.txt")));
+            Cpio_Requests.Append
+              (Archive.Writes.Plans.Write_Request'
+                 (Action           => Archive.Writes.Plans.Add_Directory,
+                  Source_Entry     => Archive.Types.No_Entry,
+                  Host_Source      => Null_Unbounded_String,
+                  Target_Path      => To_Unbounded_String ("docs/extra"),
+                  Replacement_Path => Null_Unbounded_String));
+            Cpio_Requests.Append
+              (Archive.Writes.Plans.Write_Request'
+                 (Action           => Archive.Writes.Plans.Add_File,
+                  Source_Entry     => Archive.Types.No_Entry,
+                  Host_Source      => To_Unbounded_String (Second_File),
+                  Target_Path      => To_Unbounded_String ("docs/extra/second.txt"),
+                  Replacement_Path => Null_Unbounded_String));
 
             declare
                Bzip2_Plan : constant Archive.Writes.Plans.Write_Plan :=
@@ -6916,6 +6965,9 @@ package body Archive_Suite.Core is
                Ar_Plan : constant Archive.Writes.Plans.Write_Plan :=
                  Archive.Writes.Plans.Build
                    (Ar_Opened.Index, Ar_Requests, Session => 15);
+               Cpio_Plan : constant Archive.Writes.Plans.Write_Plan :=
+                 Archive.Writes.Plans.Build
+                   (Cpio_Opened.Index, Cpio_Requests, Session => 16);
                Bzip2_Replaced : constant Archive.Writes.Results.Publish_Result :=
                  Archive.Writes.Dispatch.Publish
                    (Archive.Archives.Formats.BZip2_Format,
@@ -6941,6 +6993,13 @@ package body Archive_Suite.Core is
                     Ar_Plan,
                     Source_Path => Ar_Target,
                     Overwrite => True);
+               Cpio_Rewritten : constant Archive.Writes.Results.Publish_Result :=
+                 Archive.Writes.Dispatch.Publish
+                   (Archive.Archives.Formats.Cpio_Format,
+                    Cpio_Rewrite_Target,
+                    Cpio_Plan,
+                    Source_Path => Cpio_Target,
+                    Overwrite => True);
                Bzip2_Reopened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
                  Archive.Archives.Readers.Dispatch.Open_File
                    (Bzip2_Replace_Target, Source_Name => "dispatch-replace.bz2");
@@ -6952,6 +7011,8 @@ package body Archive_Suite.Core is
                    (Xz_Replace_Target, Source_Name => "dispatch-replace.xz");
                Ar_Reopened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
                  Archive.Archives.Readers.Dispatch.Open_File (Ar_Rewrite_Target);
+               Cpio_Reopened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+                 Archive.Archives.Readers.Dispatch.Open_File (Cpio_Rewrite_Target);
                Bzip2_Replaced_Item : constant Archive.Archives.Entries.Archive_Entry :=
                  (if Bzip2_Reopened.Status = Archive.Archives.Errors.Ok
                   then Entry_For_Path (Bzip2_Reopened.Index, "dispatch-replace")
@@ -6993,6 +7054,20 @@ package body Archive_Suite.Core is
                      Ar_Rewrite_Target,
                      Entry_For_Path (Ar_Reopened.Index, "docs/second.txt"))
                   else Empty_Test_Stream (Archive.Archives.Errors.Invalid_Format));
+               Cpio_Renamed_Payload : constant Test_Stream_Result :=
+                 (if Cpio_Reopened.Status = Archive.Archives.Errors.Ok
+                  then Stream_Dispatch_Payload_File
+                    (Cpio_Rewrite_Target,
+                     Cpio_Rewrite_Target,
+                     Entry_For_Path (Cpio_Reopened.Index, "docs/renamed.txt"))
+                  else Empty_Test_Stream (Archive.Archives.Errors.Invalid_Format));
+               Cpio_Second_Payload : constant Test_Stream_Result :=
+                 (if Cpio_Reopened.Status = Archive.Archives.Errors.Ok
+                  then Stream_Dispatch_Payload_File
+                    (Cpio_Rewrite_Target,
+                     Cpio_Rewrite_Target,
+                     Entry_For_Path (Cpio_Reopened.Index, "docs/extra/second.txt"))
+                  else Empty_Test_Stream (Archive.Archives.Errors.Invalid_Format));
             begin
                Assert (Bzip2_Plan.Status = Archive.Writes.Plans.Write_Plan_Ready,
                        "write dispatch bzip2 replace plan is ready");
@@ -7002,6 +7077,8 @@ package body Archive_Suite.Core is
                        "write dispatch xz replace plan is ready");
                Assert (Ar_Plan.Status = Archive.Writes.Plans.Write_Plan_Ready,
                        "write dispatch ar rewrite plan is ready");
+               Assert (Cpio_Plan.Status = Archive.Writes.Plans.Write_Plan_Ready,
+                       "write dispatch cpio rewrite plan is ready");
                Assert (Bzip2_Replaced.Status = Archive.Writes.Results.Write_Completed,
                        "write dispatch replaces bzip2 logical payload");
                Assert (Zstd_Replaced.Status = Archive.Writes.Results.Write_Completed,
@@ -7010,6 +7087,8 @@ package body Archive_Suite.Core is
                        "write dispatch replaces xz logical payload");
                Assert (Ar_Rewritten.Status = Archive.Writes.Results.Write_Completed,
                        "write dispatch rewrites ar archive");
+               Assert (Cpio_Rewritten.Status = Archive.Writes.Results.Write_Completed,
+                       "write dispatch rewrites cpio archive");
                Assert
                  (Bzip2_Payload.Status = Archive.Archives.Errors.Ok
                   and then Bzip2_Payload.Integrity = Archive.Archives.Entries.Verified
@@ -7058,6 +7137,27 @@ package body Archive_Suite.Core is
                   and then Bytes_Of (Ar_Second_Payload) (2) =
                     Zlib.Byte (Character'Pos ('o')),
                   "write dispatch ar added payload round-trips");
+               Assert
+                 (Cpio_Reopened.Status = Archive.Archives.Errors.Ok
+                  and then Cpio_Reopened.Format = Archive.Archives.Formats.Cpio_Format
+                  and then Archive.Archives.Index.Physical_Count (Cpio_Reopened.Index) = 3,
+                  "write dispatch cpio rewrite reopens");
+               Assert
+                 (Cpio_Renamed_Payload.Status = Archive.Archives.Errors.Ok
+                  and then Cpio_Renamed_Payload.Bytes_Written = 2
+                  and then Bytes_Of (Cpio_Renamed_Payload) (1) =
+                    Zlib.Byte (Character'Pos ('o'))
+                  and then Bytes_Of (Cpio_Renamed_Payload) (2) =
+                    Zlib.Byte (Character'Pos ('k')),
+                  "write dispatch cpio renamed payload round-trips");
+               Assert
+                 (Cpio_Second_Payload.Status = Archive.Archives.Errors.Ok
+                  and then Cpio_Second_Payload.Bytes_Written = 2
+                  and then Bytes_Of (Cpio_Second_Payload) (1) =
+                    Zlib.Byte (Character'Pos ('n'))
+                  and then Bytes_Of (Cpio_Second_Payload) (2) =
+                    Zlib.Byte (Character'Pos ('o')),
+                  "write dispatch cpio added payload round-trips");
             end;
          end;
 

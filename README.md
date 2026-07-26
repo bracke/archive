@@ -21,7 +21,7 @@ Current V1 support:
 | Zstandard | supported as one logical file | supported | supported | supported | supported single-file replacement | `zlib` |
 | XZ | supported as one logical file for one-block LZMA2 streams | supported | supported | supported | supported single-file replacement | `zlib` |
 | AR | supported for stored members | supported | supported | supported | supported by stored-member rewrite publication | archive AR adapter |
-| CPIO newc | supported for stored members | supported | supported | supported | not supported | archive CPIO adapter |
+| CPIO newc | supported for stored members | supported | supported | supported | supported by newc rewrite publication | archive CPIO adapter |
 | CAB stored / MSZIP | supported for bounded single-folder archives | supported | supported | supported | not supported | archive CAB adapter + `zlib` |
 | ISO 9660 | supported for stored directory records and files | supported | supported | supported | not supported | archive ISO adapter |
 
