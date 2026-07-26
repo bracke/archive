@@ -1613,6 +1613,60 @@ procedure Check_All is
       return Bytes;
    end Generated_Ar;
 
+   function Generated_Cpio return Zlib.Byte_Array is
+      Header_Length : constant Natural := 110;
+      Name : constant String := "a.txt" & Character'Val (0);
+      Payload : constant String := "abc";
+      Trailer : constant String := "TRAILER!!!" & Character'Val (0);
+      Data_Offset : constant Natural := ((Header_Length + Name'Length + 3) / 4) * 4;
+      Trailer_Offset : constant Natural := ((Data_Offset + Payload'Length + 3) / 4) * 4;
+      Total : constant Natural :=
+        ((Trailer_Offset + Header_Length + Trailer'Length + 3) / 4) * 4;
+      Bytes : Zlib.Byte_Array (1 .. Total) := [others => 0];
+
+      procedure Put_Hex8 (Offset : Natural; Value : Natural) is
+         Hex : constant String := "0123456789ABCDEF";
+         Work : Natural := Value;
+         Text : String (1 .. 8) := [others => '0'];
+      begin
+         for Pos in reverse Text'Range loop
+            Text (Pos) := Hex (Hex'First + Work mod 16);
+            Work := Work / 16;
+         end loop;
+         Put_Text (Bytes, Offset, Text);
+      end Put_Hex8;
+
+      procedure Put_Header
+        (Offset : Natural;
+         Name_Length : Natural;
+         File_Size : Natural;
+         Mode : Natural)
+      is
+      begin
+         Put_Text (Bytes, Offset, "070701");
+         Put_Hex8 (Offset + 6, 1);
+         Put_Hex8 (Offset + 14, Mode);
+         Put_Hex8 (Offset + 22, 0);
+         Put_Hex8 (Offset + 30, 0);
+         Put_Hex8 (Offset + 38, 1);
+         Put_Hex8 (Offset + 46, 0);
+         Put_Hex8 (Offset + 54, File_Size);
+         Put_Hex8 (Offset + 62, 0);
+         Put_Hex8 (Offset + 70, 0);
+         Put_Hex8 (Offset + 78, 0);
+         Put_Hex8 (Offset + 86, 0);
+         Put_Hex8 (Offset + 94, Name_Length);
+         Put_Hex8 (Offset + 102, 0);
+      end Put_Header;
+   begin
+      Put_Header (0, Name'Length, Payload'Length, 16#0000_81A4#);
+      Put_Text (Bytes, Header_Length, Name);
+      Put_Text (Bytes, Data_Offset, Payload);
+      Put_Header (Trailer_Offset, Trailer'Length, 0, 0);
+      Put_Text (Bytes, Trailer_Offset + Header_Length, Trailer);
+      return Bytes;
+   end Generated_Cpio;
+
    function Generated_Xz_Unsupported_Check return Zlib.Byte_Array is
       Status : Zlib.Status_Code := Zlib.Ok;
       Result : Zlib.Byte_Array := Zlib.XZ_LZMA2 (Payload_ABC, Status);
@@ -2061,6 +2115,8 @@ procedure Check_All is
          return Generated_Cab (2);
       elsif Id = "ar-basic" then
          return Generated_Ar;
+      elsif Id = "cpio-basic" then
+         return Generated_Cpio;
       elsif Id = "xz-unsupported-check" then
          return Generated_Xz_Unsupported_Check;
       elsif Id = "xz-basic" then
@@ -2319,6 +2375,7 @@ procedure Check_All is
       Has_Gzip_Empty : Boolean := False;
       Has_Tar_Duplicate : Boolean := False;
       Has_Ar : Boolean := False;
+      Has_Cpio : Boolean := False;
       Has_Cab_Unsupported : Boolean := False;
       Has_Xz_Unsupported : Boolean := False;
       Has_Xz : Boolean := False;
@@ -2375,6 +2432,8 @@ procedure Check_All is
                      Has_Tar_Duplicate := True;
                   elsif Id = "ar-basic" then
                      Has_Ar := True;
+                  elsif Id = "cpio-basic" then
+                     Has_Cpio := True;
                   elsif Id = "cab-unsupported-method" then
                      Has_Cab_Unsupported := True;
                   elsif Id = "xz-unsupported-check" then
@@ -2449,6 +2508,7 @@ procedure Check_All is
         or else not Has_Zip_Deflate or else not Has_Gzip
         or else not Has_Tar_Duplicate
         or else not Has_Ar
+        or else not Has_Cpio
         or else not Has_Cab_Unsupported
         or else not Has_Xz_Unsupported
         or else not Has_Xz

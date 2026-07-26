@@ -510,6 +510,7 @@ procedure Release_Report is
       Has_Tar_Gzip : Boolean := False;
       Has_Tar_Duplicate : Boolean := False;
       Has_Ar : Boolean := False;
+      Has_Cpio : Boolean := False;
       Has_Cab_Unsupported : Boolean := False;
       Has_Xz_Unsupported : Boolean := False;
       Has_Xz : Boolean := False;
@@ -570,6 +571,8 @@ procedure Release_Report is
             return (True, 3_072, "1A4AF7A3");
          elsif Id = "ar-basic" then
             return (True, 72, "9827F2B3");
+         elsif Id = "cpio-basic" then
+            return (True, 244, "D5B2DBE1");
          elsif Id = "cab-unsupported-method" then
             return (True, 77, "67F88E19");
          elsif Id = "xz-unsupported-check" then
@@ -768,6 +771,8 @@ procedure Release_Report is
                   Has_Tar_Duplicate := True;
                elsif Id = "ar-basic" then
                   Has_Ar := True;
+               elsif Id = "cpio-basic" then
+                  Has_Cpio := True;
                elsif Id = "cab-unsupported-method" then
                   Has_Cab_Unsupported := True;
                elsif Id = "xz-unsupported-check" then
@@ -843,6 +848,7 @@ procedure Release_Report is
         or else not Has_Settings_Invalid
         or else not Has_Tar or else not Has_Tar_Gzip or else not Has_Tar_Duplicate
         or else not Has_Ar
+        or else not Has_Cpio
         or else not Has_Cab_Unsupported
         or else not Has_Xz_Unsupported
         or else not Has_Xz
