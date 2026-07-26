@@ -445,6 +445,114 @@ procedure Release_Report is
          raise;
    end Check_Package_Manifest;
 
+   procedure Check_Fixture_Manifest is
+      Manifest : constant String := Root & "/tests/fixtures/manifest.txt";
+      File     : Ada.Text_IO.File_Type;
+      Buffer   : String (1 .. 1024);
+      Last     : Natural;
+      Line_No  : Natural := 0;
+      Count    : Natural := 0;
+      Has_Plain : Boolean := False;
+      Has_Tar : Boolean := False;
+      Has_Tar_Gzip : Boolean := False;
+      Has_Zip_Stored : Boolean := False;
+      Has_Zip_Deflate : Boolean := False;
+      Has_Zip_Unsupported : Boolean := False;
+      Has_Zip_Encrypted : Boolean := False;
+      Has_Zip_Multi_Disk : Boolean := False;
+      Has_Gzip : Boolean := False;
+
+      procedure Require_Field
+        (Line        : String;
+         Field       : String;
+         Line_Number : Natural)
+      is
+      begin
+         if Field_Value (Line, Field) = "" then
+            Invalid := Invalid + 1;
+            Put_Line
+              (Standard_Error,
+               Manifest & ":" & Line_Number'Image
+               & ": fixture record is missing " & Field);
+         end if;
+      end Require_Field;
+   begin
+      if not Ada.Directories.Exists (Manifest) then
+         Missing := Missing + 1;
+         Put_Line (Standard_Error, Manifest & ": missing fixture manifest");
+         return;
+      end if;
+
+      Ada.Text_IO.Open (File, Ada.Text_IO.In_File, Manifest);
+      while not Ada.Text_IO.End_Of_File (File) loop
+         Ada.Text_IO.Get_Line (File, Buffer, Last);
+         Line_No := Line_No + 1;
+
+         declare
+            Line : constant String := Buffer (1 .. Last);
+            Id   : constant String := Field_Value (Line, "id");
+         begin
+            if Last = 0 or else Line (Line'First) = '#' then
+               null;
+            elsif Starts_With (Line, "fixture ") then
+               Count := Count + 1;
+               Require_Field (Line, "id", Line_No);
+               Require_Field (Line, "path", Line_No);
+               Require_Field (Line, "format", Line_No);
+               Require_Field (Line, "purpose", Line_No);
+               Require_Field (Line, "size", Line_No);
+               Require_Field (Line, "crc32", Line_No);
+
+               if Id = "plain-ok" then
+                  Has_Plain := True;
+               elsif Id = "tar-basic" then
+                  Has_Tar := True;
+               elsif Id = "tar-gzip-basic" then
+                  Has_Tar_Gzip := True;
+               elsif Id = "zip-stored-basic" then
+                  Has_Zip_Stored := True;
+               elsif Id = "zip-deflate-basic" then
+                  Has_Zip_Deflate := True;
+               elsif Id = "zip-unsupported-method" then
+                  Has_Zip_Unsupported := True;
+               elsif Id = "zip-encrypted" then
+                  Has_Zip_Encrypted := True;
+               elsif Id = "zip-multi-disk" then
+                  Has_Zip_Multi_Disk := True;
+               elsif Id = "gzip-basic" then
+                  Has_Gzip := True;
+               end if;
+            else
+               Invalid := Invalid + 1;
+               Put_Line
+                 (Standard_Error,
+                  Manifest & ":" & Line_No'Image & ": unknown fixture manifest record");
+            end if;
+         end;
+      end loop;
+      Ada.Text_IO.Close (File);
+
+      if Count = 0 then
+         Invalid := Invalid + 1;
+         Put_Line (Standard_Error, Manifest & ": fixture manifest contains no fixtures");
+      elsif not Has_Plain or else not Has_Tar or else not Has_Tar_Gzip
+        or else not Has_Zip_Stored or else not Has_Zip_Deflate
+        or else not Has_Zip_Unsupported or else not Has_Zip_Encrypted
+        or else not Has_Zip_Multi_Disk or else not Has_Gzip
+      then
+         Invalid := Invalid + 1;
+         Put_Line
+           (Standard_Error,
+            Manifest & ": fixture manifest is missing required release fixtures");
+      end if;
+   exception
+      when others =>
+         if Ada.Text_IO.Is_Open (File) then
+            Ada.Text_IO.Close (File);
+         end if;
+         raise;
+   end Check_Fixture_Manifest;
+
    procedure Check_Corpus_Manifest is
       Manifest : constant String := Root & "/tests/fixtures/corpus.txt";
       File     : Ada.Text_IO.File_Type;
@@ -696,6 +804,7 @@ begin
    Require_Tests_Text ("alire.toml", "release_report");
    Require_Tests_Text ("archive_tests.gpr", "release_report.adb");
    Check_Package_Manifest;
+   Check_Fixture_Manifest;
    Check_Corpus_Manifest;
    Check_Dependency_License_Manifests;
 
