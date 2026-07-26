@@ -81,8 +81,6 @@ with Tarlib.Errors;
 with Tarlib.Outputs;
 with Tarlib.Writers;
 with Zlib;
-with Zlib.BZip2_Encoder;
-with Zlib.Zstd_Encoder;
 
 package body Archive_Suite.Core is
    use type Interfaces.Unsigned_32;
@@ -192,6 +190,16 @@ package body Archive_Suite.Core is
    procedure Test_Completion_Gate_Workflows (T : in out AUnit.Test_Cases.Test_Case'Class);
    function Read_All_Bytes (Path : String) return Zlib.Byte_Array;
    procedure Write_Bytes (Path : String; Bytes : Zlib.Byte_Array);
+   type Standalone_File_Encoder is access procedure
+     (Input_Path      : String;
+      Output_Path     : String;
+      Max_Input_Bytes : Natural;
+      Status          : out Zlib.Status_Code);
+   function Encoded_By_File_Encoder
+     (Payload : Zlib.Byte_Array;
+      Stem    : String;
+      Encoder : Standalone_File_Encoder)
+      return Zlib.Byte_Array;
    function CRC32_Compute (Bytes : Zlib.Byte_Array) return Archive.Types.CRC32_Value;
    function Fixture_Path
      (Name  : String;
@@ -1260,9 +1268,9 @@ package body Archive_Suite.Core is
             when 12 =>
                declare
                   Bzip2 : constant Zlib.Byte_Array :=
-                    Zlib.BZip2_Encoder.Encode (Payload, Status => Status);
+                    Encoded_By_File_Encoder
+                      (Payload, "zip-bzip2", Zlib.BZip2_File'Access);
                begin
-                  Assert (Status = Zlib.Ok, "zip bzip2 fixture payload compression succeeds");
                   return Bzip2;
                end;
             when 14 =>
@@ -1296,9 +1304,9 @@ package body Archive_Suite.Core is
             when 20 | 93 =>
                declare
                   Zstd : constant Zlib.Byte_Array :=
-                    Zlib.Zstd_Encoder.Encode (Payload, Status);
+                    Encoded_By_File_Encoder
+                      (Payload, "zip-zstd", Zlib.Zstd_File'Access);
                begin
-                  Assert (Status = Zlib.Ok, "zip zstd fixture payload compression succeeds");
                   return Zstd;
                end;
             when 98 =>
@@ -2966,14 +2974,12 @@ package body Archive_Suite.Core is
       Seven_Status : Zlib.Status_Code;
       Seven : constant Zlib.Byte_Array :=
         Zlib.Seven_Zip_Stored (Plain, "payload.bin", Seven_Status);
-      Bzip2_Status : Zlib.Status_Code;
       Bzip2 : constant Zlib.Byte_Array :=
-        Zlib.BZip2_Encoder.Encode (Plain, Status => Bzip2_Status);
-      Zstd_Status : Zlib.Status_Code;
+        Encoded_By_File_Encoder (Plain, "dispatch-bzip2", Zlib.BZip2_File'Access);
       Zstd : constant Zlib.Byte_Array :=
-        Zlib.Zstd_Encoder.Encode (Plain, Zstd_Status);
-      Xz_Status : Zlib.Status_Code;
-      Xz : constant Zlib.Byte_Array := Zlib.XZ_LZMA2 (Plain, Xz_Status);
+        Encoded_By_File_Encoder (Plain, "dispatch-zstd", Zlib.Zstd_File'Access);
+      Xz : constant Zlib.Byte_Array :=
+        Encoded_By_File_Encoder (Plain, "dispatch-xz", Zlib.XZ_LZMA2_File'Access);
       Xz_Unsupported_Check : constant Zlib.Byte_Array := XZ_With_Check_Id (Xz, 10);
       Xz_CRC64 : constant Zlib.Byte_Array := XZ_With_CRC64 (Xz, Plain);
       Tar : constant Zlib.Byte_Array := One_File_Tar;
@@ -2986,9 +2992,6 @@ package body Archive_Suite.Core is
       Assert (Status = Zlib.Ok, "dispatch gzip fixture builds");
       Assert (Tar_Gz_Status = Zlib.Ok, "dispatch tar.gz fixture builds");
       Assert (Seven_Status = Zlib.Ok, "dispatch 7z fixture builds");
-      Assert (Bzip2_Status = Zlib.Ok, "dispatch bzip2 fixture builds");
-      Assert (Zstd_Status = Zlib.Ok, "dispatch zstd fixture builds");
-      Assert (Xz_Status = Zlib.Ok, "dispatch xz fixture builds");
 
       declare
          Decoded_Status : Zlib.Status_Code;
@@ -9275,6 +9278,44 @@ package body Archive_Suite.Core is
       Ada.Streams.Stream_IO.Write (File, Data);
       Ada.Streams.Stream_IO.Close (File);
    end Write_Bytes;
+
+   function Encoded_By_File_Encoder
+     (Payload : Zlib.Byte_Array;
+      Stem    : String;
+      Encoder : Standalone_File_Encoder)
+      return Zlib.Byte_Array
+   is
+      Root        : constant String := "obj/zlib-file-encoder-fixtures";
+      Input_Path  : constant String := Root & "/" & Stem & ".plain";
+      Output_Path : constant String := Root & "/" & Stem & ".encoded";
+      Status      : Zlib.Status_Code := Zlib.Ok;
+   begin
+      Ada.Directories.Create_Path (Root);
+      Write_Bytes (Input_Path, Payload);
+      Encoder.all (Input_Path, Output_Path, Payload'Length, Status);
+      Assert (Status = Zlib.Ok, Stem & " fixture file encoder succeeds");
+
+      declare
+         Result : constant Zlib.Byte_Array := Read_All_Bytes (Output_Path);
+      begin
+         if Ada.Directories.Exists (Input_Path) then
+            Ada.Directories.Delete_File (Input_Path);
+         end if;
+         if Ada.Directories.Exists (Output_Path) then
+            Ada.Directories.Delete_File (Output_Path);
+         end if;
+         return Result;
+      end;
+   exception
+      when others =>
+         if Ada.Directories.Exists (Input_Path) then
+            Ada.Directories.Delete_File (Input_Path);
+         end if;
+         if Ada.Directories.Exists (Output_Path) then
+            Ada.Directories.Delete_File (Output_Path);
+         end if;
+         raise;
+   end Encoded_By_File_Encoder;
 
    procedure Test_Extraction_Service (T : in out AUnit.Test_Cases.Test_Case'Class) is
       pragma Unreferenced (T);
