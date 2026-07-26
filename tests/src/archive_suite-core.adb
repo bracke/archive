@@ -3483,7 +3483,7 @@ package body Archive_Suite.Core is
          Continue    : Boolean := True;
       begin
          Archive.Preview.Initialize (Accumulator, Limits);
-         Archive.Preview.Append (Accumulator, Bytes, Continue);
+         Archive.Preview.Append_Stream_Chunk (Accumulator, Bytes, Continue);
          return Archive.Preview.Finish (Accumulator);
       end Stream_Preview;
 
@@ -3499,7 +3499,7 @@ package body Archive_Suite.Core is
          Continue    : Boolean := True;
       begin
          Archive.Preview.Initialize (Accumulator, Limits);
-         Archive.Preview.Append (Accumulator, Bytes, Continue);
+         Archive.Preview.Append_Stream_Chunk (Accumulator, Bytes, Continue);
          return
            Archive.Preview.Generate_Entry_From_Accumulator
              (Item, Accumulator, Status, Integrity);
@@ -3519,9 +3519,9 @@ package body Archive_Suite.Core is
          Continue : Boolean := True;
       begin
          Archive.Preview.Initialize (Accumulator, Limits);
-         Archive.Preview.Append (Accumulator, Text (1 .. 2), Continue);
+         Archive.Preview.Append_Stream_Chunk (Accumulator, Text (1 .. 2), Continue);
          Assert (Continue, "stream preview continues before input limit");
-         Archive.Preview.Append (Accumulator, Text (3 .. Text'Last), Continue);
+         Archive.Preview.Append_Stream_Chunk (Accumulator, Text (3 .. Text'Last), Continue);
          Assert (not Continue, "stream preview stops at input limit");
          declare
             Preview : constant Archive.Preview.Preview_Result :=
@@ -3561,7 +3561,7 @@ package body Archive_Suite.Core is
          Preview     : Archive.Preview.Preview_Result;
       begin
          Archive.Preview.Initialize (Accumulator, Image_Limits);
-         Archive.Preview.Append (Accumulator, PNG, Continue);
+         Archive.Preview.Append_Stream_Chunk (Accumulator, PNG, Continue);
          Preview := Archive.Preview.Finish (Accumulator);
          Assert (Preview.Kind = Archive.Preview.Image_Preview,
                  "png bytes preview as image metadata");
@@ -9153,7 +9153,7 @@ package body Archive_Suite.Core is
                   Continue_Stream : in out Boolean)
                is
                begin
-                  Archive.Preview.Append (Acc, Chunk, Continue);
+                  Archive.Preview.Append_Stream_Chunk (Acc, Chunk, Continue);
                   Continue_Stream := Continue;
                end Preview_Chunk;
 

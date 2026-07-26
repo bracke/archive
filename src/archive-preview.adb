@@ -14,16 +14,6 @@ package body Archive.Preview is
         or else (Byte >= 32 and then Byte < 127);
    end Is_Text_Byte;
 
-   function Looks_Text (Bytes : Zlib.Byte_Array; Count : Natural) return Boolean is
-   begin
-      for Index in 1 .. Count loop
-         if not Is_Text_Byte (Bytes (Bytes'First + Index - 1)) then
-            return False;
-         end if;
-      end loop;
-      return True;
-   end Looks_Text;
-
    function Hex_Digit (Value : Natural) return Character is
    begin
       if Value < 10 then
@@ -105,54 +95,6 @@ package body Archive.Preview is
       return Looks_PNG (Bytes) or else Looks_GIF (Bytes) or else Looks_JPEG (Bytes);
    end Is_Image;
 
-   function Generate_Buffer
-     (Bytes  : Zlib.Byte_Array;
-      Limits : Preview_Limits)
-      return Preview_Result
-   is
-      Input_Limit : constant Natural := Natural'Min (Bytes'Length, Limits.Max_Input_Bytes);
-      Result      : Preview_Result;
-   begin
-      if Bytes'Length = 0 or else Input_Limit = 0 then
-         Result.Kind := Empty_Preview;
-         return Result;
-      end if;
-
-      if Is_Image (Bytes) then
-         Result.Kind := Image_Preview;
-         Result.Bytes_Used := Input_Limit;
-         Result.Text := To_Unbounded_String (Image_Summary (Bytes, Input_Limit));
-         Result.Truncated := Bytes'Length > Input_Limit;
-         return Result;
-      end if;
-
-      if Looks_Text (Bytes, Input_Limit) then
-         Result.Kind := Text_Preview;
-         Result.Bytes_Used := Natural'Min (Input_Limit, Limits.Max_Text_Chars);
-         for Index in 1 .. Result.Bytes_Used loop
-            Append (Result.Text, Character'Val (Bytes (Bytes'First + Index - 1)));
-         end loop;
-         Result.Truncated := Bytes'Length > Result.Bytes_Used;
-         return Result;
-      end if;
-
-      Result.Kind := Hex_Preview;
-      Result.Bytes_Used := Natural'Min (Input_Limit, Limits.Max_Hex_Bytes);
-      for Index in 1 .. Result.Bytes_Used loop
-         declare
-            Value : constant Natural := Natural (Bytes (Bytes'First + Index - 1));
-         begin
-            if Index > 1 then
-               Append (Result.Text, " ");
-            end if;
-            Append (Result.Text, Hex_Digit (Value / 16));
-            Append (Result.Text, Hex_Digit (Value mod 16));
-         end;
-      end loop;
-      Result.Truncated := Bytes'Length > Result.Bytes_Used;
-      return Result;
-   end Generate_Buffer;
-
    procedure Initialize
      (Accumulator : in out Preview_Accumulator;
       Limits      : Preview_Limits)
@@ -169,7 +111,7 @@ package body Archive.Preview is
       Accumulator.Hex := Null_Unbounded_String;
    end Initialize;
 
-   procedure Append
+   procedure Append_Stream_Chunk
      (Accumulator : in out Preview_Accumulator;
       Bytes       : Zlib.Byte_Array;
       Continue    : in out Boolean)
@@ -217,7 +159,7 @@ package body Archive.Preview is
          Accumulator.Hit_Limit := True;
          Continue := False;
       end if;
-   end Append;
+   end Append_Stream_Chunk;
 
    function Finish
      (Accumulator : Preview_Accumulator)

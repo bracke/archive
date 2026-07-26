@@ -309,6 +309,14 @@ procedure Check_All is
          Fail (Path & ": source stream boundary must perform bounded chunked reads and prefix probes");
       end if;
 
+      if Ends_With (Path, "/archive-preview.adb")
+        and then
+          (Contains (Content, "Generate_Buffer")
+           or else not Contains (Content, "Append_Stream_Chunk"))
+      then
+         Fail (Path & ": preview generation must stay stream-accumulator based");
+      end if;
+
       if Ends_With (Path, "/archive-archives-readers-gzip.adb")
         and then
           (not Contains (Content, "Max_Gzip_Field_Metadata")

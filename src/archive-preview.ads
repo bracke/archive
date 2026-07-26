@@ -41,7 +41,7 @@ package Archive.Preview is
      (Accumulator : in out Preview_Accumulator;
       Limits      : Preview_Limits);
 
-   procedure Append
+   procedure Append_Stream_Chunk
      (Accumulator : in out Preview_Accumulator;
       Bytes       : Zlib.Byte_Array;
       Continue    : in out Boolean);

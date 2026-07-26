@@ -18,7 +18,7 @@ package body Archive.Preview.Service is
          Continue : in out Boolean)
       is
       begin
-         Archive.Preview.Append (Accumulator, Bytes, Continue);
+         Archive.Preview.Append_Stream_Chunk (Accumulator, Bytes, Continue);
       end Consume;
    begin
       if Cancelled then
