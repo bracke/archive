@@ -728,6 +728,90 @@ package body Archive_Suite.Core is
       return Interfaces.Unsigned_32 (CRC32_Compute (Bytes));
    end CRC32_Text;
 
+   function CRC64_XZ (Bytes : Zlib.Byte_Array) return Interfaces.Unsigned_64 is
+      Poly : constant Interfaces.Unsigned_64 := 16#C96C_5795_D787_0F42#;
+      CRC  : Interfaces.Unsigned_64 := Interfaces.Unsigned_64'Last;
+   begin
+      for B of Bytes loop
+         CRC := CRC xor Interfaces.Unsigned_64 (B);
+         for Bit in 1 .. 8 loop
+            if (CRC and 1) = 1 then
+               CRC := Interfaces.Shift_Right (CRC, 1) xor Poly;
+            else
+               CRC := Interfaces.Shift_Right (CRC, 1);
+            end if;
+         end loop;
+      end loop;
+      return CRC xor Interfaces.Unsigned_64'Last;
+   end CRC64_XZ;
+
+   function U32_At (Bytes : Zlib.Byte_Array; Offset : Natural) return Interfaces.Unsigned_32 is
+   begin
+      return Interfaces.Unsigned_32 (Bytes (Bytes'First + Offset))
+        or Interfaces.Shift_Left (Interfaces.Unsigned_32 (Bytes (Bytes'First + Offset + 1)), 8)
+        or Interfaces.Shift_Left (Interfaces.Unsigned_32 (Bytes (Bytes'First + Offset + 2)), 16)
+        or Interfaces.Shift_Left (Interfaces.Unsigned_32 (Bytes (Bytes'First + Offset + 3)), 24);
+   end U32_At;
+
+   function XZ_With_CRC64
+     (Input : Zlib.Byte_Array;
+      Plain : Zlib.Byte_Array)
+      return Zlib.Byte_Array
+   is
+      Footer_First       : constant Natural := Input'Last - 11;
+      Backward_Size      : constant Natural :=
+        Natural (U32_At (Input, Footer_First - Input'First + 4));
+      Index_Size         : constant Natural := (Backward_Size + 1) * 4;
+      Index_First        : constant Natural := Footer_First - Index_Size;
+      Block_First        : constant Natural := Input'First + 12;
+      Old_Unpadded_Size  : constant Natural :=
+        Natural (Input (Index_First + 2));
+      Old_Check_Pos      : constant Natural := Block_First + Old_Unpadded_Size - 4;
+      Result             : Zlib.Byte_Array (Input'First .. Input'Last + 4);
+      Out_Pos            : Natural := Result'First;
+      New_Footer_First   : Natural;
+      New_Index_First    : Natural;
+      New_Index_CRC_Pos  : Natural;
+      Header_Flags       : Zlib.Byte_Array (1 .. 2);
+   begin
+      for Pos in Input'First .. Old_Check_Pos - 1 loop
+         Result (Out_Pos) := Input (Pos);
+         Out_Pos := Out_Pos + 1;
+      end loop;
+      Put64_U (Result, Out_Pos - Result'First, CRC64_XZ (Plain));
+      Out_Pos := Out_Pos + 8;
+      for Pos in Old_Check_Pos + 4 .. Input'Last loop
+         Result (Out_Pos) := Input (Pos);
+         Out_Pos := Out_Pos + 1;
+      end loop;
+
+      Result (Result'First + 7) := 4;
+      Header_Flags (1) := Result (Result'First + 6);
+      Header_Flags (2) := Result (Result'First + 7);
+      Put32_U
+        (Result,
+         8,
+         Interfaces.Unsigned_32 (CRC32_Compute (Header_Flags)));
+
+      New_Footer_First := Result'Last - 11;
+      New_Index_First := New_Footer_First - Index_Size;
+      Result (New_Index_First + 2) := Zlib.Byte (Old_Unpadded_Size + 4);
+      New_Index_CRC_Pos := New_Footer_First - 4;
+      Put32_U
+        (Result,
+         New_Index_CRC_Pos - Result'First,
+         Interfaces.Unsigned_32
+           (CRC32_Compute (Result (New_Index_First .. New_Index_CRC_Pos - 1))));
+
+      Result (New_Footer_First + 9) := 4;
+      Put32_U
+        (Result,
+         New_Footer_First - Result'First,
+         Interfaces.Unsigned_32
+           (CRC32_Compute (Result (New_Footer_First + 4 .. New_Footer_First + 9))));
+      return Result;
+   end XZ_With_CRC64;
+
    function Empty_Zip return Zlib.Byte_Array is
       Bytes : Zlib.Byte_Array (1 .. 22) := [others => 0];
    begin
@@ -2781,7 +2865,8 @@ package body Archive_Suite.Core is
         Zlib.Zstd_Encoder.Encode (Plain, Zstd_Status);
       Xz_Status : Zlib.Status_Code;
       Xz : constant Zlib.Byte_Array := Zlib.XZ_LZMA2 (Plain, Xz_Status);
-      Xz_Unsupported_Check : constant Zlib.Byte_Array := XZ_With_Check_Id (Xz, 4);
+      Xz_Unsupported_Check : constant Zlib.Byte_Array := XZ_With_Check_Id (Xz, 10);
+      Xz_CRC64 : constant Zlib.Byte_Array := XZ_With_CRC64 (Xz, Plain);
       Tar : constant Zlib.Byte_Array := One_File_Tar;
       Ar : constant Zlib.Byte_Array := One_File_Ar;
       Cab : constant Zlib.Byte_Array := One_File_Cab;
@@ -2795,6 +2880,34 @@ package body Archive_Suite.Core is
       Assert (Bzip2_Status = Zlib.Ok, "dispatch bzip2 fixture builds");
       Assert (Zstd_Status = Zlib.Ok, "dispatch zstd fixture builds");
       Assert (Xz_Status = Zlib.Ok, "dispatch xz fixture builds");
+
+      declare
+         Decoded_Status : Zlib.Status_Code;
+         Decoded        : constant Zlib.Byte_Array := Zlib.XZ (Xz_CRC64, Decoded_Status);
+         Opened         : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+           Open_Dispatch (Xz_CRC64, Source_Name => "crc64-check.xz");
+         Item           : constant Archive.Archives.Entries.Archive_Entry :=
+           Archive.Archives.Index.Entry_For (Opened.Index, 2);
+         Payload        : constant Test_Stream_Result :=
+           Stream_Dispatch_Payload (Xz_CRC64, "crc64-check.xz", Item);
+      begin
+         Assert
+           (Decoded_Status = Zlib.Ok
+            and then Decoded = Plain,
+            "xz crc64 check decodes through zlib");
+         Assert
+           (Opened.Status = Archive.Archives.Errors.Ok
+            and then Opened.Format = Archive.Archives.Formats.Xz_Format,
+            "xz crc64 check opens through dispatch");
+         Assert (Payload.Status = Archive.Archives.Errors.Ok, "xz crc64 payload status");
+         Assert
+           (Payload.Integrity = Archive.Archives.Entries.Verified,
+            "xz crc64 payload integrity");
+         Assert
+           (Payload.Bytes_Written = Plain'Length
+            and then Bytes_Of (Payload) (1 .. Plain'Length) = Plain,
+            "xz crc64 payload bytes");
+      end;
 
       declare
          Decoded_Status : Zlib.Status_Code;
