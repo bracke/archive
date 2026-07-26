@@ -380,6 +380,16 @@ procedure Check_All is
          Fail (Path & ": extraction planning must use platform-aware path keys");
       end if;
 
+      if Ends_With (Path, "/archive-extraction-execution.adb")
+        and then
+          (not Contains (Content, "Fresh_Sibling_Path")
+           or else not Contains (Content, "Temp_Nonce_Random")
+           or else Contains (Content, "Target & "".archive-tmp""")
+           or else Contains (Content, "Target & "".archive-old"""))
+      then
+         Fail (Path & ": extraction publication must use randomized sibling staging names");
+      end if;
+
       if Ends_With (Path, "/archive-writes-plans.adb")
         and then not Contains (Content, "Platform_Key")
       then
