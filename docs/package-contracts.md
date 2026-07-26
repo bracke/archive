@@ -38,8 +38,9 @@ should remain behind the owning package.
 ## Format And Compression
 
 - `Archive.Archives.Readers.Tar` consumes public `tarlib` reader APIs only.
-- `Archive.Writes.Tar` and `Archive.Writes.Tar_Gzip` consume public `tarlib`
-  writer APIs only.
+- `Archive.Writes.Tar` consumes public `tarlib` writer APIs only; TAR.GZ
+  publication is orchestrated by `Archive.Writes.Execution` through the TAR
+  writer and gzip-wrapped zlib stream.
 - `Archive.Archives.Readers.Zip` owns ZIP central-directory parsing, ZIP64
   validation, data descriptor handling, local-header consistency checks, CRC32,
   stored payloads, and raw-DEFLATE payload streaming through zlib.

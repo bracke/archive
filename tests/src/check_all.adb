@@ -178,6 +178,15 @@ procedure Check_All is
          Fail (Path & ": archive must use only public tarlib packages");
       end if;
 
+      if Contains (Path, "/archive/src/archive-writes-")
+        and then Contains (Content, "pragma Elaborate_Body")
+        and then not Contains (Content, "function")
+        and then not Contains (Content, "procedure")
+        and then not Contains (Content, "type")
+      then
+         Fail (Path & ": empty write placeholder packages are not allowed");
+      end if;
+
       if Contains (Content, "Original_Path") and then Contains (Content, "Destination_Root &") then
          Fail (Path & ": raw archive path joining to extraction root is not allowed");
       end if;
