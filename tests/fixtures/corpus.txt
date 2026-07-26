@@ -38,6 +38,7 @@ case id=archive-tar-gzip-basic kind=archive input=tar-gzip-basic source=fixture.
 case id=archive-tar-duplicate-path kind=archive input=tar-duplicate-path source=fixture.tar open=Ok entries=2
 case id=archive-ar-basic kind=archive input=ar-basic source=fixture.a open=Ok entries=1 payload=Ok
 case id=archive-cpio-basic kind=archive input=cpio-basic source=fixture.cpio open=Ok entries=1 payload=Ok
+case id=archive-iso-basic kind=archive input=iso-basic source=fixture.iso open=Ok entries=1 payload=Ok
 case id=archive-cab-unsupported-method kind=archive input=cab-unsupported-method source=fixture.cab open=Unsupported_Method entries=0
 case id=archive-xz-unsupported-check kind=archive input=xz-unsupported-check source=fixture.xz open=Unsupported_Method entries=0
 case id=archive-xz-basic kind=archive input=xz-basic source=fixture.xz open=Ok entries=1 payload=Ok

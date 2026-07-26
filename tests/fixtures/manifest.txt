@@ -8,6 +8,7 @@ fixture id=tar-gzip-basic path=generated:tar-gzip-basic format=tar.gz purpose=ta
 fixture id=tar-duplicate-path path=generated:tar-duplicate-path format=tar purpose=tar-duplicate-paths size=3072 crc32=1A4AF7A3
 fixture id=ar-basic path=generated:ar-basic format=ar purpose=ar-open-index size=72 crc32=9827F2B3
 fixture id=cpio-basic path=generated:cpio-basic format=cpio purpose=cpio-open-index size=244 crc32=D5B2DBE1
+fixture id=iso-basic path=generated:iso-basic format=iso purpose=iso-open-index size=49152 crc32=5AF299FA
 fixture id=cab-unsupported-method path=generated:cab-unsupported-method format=cab purpose=cab-unsupported-method size=77 crc32=67F88E19
 fixture id=xz-unsupported-check path=generated:xz-unsupported-check format=xz purpose=xz-unsupported-check size=56 crc32=C7296238
 fixture id=xz-basic path=generated:xz-basic format=xz purpose=xz-open-index size=56 crc32=2CB5327A

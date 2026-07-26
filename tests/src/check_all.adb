@@ -1667,6 +1667,67 @@ procedure Check_All is
       return Bytes;
    end Generated_Cpio;
 
+   function Generated_Iso return Zlib.Byte_Array is
+      Total       : constant Natural := 24 * 2_048;
+      PVD         : constant Natural := 16 * 2_048;
+      Root_Sector : constant Natural := 20;
+      File_Sector : constant Natural := 21;
+      Bytes       : Zlib.Byte_Array (1 .. Total) := [others => 0];
+
+      procedure Put_Both32 (Offset : Natural; Value : Natural) is
+      begin
+         Put32 (Bytes, Offset, Value);
+         Bytes (Bytes'First + Offset + 4) :=
+           Zlib.Byte ((Value / 16_777_216) mod 256);
+         Bytes (Bytes'First + Offset + 5) :=
+           Zlib.Byte ((Value / 65_536) mod 256);
+         Bytes (Bytes'First + Offset + 6) :=
+           Zlib.Byte ((Value / 256) mod 256);
+         Bytes (Bytes'First + Offset + 7) := Zlib.Byte (Value mod 256);
+      end Put_Both32;
+
+      procedure Put_Both16 (Offset : Natural; Value : Natural) is
+      begin
+         Put16 (Bytes, Offset, Value);
+         Bytes (Bytes'First + Offset + 2) := Zlib.Byte ((Value / 256) mod 256);
+         Bytes (Bytes'First + Offset + 3) := Zlib.Byte (Value mod 256);
+      end Put_Both16;
+
+      procedure Put_Record
+        (Offset : Natural;
+         Name   : String;
+         Extent : Natural;
+         Size   : Natural;
+         Is_Dir : Boolean)
+      is
+         Name_Length : constant Natural := Name'Length;
+         Length      : constant Natural :=
+           33 + Name_Length + (if Name_Length mod 2 = 0 then 1 else 0);
+      begin
+         Bytes (Bytes'First + Offset) := Zlib.Byte (Length);
+         Bytes (Bytes'First + Offset + 1) := 0;
+         Put_Both32 (Offset + 2, Extent);
+         Put_Both32 (Offset + 10, Size);
+         Bytes (Bytes'First + Offset + 25) := (if Is_Dir then 2 else 0);
+         Bytes (Bytes'First + Offset + 26) := 0;
+         Bytes (Bytes'First + Offset + 27) := 0;
+         Put_Both16 (Offset + 28, 1);
+         Bytes (Bytes'First + Offset + 32) := Zlib.Byte (Name_Length);
+         Put_Text (Bytes, Offset + 33, Name);
+      end Put_Record;
+   begin
+      Bytes (Bytes'First + PVD) := 1;
+      Put_Text (Bytes, PVD + 1, "CD001");
+      Bytes (Bytes'First + PVD + 6) := 1;
+      Put_Record (PVD + 156, [1 => Character'Val (0)], Root_Sector, 2_048, True);
+
+      Put_Record (Root_Sector * 2_048, [1 => Character'Val (0)], Root_Sector, 2_048, True);
+      Put_Record (Root_Sector * 2_048 + 34, [1 => Character'Val (1)], Root_Sector, 2_048, True);
+      Put_Record (Root_Sector * 2_048 + 68, "A.TXT;1", File_Sector, 3, False);
+      Put_Text (Bytes, File_Sector * 2_048, "abc");
+      return Bytes;
+   end Generated_Iso;
+
    function Generated_Xz_Unsupported_Check return Zlib.Byte_Array is
       Status : Zlib.Status_Code := Zlib.Ok;
       Result : Zlib.Byte_Array := Zlib.XZ_LZMA2 (Payload_ABC, Status);
@@ -2117,6 +2178,8 @@ procedure Check_All is
          return Generated_Ar;
       elsif Id = "cpio-basic" then
          return Generated_Cpio;
+      elsif Id = "iso-basic" then
+         return Generated_Iso;
       elsif Id = "xz-unsupported-check" then
          return Generated_Xz_Unsupported_Check;
       elsif Id = "xz-basic" then
@@ -2376,6 +2439,7 @@ procedure Check_All is
       Has_Tar_Duplicate : Boolean := False;
       Has_Ar : Boolean := False;
       Has_Cpio : Boolean := False;
+      Has_Iso : Boolean := False;
       Has_Cab_Unsupported : Boolean := False;
       Has_Xz_Unsupported : Boolean := False;
       Has_Xz : Boolean := False;
@@ -2434,6 +2498,8 @@ procedure Check_All is
                      Has_Ar := True;
                   elsif Id = "cpio-basic" then
                      Has_Cpio := True;
+                  elsif Id = "iso-basic" then
+                     Has_Iso := True;
                   elsif Id = "cab-unsupported-method" then
                      Has_Cab_Unsupported := True;
                   elsif Id = "xz-unsupported-check" then
@@ -2509,6 +2575,7 @@ procedure Check_All is
         or else not Has_Tar_Duplicate
         or else not Has_Ar
         or else not Has_Cpio
+        or else not Has_Iso
         or else not Has_Cab_Unsupported
         or else not Has_Xz_Unsupported
         or else not Has_Xz

@@ -23,6 +23,7 @@ tar-gzip-basic
 tar-duplicate-path
 ar-basic
 cpio-basic
+iso-basic
 cab-unsupported-method
 xz-unsupported-check
 xz-basic
