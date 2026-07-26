@@ -23,6 +23,7 @@ tar-gzip-basic
 tar-duplicate-path
 cab-unsupported-method
 xz-unsupported-check
+xz-basic
 seven-zip-encrypted
 rar-unsupported
 split-zip-unsupported

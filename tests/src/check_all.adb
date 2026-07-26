@@ -1625,6 +1625,16 @@ procedure Check_All is
       return Result;
    end Generated_Xz_Unsupported_Check;
 
+   function Generated_Xz return Zlib.Byte_Array is
+      Status : Zlib.Status_Code := Zlib.Ok;
+      Result : constant Zlib.Byte_Array := Zlib.XZ_LZMA2 (Payload_ABC, Status);
+   begin
+      if Status /= Zlib.Ok then
+         Fail ("generated xz fixture failed");
+      end if;
+      return Result;
+   end Generated_Xz;
+
    function Generated_BZip2 return Zlib.Byte_Array is
       Status : Zlib.Status_Code := Zlib.Ok;
       Result : constant Zlib.Byte_Array :=
@@ -2034,6 +2044,8 @@ procedure Check_All is
          return Generated_Cab (2);
       elsif Id = "xz-unsupported-check" then
          return Generated_Xz_Unsupported_Check;
+      elsif Id = "xz-basic" then
+         return Generated_Xz;
       elsif Id = "seven-zip-encrypted" then
          return Generated_Seven_Zip_Encrypted;
       elsif Id = "rar-unsupported" then
@@ -2289,6 +2301,7 @@ procedure Check_All is
       Has_Tar_Duplicate : Boolean := False;
       Has_Cab_Unsupported : Boolean := False;
       Has_Xz_Unsupported : Boolean := False;
+      Has_Xz : Boolean := False;
       Has_Seven_Zip_Encrypted : Boolean := False;
       Has_Rar_Unsupported : Boolean := False;
       Has_Split_Zip_Unsupported : Boolean := False;
@@ -2344,6 +2357,8 @@ procedure Check_All is
                      Has_Cab_Unsupported := True;
                   elsif Id = "xz-unsupported-check" then
                      Has_Xz_Unsupported := True;
+                  elsif Id = "xz-basic" then
+                     Has_Xz := True;
                   elsif Id = "seven-zip-encrypted" then
                      Has_Seven_Zip_Encrypted := True;
                   elsif Id = "rar-unsupported" then
@@ -2413,6 +2428,7 @@ procedure Check_All is
         or else not Has_Tar_Duplicate
         or else not Has_Cab_Unsupported
         or else not Has_Xz_Unsupported
+        or else not Has_Xz
         or else not Has_Seven_Zip_Encrypted
         or else not Has_Rar_Unsupported
         or else not Has_Split_Zip_Unsupported
