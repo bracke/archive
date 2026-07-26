@@ -1596,6 +1596,44 @@ procedure Check_All is
       return Bytes;
    end Generated_Cab;
 
+   function Generated_Cab_MSZIP return Zlib.Byte_Array is
+      Name : constant String := "a.txt";
+      Plain : constant Zlib.Byte_Array := Payload_ABC;
+      Status : Zlib.Status_Code := Zlib.Ok;
+      Deflated : constant Zlib.Byte_Array :=
+        Zlib.Deflate_Raw (Plain, Zlib.Fixed, Status);
+      Payload : Zlib.Byte_Array (1 .. Deflated'Length + 2);
+      Bytes : Zlib.Byte_Array (1 .. 74 + Payload'Length) := [others => 0];
+   begin
+      if Status /= Zlib.Ok then
+         Fail ("generated CAB MSZIP fixture failed");
+      end if;
+
+      Payload (1) := Zlib.Byte (Character'Pos ('C'));
+      Payload (2) := Zlib.Byte (Character'Pos ('K'));
+      for Index in Deflated'Range loop
+         Payload (Index + 2) := Deflated (Index);
+      end loop;
+
+      Put_Text (Bytes, 0, "MSCF");
+      Put32 (Bytes, 8, Bytes'Length);
+      Put32 (Bytes, 16, 44);
+      Put16 (Bytes, 26, 1);
+      Put16 (Bytes, 28, 1);
+      Put32 (Bytes, 36, 66);
+      Put16 (Bytes, 40, 1);
+      Put16 (Bytes, 42, 1);
+      Put32 (Bytes, 44, Plain'Length);
+      Put16 (Bytes, 52, 0);
+      Put_Text (Bytes, 60, Name & Character'Val (0));
+      Put16 (Bytes, 70, Payload'Length);
+      Put16 (Bytes, 72, Plain'Length);
+      for Index in Payload'Range loop
+         Bytes (Bytes'First + 74 + Index - Payload'First) := Payload (Index);
+      end loop;
+      return Bytes;
+   end Generated_Cab_MSZIP;
+
    function Generated_Ar return Zlib.Byte_Array is
       Bytes : Zlib.Byte_Array (1 .. 72) :=
         [others => Zlib.Byte (Character'Pos (' '))];
@@ -2182,6 +2220,8 @@ procedure Check_All is
          return Generated_Iso;
       elsif Id = "cab-stored-basic" then
          return Generated_Cab (0);
+      elsif Id = "cab-mszip-basic" then
+         return Generated_Cab_MSZIP;
       elsif Id = "xz-unsupported-check" then
          return Generated_Xz_Unsupported_Check;
       elsif Id = "xz-basic" then
@@ -2443,6 +2483,7 @@ procedure Check_All is
       Has_Cpio : Boolean := False;
       Has_Iso : Boolean := False;
       Has_Cab_Stored : Boolean := False;
+      Has_Cab_MSZIP : Boolean := False;
       Has_Cab_Unsupported : Boolean := False;
       Has_Xz_Unsupported : Boolean := False;
       Has_Xz : Boolean := False;
@@ -2505,6 +2546,8 @@ procedure Check_All is
                      Has_Iso := True;
                   elsif Id = "cab-stored-basic" then
                      Has_Cab_Stored := True;
+                  elsif Id = "cab-mszip-basic" then
+                     Has_Cab_MSZIP := True;
                   elsif Id = "cab-unsupported-method" then
                      Has_Cab_Unsupported := True;
                   elsif Id = "xz-unsupported-check" then
@@ -2582,6 +2625,7 @@ procedure Check_All is
         or else not Has_Cpio
         or else not Has_Iso
         or else not Has_Cab_Stored
+        or else not Has_Cab_MSZIP
         or else not Has_Cab_Unsupported
         or else not Has_Xz_Unsupported
         or else not Has_Xz

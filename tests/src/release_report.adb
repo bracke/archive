@@ -513,6 +513,7 @@ procedure Release_Report is
       Has_Cpio : Boolean := False;
       Has_Iso : Boolean := False;
       Has_Cab_Stored : Boolean := False;
+      Has_Cab_MSZIP : Boolean := False;
       Has_Cab_Unsupported : Boolean := False;
       Has_Xz_Unsupported : Boolean := False;
       Has_Xz : Boolean := False;
@@ -579,6 +580,8 @@ procedure Release_Report is
             return (True, 49_152, "5AF299FA");
          elsif Id = "cab-stored-basic" then
             return (True, 77, "23B5A7C8");
+         elsif Id = "cab-mszip-basic" then
+            return (True, 81, "3EE32048");
          elsif Id = "cab-unsupported-method" then
             return (True, 77, "67F88E19");
          elsif Id = "xz-unsupported-check" then
@@ -783,6 +786,8 @@ procedure Release_Report is
                   Has_Iso := True;
                elsif Id = "cab-stored-basic" then
                   Has_Cab_Stored := True;
+               elsif Id = "cab-mszip-basic" then
+                  Has_Cab_MSZIP := True;
                elsif Id = "cab-unsupported-method" then
                   Has_Cab_Unsupported := True;
                elsif Id = "xz-unsupported-check" then
@@ -861,6 +866,7 @@ procedure Release_Report is
         or else not Has_Cpio
         or else not Has_Iso
         or else not Has_Cab_Stored
+        or else not Has_Cab_MSZIP
         or else not Has_Cab_Unsupported
         or else not Has_Xz_Unsupported
         or else not Has_Xz

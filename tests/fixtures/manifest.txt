@@ -10,6 +10,7 @@ fixture id=ar-basic path=generated:ar-basic format=ar purpose=ar-open-index size
 fixture id=cpio-basic path=generated:cpio-basic format=cpio purpose=cpio-open-index size=244 crc32=D5B2DBE1
 fixture id=iso-basic path=generated:iso-basic format=iso purpose=iso-open-index size=49152 crc32=5AF299FA
 fixture id=cab-stored-basic path=generated:cab-stored-basic format=cab purpose=cab-stored-open-index size=77 crc32=23B5A7C8
+fixture id=cab-mszip-basic path=generated:cab-mszip-basic format=cab purpose=cab-mszip-open-index size=81 crc32=3EE32048
 fixture id=cab-unsupported-method path=generated:cab-unsupported-method format=cab purpose=cab-unsupported-method size=77 crc32=67F88E19
 fixture id=xz-unsupported-check path=generated:xz-unsupported-check format=xz purpose=xz-unsupported-check size=56 crc32=C7296238
 fixture id=xz-basic path=generated:xz-basic format=xz purpose=xz-open-index size=56 crc32=2CB5327A

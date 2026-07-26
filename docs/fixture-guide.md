@@ -25,6 +25,7 @@ ar-basic
 cpio-basic
 iso-basic
 cab-stored-basic
+cab-mszip-basic
 cab-unsupported-method
 xz-unsupported-check
 xz-basic
