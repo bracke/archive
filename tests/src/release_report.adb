@@ -865,6 +865,60 @@ procedure Release_Report is
            | "iso-signature";
       end Known_Format_Input;
 
+      function Known_Format_Id (Value : String) return Boolean is
+      begin
+         return Value in
+           "Unknown_Format"
+           | "Tar_Format"
+           | "Tar_Gzip_Format"
+           | "Zip_Format"
+           | "Gzip_Format"
+           | "Seven_Zip_Format"
+           | "BZip2_Format"
+           | "Zstd_Format"
+           | "Xz_Format"
+           | "Rar_Format"
+           | "Cab_Format"
+           | "Cpio_Format"
+           | "Iso_Format"
+           | "Ar_Format"
+           | "Split_Zip_Format";
+      end Known_Format_Id;
+
+      function Known_Detection_Status (Value : String) return Boolean is
+      begin
+         return Value in "Detected" | "Recognized_Unsupported" | "Invalid";
+      end Known_Detection_Status;
+
+      function Known_Error_Code (Value : String) return Boolean is
+      begin
+         return Value in
+           "Ok"
+           | "Read_Failed"
+           | "Write_Failed"
+           | "Invalid_Format"
+           | "Unsupported_Format"
+           | "Unsupported_Method"
+           | "Zlib_Failed"
+           | "Limit_Exceeded"
+           | "Cancelled";
+      end Known_Error_Code;
+
+      function Natural_Text (Value : String) return Boolean is
+      begin
+         if Value = "" then
+            return False;
+         end if;
+
+         for C of Value loop
+            if C not in '0' .. '9' then
+               return False;
+            end if;
+         end loop;
+
+         return True;
+      end Natural_Text;
+
       function Known_Platform (Value : String) return Boolean is
       begin
          return Value in "POSIX" | "Windows" | "MacOS";
@@ -975,6 +1029,12 @@ procedure Release_Report is
                   Require_Field (Line, "input", Line_No);
                   Require_Field (Line, "expected", Line_No);
                   Require_Field (Line, "status", Line_No);
+                  Reject_Unknown
+                    ("format", Field_Value (Line, "expected"),
+                     Known_Format_Id (Field_Value (Line, "expected")), Line_No);
+                  Reject_Unknown
+                    ("detection status", Field_Value (Line, "status"),
+                     Known_Detection_Status (Field_Value (Line, "status")), Line_No);
                   if Field_Value (Line, "input") /= ""
                     and then not Known_Format_Input (Field_Value (Line, "input"))
                   then
@@ -993,6 +1053,15 @@ procedure Release_Report is
                   Require_Field (Line, "source", Line_No);
                   Require_Field (Line, "open", Line_No);
                   Require_Field (Line, "entries", Line_No);
+                  Reject_Unknown
+                    ("open error", Field_Value (Line, "open"),
+                     Known_Error_Code (Field_Value (Line, "open")), Line_No);
+                  Reject_Unknown
+                    ("entries", Field_Value (Line, "entries"),
+                     Natural_Text (Field_Value (Line, "entries")), Line_No);
+                  Reject_Unknown
+                    ("payload error", Field_Value (Line, "payload"),
+                     Known_Error_Code (Field_Value (Line, "payload")), Line_No);
                   if Field_Value (Line, "input") /= ""
                     and then not Known_Archive_Input (Field_Value (Line, "input"))
                   then

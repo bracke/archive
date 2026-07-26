@@ -1133,6 +1133,8 @@ procedure Check_All is
       Require_Document_Text
         ("docs/fixture-guide.md", "Unknown path corpus classification values fail the Ada release checks");
       Require_Document_Text
+        ("docs/fixture-guide.md", "Unknown corpus result values fail the Ada release checks");
+      Require_Document_Text
         ("docs/fixture-guide.md", "zip-unsupported-method");
       Require_Document_Text
         ("docs/fixture-guide.md", "zip-encrypted");

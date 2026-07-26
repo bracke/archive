@@ -79,6 +79,9 @@ Format corpus `input` values must be registered structural probe IDs. Unknown fo
 Path corpus platform, safety, decision, and collision values must use registered
 stable IDs. Unknown path corpus classification values fail the Ada release checks.
 
+Format IDs, detection statuses, archive error codes, payload error codes, and
+entry counts in corpus records must use registered stable values. Unknown corpus result values fail the Ada release checks.
+
 `payload` is used when the format can publish an index but the malformed stream
 must fail when payload bytes are read.
 
