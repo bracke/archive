@@ -21,6 +21,7 @@ Required generated fixture IDs cover the V1 matrix:
 tar-basic
 tar-gzip-basic
 tar-duplicate-path
+cab-unsupported-method
 zip-stored-basic
 zip-deflate-basic
 zip-data-descriptor

@@ -36,6 +36,7 @@ case id=invalid-random kind=format input=random-bytes expected=Unknown_Format st
 case id=archive-tar-basic kind=archive input=tar-basic source=fixture.tar open=Ok entries=1
 case id=archive-tar-gzip-basic kind=archive input=tar-gzip-basic source=fixture.tar.gz open=Ok entries=1
 case id=archive-tar-duplicate-path kind=archive input=tar-duplicate-path source=fixture.tar open=Ok entries=2
+case id=archive-cab-unsupported-method kind=archive input=cab-unsupported-method source=fixture.cab open=Unsupported_Method entries=0
 case id=archive-zip-stored-basic kind=archive input=zip-stored-basic source=fixture.zip open=Ok entries=1
 case id=archive-zip-deflate-basic kind=archive input=zip-deflate-basic source=fixture.zip open=Ok entries=1
 case id=archive-zip-data-descriptor kind=archive input=zip-data-descriptor source=fixture.zip open=Ok entries=1
