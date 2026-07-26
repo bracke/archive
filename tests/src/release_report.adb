@@ -517,6 +517,7 @@ procedure Release_Report is
       Has_Cab_Unsupported : Boolean := False;
       Has_Xz_Unsupported : Boolean := False;
       Has_Xz : Boolean := False;
+      Has_Seven_Zip : Boolean := False;
       Has_Seven_Zip_Encrypted : Boolean := False;
       Has_Rar_Unsupported : Boolean := False;
       Has_Split_Zip_Unsupported : Boolean := False;
@@ -588,6 +589,8 @@ procedure Release_Report is
             return (True, 56, "C7296238");
          elsif Id = "xz-basic" then
             return (True, 56, "2CB5327A");
+         elsif Id = "seven-zip-basic" then
+            return (True, 97, "23675528");
          elsif Id = "seven-zip-encrypted" then
             return (True, 163, "5FE648EF");
          elsif Id = "rar-unsupported" then
@@ -794,6 +797,8 @@ procedure Release_Report is
                   Has_Xz_Unsupported := True;
                elsif Id = "xz-basic" then
                   Has_Xz := True;
+               elsif Id = "seven-zip-basic" then
+                  Has_Seven_Zip := True;
                elsif Id = "seven-zip-encrypted" then
                   Has_Seven_Zip_Encrypted := True;
                elsif Id = "rar-unsupported" then
@@ -870,6 +875,7 @@ procedure Release_Report is
         or else not Has_Cab_Unsupported
         or else not Has_Xz_Unsupported
         or else not Has_Xz
+        or else not Has_Seven_Zip
         or else not Has_Seven_Zip_Encrypted
         or else not Has_Rar_Unsupported
         or else not Has_Split_Zip_Unsupported

@@ -1827,6 +1827,17 @@ procedure Check_All is
       return Result;
    end Generated_Zstd;
 
+   function Generated_Seven_Zip return Zlib.Byte_Array is
+      Status : Zlib.Status_Code := Zlib.Ok;
+      Result : constant Zlib.Byte_Array :=
+        Zlib.Seven_Zip_Stored (Payload_ABC, "payload.bin", Status);
+   begin
+      if Status /= Zlib.Ok then
+         Fail ("generated 7z fixture failed");
+      end if;
+      return Result;
+   end Generated_Seven_Zip;
+
    function Generated_Seven_Zip_Encrypted return Zlib.Byte_Array is
    begin
       return
@@ -2226,6 +2237,8 @@ procedure Check_All is
          return Generated_Xz_Unsupported_Check;
       elsif Id = "xz-basic" then
          return Generated_Xz;
+      elsif Id = "seven-zip-basic" then
+         return Generated_Seven_Zip;
       elsif Id = "seven-zip-encrypted" then
          return Generated_Seven_Zip_Encrypted;
       elsif Id = "rar-unsupported" then
@@ -2487,6 +2500,7 @@ procedure Check_All is
       Has_Cab_Unsupported : Boolean := False;
       Has_Xz_Unsupported : Boolean := False;
       Has_Xz : Boolean := False;
+      Has_Seven_Zip : Boolean := False;
       Has_Seven_Zip_Encrypted : Boolean := False;
       Has_Rar_Unsupported : Boolean := False;
       Has_Split_Zip_Unsupported : Boolean := False;
@@ -2554,6 +2568,8 @@ procedure Check_All is
                      Has_Xz_Unsupported := True;
                   elsif Id = "xz-basic" then
                      Has_Xz := True;
+                  elsif Id = "seven-zip-basic" then
+                     Has_Seven_Zip := True;
                   elsif Id = "seven-zip-encrypted" then
                      Has_Seven_Zip_Encrypted := True;
                   elsif Id = "rar-unsupported" then
@@ -2629,6 +2645,7 @@ procedure Check_All is
         or else not Has_Cab_Unsupported
         or else not Has_Xz_Unsupported
         or else not Has_Xz
+        or else not Has_Seven_Zip
         or else not Has_Seven_Zip_Encrypted
         or else not Has_Rar_Unsupported
         or else not Has_Split_Zip_Unsupported

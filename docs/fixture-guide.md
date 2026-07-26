@@ -29,6 +29,7 @@ cab-mszip-basic
 cab-unsupported-method
 xz-unsupported-check
 xz-basic
+seven-zip-basic
 seven-zip-encrypted
 rar-unsupported
 split-zip-unsupported
