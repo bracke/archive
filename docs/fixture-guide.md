@@ -11,8 +11,9 @@ fixture id=<stable-id> path=<repository-relative-path> format=<format> purpose=<
 `tests/bin/check_all` validates the manifest and every listed fixture in Ada.
 Checked-in fixture paths must stay under `tests/fixtures/`, listed files must
 exist, byte sizes must match, and CRC32 values must match the manifest.
-Deterministic generated fixtures use `path=generated:<id>` and are still
-hash-validated against the manifest.
+Deterministic generated fixtures use `path=generated:<id>` and the generated
+path suffix must match the stable fixture ID. Generated fixture size and CRC32
+metadata are still hash-validated against the manifest.
 
 Required generated fixture IDs cover the V1 matrix:
 

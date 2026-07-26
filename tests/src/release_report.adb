@@ -547,7 +547,13 @@ procedure Release_Report is
                Expected : constant Generated_Fixture_Metadata :=
                  Generated_Metadata (Id);
             begin
-               if not Expected.Known then
+               if Path /= "generated:" & Id then
+                  Invalid := Invalid + 1;
+                  Put_Line
+                    (Standard_Error,
+                     Manifest & ":" & Line_Number'Image
+                     & ": generated fixture path must match id");
+               elsif not Expected.Known then
                   Invalid := Invalid + 1;
                   Put_Line
                     (Standard_Error,

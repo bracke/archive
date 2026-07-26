@@ -1125,6 +1125,8 @@ procedure Check_All is
       Require_Document_Text
         ("docs/fixture-guide.md", "`tests/fixtures/corpus.txt` is the malformed/security corpus manifest");
       Require_Document_Text
+        ("docs/fixture-guide.md", "path suffix must match the stable fixture ID");
+      Require_Document_Text
         ("docs/fixture-guide.md", "zip-unsupported-method");
       Require_Document_Text
         ("docs/fixture-guide.md", "zip-encrypted");
@@ -2030,6 +2032,12 @@ procedure Check_All is
          Fail
            (Root & "/tests/fixtures/manifest.txt:"
             & Line_Number'Image & ": fixture path must stay under tests/fixtures");
+      end if;
+
+      if Generated and then Path /= "generated:" & Id then
+         Fail
+           (Root & "/tests/fixtures/manifest.txt:"
+            & Line_Number'Image & ": generated fixture path must match id");
       end if;
 
       if not Generated and then not Ada.Directories.Exists (Full) then
