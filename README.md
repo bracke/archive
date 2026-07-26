@@ -10,10 +10,10 @@ Current V1 support:
 
 | Format | Browse | Preview | Verify | Extract | Create/Update | Backend |
 | --- | --- | --- | --- | --- | --- | --- |
-| TAR | supported | supported | supported | supported | supported by rewrite | `tarlib` |
-| TAR.GZ / TGZ | supported | supported | supported | supported | supported by rewrite | `zlib` + `tarlib` |
-| ZIP stored | supported | supported | supported | supported | supported by rewrite | archive ZIP adapter |
-| ZIP DEFLATE | supported | supported | supported | supported | supported by rewrite | archive ZIP adapter + `zlib` |
+| TAR | supported | supported | supported | supported | supported by save-in-place and save-as publication | `tarlib` |
+| TAR.GZ / TGZ | supported | supported | supported | supported | supported by save-in-place and save-as publication | `zlib` + `tarlib` |
+| ZIP stored | supported | supported | supported | supported | supported by save-in-place and save-as publication | archive ZIP adapter |
+| ZIP DEFLATE | supported | supported | supported | supported | supported by save-in-place and save-as publication | archive ZIP adapter + `zlib` |
 | gzip | supported | supported | supported | supported | supported single-file replacement | `zlib` |
 
 Recognized but unsupported in V1: 7z, RAR, XZ, bzip2, Zstandard, CAB, CPIO, ISO, AR, split ZIP, multi-volume ZIP, encrypted entries, and unsupported ZIP compression methods.

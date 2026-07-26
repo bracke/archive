@@ -25,4 +25,9 @@ package Archive.Writes.Service is
       Method      : Archive.Writes.Dispatch.Zip_Method := Archive.Writes.Dispatch.Zip_Deflate_Method;
       Overwrite   : Boolean := False)
       return Save_Result;
+
+   function Save
+     (Model  : in out Archive.Model.Application_Model;
+      Method : Archive.Writes.Dispatch.Zip_Method := Archive.Writes.Dispatch.Zip_Deflate_Method)
+      return Save_Result;
 end Archive.Writes.Service;

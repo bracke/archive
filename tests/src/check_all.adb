@@ -842,7 +842,7 @@ procedure Check_All is
       Require_Document_Text
         ("docs/FORMAT_SUPPORT.md", "ZIP DEFLATE");
       Require_Document_Text
-        ("docs/FORMAT_SUPPORT.md", "In-place archive mutation is");
+        ("docs/FORMAT_SUPPORT.md", "Save-in-place writes target the currently open archive path");
       Require_Document_Text
         ("docs/PRODUCT_SCOPE.md", "TAR parsing, traversal");
       Require_Document_Text

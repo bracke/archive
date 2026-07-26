@@ -457,8 +457,7 @@ package body Archive.Commands is
             else
                declare
                   Result : constant Archive.Writes.Service.Save_Result :=
-                    Archive.Writes.Service.Save_As
-                      (Model, Archive.Model.Source_Path (Model), Overwrite => True);
+                    Archive.Writes.Service.Save (Model);
                begin
                   pragma Unreferenced (Result);
                   null;

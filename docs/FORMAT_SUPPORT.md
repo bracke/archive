@@ -6,10 +6,10 @@ that registry and the AUnit format tests.
 
 | Format | Browse/Index | Payload Read | Verify | Extract | Create/Update | Backend |
 | --- | --- | --- | --- | --- | --- | --- |
-| TAR | supported for regular files, directories, links, devices, FIFOs, duplicates, and PAX long paths | supported for regular-file payloads through `tarlib` | supported according to `tarlib` checksum/truncation behavior | supported through safe extraction planning/execution | supported by create/rewrite through `tarlib` | `tarlib` |
-| TAR.GZ / TGZ | supported after gzip-wrapped inflate into TAR reader input | supported through gzip inflate plus `tarlib` payload traversal | supported by gzip stream checks plus `tarlib` validation | supported through safe extraction planning/execution | supported by TAR payload generation plus gzip wrapping | `zlib` + `tarlib` |
-| ZIP stored | supported through authoritative central directory plus local-header validation | supported for stored payloads | supported with CRC-32 before payload publication | supported through safe extraction planning/execution | supported by create/rewrite adapter | archive ZIP adapter |
-| ZIP DEFLATE | supported through authoritative central directory plus local-header validation | supported through raw-DEFLATE zlib adapter | supported with CRC-32 after inflate before payload publication | supported through safe extraction planning/execution | supported by create/rewrite adapter | archive ZIP adapter + `zlib` |
+| TAR | supported for regular files, directories, links, devices, FIFOs, duplicates, and PAX long paths | supported for regular-file payloads through `tarlib` | supported according to `tarlib` checksum/truncation behavior | supported through safe extraction planning/execution | supported by save-in-place and save-as publication through `tarlib` | `tarlib` |
+| TAR.GZ / TGZ | supported after gzip-wrapped inflate into TAR reader input | supported through gzip inflate plus `tarlib` payload traversal | supported by gzip stream checks plus `tarlib` validation | supported through safe extraction planning/execution | supported by save-in-place and save-as publication through TAR payload generation plus gzip wrapping | `zlib` + `tarlib` |
+| ZIP stored | supported through authoritative central directory plus local-header validation | supported for stored payloads | supported with CRC-32 before payload publication | supported through safe extraction planning/execution | supported by save-in-place and save-as publication through the ZIP adapter | archive ZIP adapter |
+| ZIP DEFLATE | supported through authoritative central directory plus local-header validation | supported through raw-DEFLATE zlib adapter | supported with CRC-32 after inflate before payload publication | supported through safe extraction planning/execution | supported by save-in-place and save-as publication through the ZIP adapter | archive ZIP adapter + `zlib` |
 | gzip | supported as one logical regular-file archive | supported through gzip-wrapped zlib adapter | supported by zlib gzip trailer checks; bounded header CRC is validated during indexing | supported through safe extraction planning/execution | supported by gzip writer adapter | `zlib` |
 
 Current covered edge cases include ZIP comments, Unicode path extra fields,
@@ -37,5 +37,7 @@ Recognized but unsupported:
 Unsupported ZIP methods remain visible as unsupported entries where the central
 directory can be safely parsed.
 
-Current write support is create/rewrite oriented. In-place archive mutation is
-not a supported implementation strategy.
+Save-in-place writes target the currently open archive path, validate the source
+fingerprint, stage the replacement archive beside the target, verify the staged
+archive, and publish it over the original path only after validation succeeds.
+Save-as publication uses the same staged writer path for a distinct target.

@@ -57,11 +57,11 @@ package body Archive.Writes.Service is
          Operation : constant Archive.Types.Generation_Id :=
            Archive.Model.Current_Save_Generation (Model);
       begin
-         if Overwrite
-           and then Source_Path = Destination
+         if Source_Path /= ""
            and then Source_FP.Status = Archive.Source_Monitoring.Source_Ready
+           and then Ada.Directories.Exists (Source_Path)
            and then not Archive.Source_Monitoring.Same_Source
-             (Source_FP, Archive.Source_Monitoring.Fingerprint (Destination))
+             (Source_FP, Archive.Source_Monitoring.Fingerprint (Source_Path))
          then
             declare
                Accepted : constant Boolean :=
@@ -80,11 +80,12 @@ package body Archive.Writes.Service is
          end if;
 
          declare
-            Source_Required : constant Boolean := Needs_Source_Bytes (Plan);
             Source_Available : constant Boolean :=
               Source_Path /= "" and then Ada.Directories.Exists (Source_Path);
+            Source_Required : constant Boolean :=
+              Needs_Source_Bytes (Plan) or else Source_Available;
          begin
-            if Source_Required and then not Source_Available then
+            if Needs_Source_Bytes (Plan) and then not Source_Available then
                declare
                   Accepted : constant Boolean :=
                     Archive.Model.Publish_Write_Result
@@ -162,4 +163,30 @@ package body Archive.Writes.Service is
          end;
       end;
    end Save_As;
+
+   function Save
+     (Model  : in out Archive.Model.Application_Model;
+      Method : Archive.Writes.Dispatch.Zip_Method := Archive.Writes.Dispatch.Zip_Deflate_Method)
+      return Save_Result
+   is
+      Source_Path : constant String := Archive.Model.Source_Path (Model);
+   begin
+      if Source_Path = "" then
+         Archive.Model.Publish_Write_Result
+           (Model,
+            Success => False,
+            Status  => Archive.Writes.Results.Write_Blocked_By_Plan);
+         return
+           (Status         => Save_Not_Ready,
+            Payload_Status => Archive.Archives.Errors.Invalid_Format,
+            Publish_Status => Archive.Writes.Results.Write_Blocked_By_Plan,
+            Operation      => Archive.Model.Current_Write_Generation (Model));
+      end if;
+
+      return Save_As
+        (Model,
+         Source_Path,
+         Method    => Method,
+         Overwrite => True);
+   end Save;
 end Archive.Writes.Service;

@@ -6004,6 +6004,29 @@ package body Archive_Suite.Core is
             "write service exposes successful write status through ui snapshot");
       end;
 
+      Archive.Model.Plan_Add_File (Model, Host_File, "docs/in-place.txt");
+      declare
+         Previous_Source : constant String := Archive.Model.Source_Path (Model);
+         Result : constant Archive.Writes.Service.Save_Result :=
+           Archive.Writes.Service.Save (Model);
+         Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+           Archive.Archives.Readers.Dispatch.Open_File (Target);
+      begin
+         Assert (Result.Status = Archive.Writes.Service.Save_Completed,
+                 "write service saves pending changes in place to active source");
+         Assert (Result.Publish_Status = Archive.Writes.Results.Write_Completed,
+                 "in-place save records successful publish");
+         Assert (Archive.Model.Source_Path (Model) = Previous_Source,
+                 "in-place save keeps the active source path");
+         Assert (Opened.Status = Archive.Archives.Errors.Ok,
+                 "in-place saved archive reopens");
+         Assert
+           (Archive.Archives.Index.Physical_Count (Opened.Index) = 2,
+            "in-place save publishes updated archive contents");
+         Assert (not Archive.Model.Has_Pending_Writes (Model),
+                 "in-place save clears pending writes");
+      end;
+
       Archive.Model.Plan_Add_File (Model, Host_File, "docs/second.txt");
       Write_Local (Other_Target, Existing);
       declare

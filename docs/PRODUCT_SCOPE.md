@@ -61,14 +61,16 @@ Required V1 write workflows:
 
 | Format | Create | Add/Replace File | Remove Entry | Rename Entry | Backend |
 | --- | --- | --- | --- | --- | --- |
-| TAR | required | required | required by rewrite | required by rewrite | `tarlib` |
-| TAR.GZ / TGZ | required | required | required by rewrite | required by rewrite | `zlib` + `tarlib` |
-| ZIP stored | required | required | required by rewrite | required by rewrite | archive ZIP adapter |
-| ZIP DEFLATE | required | required | required by rewrite | required by rewrite | archive ZIP adapter + `zlib` |
+| TAR | required | required | required by save-in-place/save-as publication | required by save-in-place/save-as publication | `tarlib` |
+| TAR.GZ / TGZ | required | required | required by save-in-place/save-as publication | required by save-in-place/save-as publication | `zlib` + `tarlib` |
+| ZIP stored | required | required | required by save-in-place/save-as publication | required by save-in-place/save-as publication | archive ZIP adapter |
+| ZIP DEFLATE | required | required | required by save-in-place/save-as publication | required by save-in-place/save-as publication | archive ZIP adapter + `zlib` |
 | gzip | required single-file | replace logical file | not applicable | required logical name | `zlib` |
 
-Rewriting through a new archive plus atomic replacement is preferred over
-in-place mutation for V1. Write commands gather required payloads through
+Save-in-place targets the currently open archive path. The implementation stages
+and verifies a replacement archive beside the target before publication, so the
+user-facing mutation is in-place while the safety boundary still preserves the
+old archive until validation succeeds. Write commands gather required payloads through
 model-owned dialogs, publish typed write plans, and keep unavailable states as
 stable reason codes.
 Per-entry command availability is owned by `Archive.Archives.Capabilities`,
