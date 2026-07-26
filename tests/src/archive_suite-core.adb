@@ -870,9 +870,44 @@ package body Archive_Suite.Core is
       return Zlib.Byte_Array
    is
       Name : constant String := "large.bin";
-      Status : Zlib.Status_Code;
-      Compressed : constant Zlib.Byte_Array :=
-        (if Method = 8 then Zlib.Deflate_Raw (Payload, Zlib.Fixed, Status) else Payload);
+
+      function Compressed_For_Method return Zlib.Byte_Array is
+         Status : Zlib.Status_Code;
+      begin
+         case Method is
+            when 0 =>
+               return Payload;
+            when 8 =>
+               declare
+                  Deflated : constant Zlib.Byte_Array :=
+                    Zlib.Deflate_Raw (Payload, Zlib.Fixed, Status);
+               begin
+                  Assert (Status = Zlib.Ok, "large zip fixture raw deflate succeeds");
+                  return Deflated;
+               end;
+            when 12 =>
+               declare
+                  Bzip2 : constant Zlib.Byte_Array :=
+                    Zlib.BZip2_Encoder.Encode (Payload, Status => Status);
+               begin
+                  Assert (Status = Zlib.Ok, "zip bzip2 fixture payload compression succeeds");
+                  return Bzip2;
+               end;
+            when 20 | 93 =>
+               declare
+                  Zstd : constant Zlib.Byte_Array :=
+                    Zlib.Zstd_Encoder.Encode (Payload, Status);
+               begin
+                  Assert (Status = Zlib.Ok, "zip zstd fixture payload compression succeeds");
+                  return Zstd;
+               end;
+            when others =>
+               Assert (False, "large zip fixture supports stored, deflate, bzip2, or zstd");
+               return Payload;
+         end case;
+      end Compressed_For_Method;
+
+      Compressed : constant Zlib.Byte_Array := Compressed_For_Method;
       Local_Offset : constant Natural := 0;
       Central_Offset : constant Natural := 30 + Name'Length + Compressed'Length;
       Central_Size : constant Natural := 46 + Name'Length;
@@ -881,12 +916,6 @@ package body Archive_Suite.Core is
       Bytes : Zlib.Byte_Array (1 .. Total) := [others => 0];
       CRC   : constant Archive.Types.CRC32_Value := CRC32_Compute (Payload);
    begin
-      if Method = 8 then
-         Assert (Status = Zlib.Ok, "large zip fixture raw deflate succeeds");
-      else
-         Assert (Method = 0, "large zip fixture supports stored or deflate");
-      end if;
-
       Put32 (Bytes, Local_Offset, 16#0403_4B50#);
       Put16 (Bytes, Local_Offset + 8, Method);
       Put32_U (Bytes, Local_Offset + 14, Interfaces.Unsigned_32 (CRC));
@@ -895,7 +924,7 @@ package body Archive_Suite.Core is
       Put16 (Bytes, Local_Offset + 26, Name'Length);
       Put_Text (Bytes, Local_Offset + 30, Name);
       for Index in Compressed'Range loop
-         Bytes (Bytes'First + Local_Offset + 30 + Name'Length + Index - Payload'First) :=
+         Bytes (Bytes'First + Local_Offset + 30 + Name'Length + Index - Compressed'First) :=
            Compressed (Index);
       end loop;
 
@@ -1029,6 +1058,8 @@ package body Archive_Suite.Core is
       declare
          Path : constant String := "obj/zip-stream-payload.zip";
          Deflate_Path : constant String := "obj/zip-stream-deflate-payload.zip";
+         Bzip2_Path : constant String := "obj/zip-stream-bzip2-payload.zip";
+         Zstd_Path : constant String := "obj/zip-stream-zstd-payload.zip";
          Plain : Zlib.Byte_Array (1 .. 70_000);
          Chunk_Count : Natural := 0;
          Byte_Count  : Natural := 0;
@@ -1036,6 +1067,10 @@ package body Archive_Suite.Core is
          Deflate_Chunks : Natural := 0;
          Deflate_Bytes  : Natural := 0;
          Deflate_CRC : Archive.Verification.CRC32.CRC32_State := Archive.Verification.CRC32.Initial;
+         Bzip2_Bytes : Natural := 0;
+         Bzip2_CRC : Archive.Verification.CRC32.CRC32_State := Archive.Verification.CRC32.Initial;
+         Zstd_Bytes : Natural := 0;
+         Zstd_CRC : Archive.Verification.CRC32.CRC32_State := Archive.Verification.CRC32.Initial;
 
          procedure Consume
            (Bytes : Zlib.Byte_Array;
@@ -1056,6 +1091,24 @@ package body Archive_Suite.Core is
             Archive.Verification.CRC32.Update (Deflate_CRC, Bytes);
             Continue := True;
          end Consume_Deflate;
+
+         procedure Consume_Bzip2
+           (Bytes : Zlib.Byte_Array;
+            Continue : in out Boolean) is
+         begin
+            Bzip2_Bytes := Bzip2_Bytes + Bytes'Length;
+            Archive.Verification.CRC32.Update (Bzip2_CRC, Bytes);
+            Continue := True;
+         end Consume_Bzip2;
+
+         procedure Consume_Zstd
+           (Bytes : Zlib.Byte_Array;
+            Continue : in out Boolean) is
+         begin
+            Zstd_Bytes := Zstd_Bytes + Bytes'Length;
+            Archive.Verification.CRC32.Update (Zstd_CRC, Bytes);
+            Continue := True;
+         end Consume_Zstd;
       begin
          for Index in Plain'Range loop
             Plain (Index) := Zlib.Byte (Index mod 251);
@@ -1063,6 +1116,8 @@ package body Archive_Suite.Core is
 
          Write_Bytes (Path, Stored_Zip_With_Payload (Plain));
          Write_Bytes (Deflate_Path, Stored_Zip_With_Payload (Plain, Method => 8));
+         Write_Bytes (Bzip2_Path, Stored_Zip_With_Payload (Plain, Method => 12));
+         Write_Bytes (Zstd_Path, Stored_Zip_With_Payload (Plain, Method => 20));
 
          declare
             Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
@@ -1100,6 +1155,48 @@ package body Archive_Suite.Core is
               (Archive.Verification.CRC32.Final (Deflate_CRC) =
                  CRC32_Compute (Plain),
                "large deflated zip stream bytes match expected crc");
+         end;
+
+         declare
+            Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
+              Index_Zip (Read_All_Bytes (Bzip2_Path));
+            Streamed : constant Archive.Archives.Readers.Zip.Stream_Result :=
+              Archive.Archives.Readers.Zip.Stream_Payload_File
+                (Bzip2_Path, Parsed.Entries.Element (1), Consume_Bzip2'Access);
+         begin
+            Assert (Parsed.Status = Archive.Archives.Errors.Ok, "zip bzip2 method parses");
+            Assert
+              (Parsed.Entries.Element (1).Method =
+                 Archive.Archives.Entries.BZip2_Compression,
+               "zip bzip2 method maps to supported compression");
+            Assert (Streamed.Status = Archive.Archives.Errors.Ok, "zip bzip2 method streams");
+            Assert (Streamed.Integrity = Archive.Archives.Entries.Verified,
+                    "zip bzip2 method verifies crc");
+            Assert (Bzip2_Bytes = Plain'Length, "zip bzip2 stream byte count matches payload");
+            Assert
+              (Archive.Verification.CRC32.Final (Bzip2_CRC) = CRC32_Compute (Plain),
+               "zip bzip2 stream bytes match expected crc");
+         end;
+
+         declare
+            Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
+              Index_Zip (Read_All_Bytes (Zstd_Path));
+            Streamed : constant Archive.Archives.Readers.Zip.Stream_Result :=
+              Archive.Archives.Readers.Zip.Stream_Payload_File
+                (Zstd_Path, Parsed.Entries.Element (1), Consume_Zstd'Access);
+         begin
+            Assert (Parsed.Status = Archive.Archives.Errors.Ok, "zip zstd method parses");
+            Assert
+              (Parsed.Entries.Element (1).Method =
+                 Archive.Archives.Entries.Zstd_Compression,
+               "zip zstd method maps to supported compression");
+            Assert (Streamed.Status = Archive.Archives.Errors.Ok, "zip zstd method streams");
+            Assert (Streamed.Integrity = Archive.Archives.Entries.Verified,
+                    "zip zstd method verifies crc");
+            Assert (Zstd_Bytes = Plain'Length, "zip zstd stream byte count matches payload");
+            Assert
+              (Archive.Verification.CRC32.Final (Zstd_CRC) = CRC32_Compute (Plain),
+               "zip zstd stream bytes match expected crc");
          end;
       end;
 

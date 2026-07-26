@@ -32,6 +32,7 @@ package body Archive.Archives.Capabilities is
         Item.Method in Archive.Archives.Entries.Zip_Stored | Archive.Archives.Entries.Zip_Deflate
           | Archive.Archives.Entries.GZip_Deflate
           | Archive.Archives.Entries.BZip2_Compression
+          | Archive.Archives.Entries.LZMA_Compression
           | Archive.Archives.Entries.Zstd_Compression
           | Archive.Archives.Entries.No_Compression;
       Safe : constant Boolean := Item.Safety = Archive.Archives.Entries.Safe_Path;

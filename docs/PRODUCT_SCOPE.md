@@ -55,6 +55,7 @@ Required V1 read workflows:
 | TAR.GZ / TGZ | required | required | required | required | `zlib` + `tarlib` |
 | ZIP stored | required | required | required | required | archive ZIP adapter |
 | ZIP DEFLATE | required | required | required | required | archive ZIP adapter + `zlib` |
+| ZIP BZip2 / Zstandard | supported | supported | supported | supported | archive ZIP adapter + `zlib` |
 | gzip | required | required | required | required | `zlib` |
 
 Required V1 write workflows:
@@ -161,7 +162,7 @@ settings snapshot for menu construction.
 
 Recognized unsupported formats include RAR, XZ, CAB, CPIO,
 ISO, AR, split ZIP, multi-volume ZIP, encrypted entries outside the supported
-7z subset, and unsupported ZIP or 7z compression methods.
+7z subset, ZIP PPMd, and unsupported ZIP or 7z compression methods.
 
 ## Non-Negotiable Invariants
 

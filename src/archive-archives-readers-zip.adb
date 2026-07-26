@@ -6,6 +6,7 @@ with Ada.Strings.Unbounded;
 with Interfaces;
 
 with Archive.Archives.Paths;
+with Archive.Archives.Streams;
 with Archive.Compression.Zlib;
 with Archive.Resource_Limits;
 with Archive.Verification.CRC32;
@@ -18,8 +19,11 @@ package body Archive.Archives.Readers.Zip is
    use type Interfaces.Unsigned_64;
    use type Ada.Streams.Stream_Element_Offset;
    use type Archive.Archives.Errors.Error_Code;
+   use type Archive.Archives.Entries.Compression_Method;
+   use type Archive.Archives.Entries.Encryption_State;
    use type Archive.Types.Uncompressed_Size;
    use type Zlib.Byte;
+   use type Zlib.Status_Code;
 
    EOCD_Min_Size : constant Natural := 22;
    Max_EOCD_Search : constant Natural := EOCD_Min_Size + 65_535;
@@ -461,10 +465,38 @@ package body Archive.Archives.Readers.Zip is
             return Archive.Archives.Entries.Zip_Stored;
          when 8 =>
             return Archive.Archives.Entries.Zip_Deflate;
+         when 12 =>
+            return Archive.Archives.Entries.BZip2_Compression;
+         when 14 =>
+            return Archive.Archives.Entries.LZMA_Compression;
+         when 20 | 93 =>
+            return Archive.Archives.Entries.Zstd_Compression;
          when others =>
             return Archive.Archives.Entries.Unsupported_Compression;
       end case;
    end Compression_For;
+
+   function Map_Zlib_Status
+     (Status : Zlib.Status_Code)
+      return Archive.Archives.Errors.Error_Code
+   is
+   begin
+      case Status is
+         when Zlib.Ok =>
+            return Archive.Archives.Errors.Ok;
+         when Zlib.Unsupported_Method | Zlib.Unsupported_Preset_Dictionary =>
+            return Archive.Archives.Errors.Unsupported_Method;
+         when Zlib.Unexpected_End_Of_Input | Zlib.Invalid_Header
+            | Zlib.Invalid_Block_Type | Zlib.Invalid_Checksum
+            | Zlib.Invalid_Stored_Block | Zlib.Invalid_Huffman_Code
+            | Zlib.Invalid_Distance =>
+            return Archive.Archives.Errors.Invalid_Format;
+         when Zlib.Input_File_Error =>
+            return Archive.Archives.Errors.Read_Failed;
+         when Zlib.Output_File_Error =>
+            return Archive.Archives.Errors.Write_Failed;
+      end case;
+   end Map_Zlib_Status;
 
    function Index_File (Path : String) return Zip_Index_Result is
       Size      : constant Ada.Directories.File_Size := Ada.Directories.Size (Path);
@@ -891,8 +923,6 @@ package body Archive.Archives.Readers.Zip is
          Continue : in out Boolean))
       return Stream_Result
    is
-      use type Archive.Archives.Entries.Compression_Method;
-      use type Archive.Archives.Entries.Encryption_State;
       use type Archive.Types.CRC32_Value;
       File : Ada.Streams.Stream_IO.File_Type;
       Chunk_Size : constant Natural := 32_768;
@@ -901,7 +931,12 @@ package body Archive.Archives.Readers.Zip is
          return (Status => Archive.Archives.Errors.Unsupported_Method,
                  Integrity => Archive.Archives.Entries.Not_Available,
                  Bytes_Written => 0);
-      elsif Item.Method not in Archive.Archives.Entries.Zip_Stored | Archive.Archives.Entries.Zip_Deflate then
+      elsif Item.Method not in Archive.Archives.Entries.Zip_Stored
+        | Archive.Archives.Entries.Zip_Deflate
+        | Archive.Archives.Entries.BZip2_Compression
+        | Archive.Archives.Entries.LZMA_Compression
+        | Archive.Archives.Entries.Zstd_Compression
+      then
          return (Status => Archive.Archives.Errors.Unsupported_Method,
                  Integrity => Archive.Archives.Entries.Not_Available,
                  Bytes_Written => 0);
@@ -1068,6 +1103,76 @@ package body Archive.Archives.Readers.Zip is
             return (Status => Archive.Archives.Errors.Ok,
                     Integrity => Archive.Archives.Entries.Verified,
                     Bytes_Written => Written);
+         end;
+      end if;
+
+      if Item.Method /= Archive.Archives.Entries.Zip_Stored then
+         declare
+            Size : constant Ada.Directories.File_Size := Ada.Directories.Size (Path);
+         begin
+            if Size > Ada.Directories.File_Size (Natural'Last)
+              or else Size > Ada.Directories.File_Size
+                (Archive.Resource_Limits.Default_Configured
+                   (Archive.Resource_Limits.Temporary_Backing_Bytes))
+            then
+               return (Status => Archive.Archives.Errors.Limit_Exceeded,
+                       Integrity => Archive.Archives.Entries.Not_Available,
+                       Bytes_Written => 0);
+            end if;
+         end;
+
+         declare
+            Source : constant Archive.Archives.Streams.Buffered_Source :=
+              Archive.Archives.Streams.Read_Bounded
+                (Path, Positive'Max (1, Positive (Ada.Directories.Size (Path))));
+            Status : Zlib.Status_Code := Zlib.Ok;
+         begin
+            if Source.Status /= Archive.Archives.Errors.Ok then
+               return (Status => Source.Status,
+                       Integrity => Archive.Archives.Entries.Not_Available,
+                       Bytes_Written => 0);
+            end if;
+
+            declare
+               Payload : constant Zlib.Byte_Array :=
+                 Zlib.Extract_ZIP_External_Entry
+                   (Source.Bytes, To_String (Item.Original_Path), "", Status);
+               Continue : Boolean := True;
+               CRC : Archive.Verification.CRC32.CRC32_State :=
+                 Archive.Verification.CRC32.Initial;
+            begin
+               if Status /= Zlib.Ok then
+                  return (Status => Map_Zlib_Status (Status),
+                          Integrity => Archive.Archives.Entries.Failed,
+                          Bytes_Written => 0);
+               elsif Item.Uncompressed.Present
+                 and then Archive.Types.Uncompressed_Size (Payload'Length) /=
+                   Item.Uncompressed.Value
+               then
+                  return (Status => Archive.Archives.Errors.Invalid_Format,
+                          Integrity => Archive.Archives.Entries.Failed,
+                          Bytes_Written => Archive.Types.Uncompressed_Size (Payload'Length));
+               end if;
+
+               Archive.Verification.CRC32.Update (CRC, Payload);
+               if Item.CRC32.Present
+                 and then Archive.Verification.CRC32.Final (CRC) /= Item.CRC32.Value
+               then
+                  return (Status => Archive.Archives.Errors.Invalid_Format,
+                          Integrity => Archive.Archives.Entries.Failed,
+                          Bytes_Written => Archive.Types.Uncompressed_Size (Payload'Length));
+               end if;
+
+               Consumer.all (Payload, Continue);
+               return
+                 (Status =>
+                    (if Continue then Archive.Archives.Errors.Ok else Archive.Archives.Errors.Cancelled),
+                  Integrity =>
+                    (if Continue
+                     then Archive.Archives.Entries.Verified
+                     else Archive.Archives.Entries.Not_Available),
+                  Bytes_Written => Archive.Types.Uncompressed_Size (Payload'Length));
+            end;
          end;
       end if;
 

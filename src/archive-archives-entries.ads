@@ -22,6 +22,7 @@ package Archive.Archives.Entries is
       Zip_Stored,
       Zip_Deflate,
       BZip2_Compression,
+      LZMA_Compression,
       Zstd_Compression,
       Unsupported_Compression,
       Unknown_Compression);

@@ -14,12 +14,13 @@ Current V1 support:
 | TAR.GZ / TGZ | supported | supported | supported | supported | supported by save-in-place and save-as publication | `zlib` + `tarlib` |
 | ZIP stored | supported | supported | supported | supported | supported by save-in-place and save-as publication | archive ZIP adapter |
 | ZIP DEFLATE | supported | supported | supported | supported | supported by save-in-place and save-as publication | archive ZIP adapter + `zlib` |
+| ZIP BZip2 / Zstandard | supported | supported | supported | supported | rewritten through stored/Deflate ZIP publication | archive ZIP adapter + `zlib` |
 | gzip | supported | supported | supported | supported | supported single-file replacement | `zlib` |
 | 7z | supported for the native zlib-backed subset | supported | supported | supported | supported by stored file-list publication | `zlib` |
 | bzip2 | supported as one logical file | supported | supported | supported | supported single-file replacement | `zlib` |
 | Zstandard | supported as one logical file | supported | supported | supported | supported single-file replacement | `zlib` |
 
-Recognized but unsupported in V1: RAR, XZ, CAB, CPIO, ISO, AR, split ZIP, multi-volume ZIP, encrypted entries outside the supported 7z subset, and unsupported ZIP or 7z methods.
+Recognized but unsupported in V1: RAR, XZ, CAB, CPIO, ISO, AR, split ZIP, multi-volume ZIP, encrypted entries outside the supported 7z subset, ZIP PPMd, and other unsupported ZIP or 7z methods.
 
 ## Current Implementation Status
 
