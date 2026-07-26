@@ -6123,6 +6123,7 @@ package body Archive_Suite.Core is
       Zip_Zstd_Target : constant String := Root & "/dispatch-stream-zstd.zip";
       Tar_Gz_Target : constant String := Root & "/dispatch-stream.tar.gz";
       Seven_Zip_Target : constant String := Root & "/dispatch-stream.7z";
+      Seven_Zip_Rewrite_Target : constant String := Root & "/dispatch-rewrite.7z";
       Bzip2_Target : constant String := Root & "/dispatch-stream.bz2";
       Zstd_Target : constant String := Root & "/dispatch-stream.zst";
       File : Ada.Streams.Stream_IO.File_Type;
@@ -6192,6 +6193,9 @@ package body Archive_Suite.Core is
       end if;
       if Ada.Directories.Exists (Seven_Zip_Target) then
          Ada.Directories.Delete_File (Seven_Zip_Target);
+      end if;
+      if Ada.Directories.Exists (Seven_Zip_Rewrite_Target) then
+         Ada.Directories.Delete_File (Seven_Zip_Rewrite_Target);
       end if;
       if Ada.Directories.Exists (Bzip2_Target) then
          Ada.Directories.Delete_File (Bzip2_Target);
@@ -6401,6 +6405,61 @@ package body Archive_Suite.Core is
             and then Zstd_Opened.Format = Archive.Archives.Formats.Zstd_Format
             and then Archive.Archives.Index.Physical_Count (Zstd_Opened.Index) = 1,
             "write dispatch zstd publication reopens");
+
+         declare
+            Rename_Requests : Archive.Writes.Plans.Write_Request_Vectors.Vector;
+         begin
+            Rename_Requests.Append
+              (Archive.Writes.Plans.Write_Request'
+                 (Action           => Archive.Writes.Plans.Rename_Entry,
+                  Source_Entry     => Seven_Zip_Item.Id,
+                  Host_Source      => Null_Unbounded_String,
+                  Target_Path      => Null_Unbounded_String,
+                  Replacement_Path => To_Unbounded_String ("docs/renamed.txt")));
+
+            declare
+               Rename_Plan : constant Archive.Writes.Plans.Write_Plan :=
+                 Archive.Writes.Plans.Build
+                   (Seven_Zip_Opened.Index, Rename_Requests, Session => 9);
+               Rewritten : constant Archive.Writes.Results.Publish_Result :=
+                 Archive.Writes.Dispatch.Publish
+                   (Archive.Archives.Formats.Seven_Zip_Format,
+                    Seven_Zip_Rewrite_Target,
+                    Rename_Plan,
+                    Source_Path => Seven_Zip_Target,
+                    Overwrite => True);
+               Reopened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+                 Archive.Archives.Readers.Dispatch.Open_File (Seven_Zip_Rewrite_Target);
+               Renamed_Item : constant Archive.Archives.Entries.Archive_Entry :=
+                 (if Reopened.Status = Archive.Archives.Errors.Ok
+                  then Entry_For_Path (Reopened.Index, "docs/renamed.txt")
+                  else (others => <>));
+               Renamed_Payload : constant Test_Stream_Result :=
+                 (if Reopened.Status = Archive.Archives.Errors.Ok
+                  then Stream_Dispatch_Payload_File
+                    (Seven_Zip_Rewrite_Target, Seven_Zip_Rewrite_Target, Renamed_Item)
+                  else Empty_Test_Stream (Archive.Archives.Errors.Invalid_Format));
+            begin
+               Assert (Rename_Plan.Status = Archive.Writes.Plans.Write_Plan_Ready,
+                       "write dispatch 7z source rename plan is ready");
+               Assert (Rewritten.Status = Archive.Writes.Results.Write_Completed,
+                       "write dispatch rewrites 7z source archive");
+               Assert
+                 (Reopened.Status = Archive.Archives.Errors.Ok
+                  and then Reopened.Format = Archive.Archives.Formats.Seven_Zip_Format
+                  and then Archive.Archives.Index.Physical_Count (Reopened.Index) = 1,
+                  "write dispatch rewritten 7z source archive reopens");
+               Assert
+                 (Renamed_Payload.Status = Archive.Archives.Errors.Ok
+                  and then Renamed_Payload.Integrity = Archive.Archives.Entries.Verified
+                  and then Renamed_Payload.Bytes_Written = 2
+                  and then Bytes_Of (Renamed_Payload) (1) =
+                    Zlib.Byte (Character'Pos ('o'))
+                  and then Bytes_Of (Renamed_Payload) (2) =
+                    Zlib.Byte (Character'Pos ('k')),
+                  "write dispatch 7z source rewrite preserves renamed payload");
+            end;
+         end;
       end;
    end Test_Write_Dispatch;
 
