@@ -929,6 +929,7 @@ procedure Release_Report is
       Has_Platform_Collision : Boolean := False;
       Has_Zip_Unicode : Boolean := False;
       Has_Zip64_Overflow : Boolean := False;
+      Has_Seven_Zip_Volume : Boolean := False;
       Has_Zip_Unsupported_Method : Boolean := False;
       Has_Zip_Encrypted : Boolean := False;
       Has_Zip_Multi_Disk : Boolean := False;
@@ -1226,6 +1227,8 @@ procedure Release_Report is
                      Has_Zip_Unicode := True;
                   elsif Id = "archive-zip-zip64-too-large" then
                      Has_Zip64_Overflow := True;
+                  elsif Id = "archive-seven-zip-volume" then
+                     Has_Seven_Zip_Volume := True;
                   elsif Id = "archive-zip-truncated-central"
                     or else Id = "archive-gzip-truncated"
                     or else Id = "archive-tar-truncated"
@@ -1266,6 +1269,7 @@ procedure Release_Report is
         or else not Has_Zip_Deflate or else not Has_Gzip or else not Has_Malformed
         or else not Has_Platform_Collision
         or else not Has_Zip_Unicode or else not Has_Zip64_Overflow
+        or else not Has_Seven_Zip_Volume
         or else not Has_Zip_Unsupported_Method or else not Has_Zip_Encrypted
         or else not Has_Zip_Multi_Disk
         or else not Has_Gzip_Bad_Trailer

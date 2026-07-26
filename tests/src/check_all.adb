@@ -3028,9 +3028,29 @@ procedure Check_All is
         Parse_Error_Code (Field_Value (Line, "open"));
       Expected_Entries : constant Natural := Natural'Value (Field_Value (Line, "entries"));
       Expected_Payload : constant String := Field_Value (Line, "payload");
-      Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
-        Open_Dispatch (Bytes, Source);
-      Payload_Path : constant String := Root & "/obj/check_all_payload_" & Id & ".bin";
+
+      function Ends_With (Value : String; Suffix : String) return Boolean is
+      begin
+         return Value'Length >= Suffix'Length
+           and then Value (Value'Last - Suffix'Length + 1 .. Value'Last) = Suffix;
+      end Ends_With;
+
+      function Volume_Suffix (N : Positive) return String is
+         Hundreds : constant Natural := (N / 100) mod 10;
+         Tens     : constant Natural := (N / 10) mod 10;
+         Ones     : constant Natural := N mod 10;
+      begin
+         return
+           Character'Val (Character'Pos ('0') + Hundreds)
+           & Character'Val (Character'Pos ('0') + Tens)
+           & Character'Val (Character'Pos ('0') + Ones);
+      end Volume_Suffix;
+
+      Is_Seven_Zip_Volume : constant Boolean := Ends_With (Source, ".7z.001");
+      Payload_Path : constant String :=
+        (if Is_Seven_Zip_Volume
+         then Root & "/obj/check_all_payload_" & Id & ".7z.001"
+         else Root & "/obj/check_all_payload_" & Id & ".bin");
 
       procedure Write_Corpus_Archive is
          File : Ada.Streams.Stream_IO.File_Type;
@@ -3038,6 +3058,34 @@ procedure Check_All is
            (1 .. Ada.Streams.Stream_Element_Offset (Bytes'Length));
       begin
          Ada.Directories.Create_Path (Root & "/obj");
+         if Is_Seven_Zip_Volume then
+            declare
+               Base : constant String :=
+                 Payload_Path (Payload_Path'First .. Payload_Path'Last - 4);
+               Status : Zlib.Status_Code := Zlib.Ok;
+            begin
+               for N in 1 .. 999 loop
+                  declare
+                     Path : constant String := Base & "." & Volume_Suffix (N);
+                  begin
+                     exit when N > 1 and then not Ada.Directories.Exists (Path);
+                     if Ada.Directories.Exists (Path) then
+                        Ada.Directories.Delete_File (Path);
+                     end if;
+                  end;
+               end loop;
+
+               Zlib.Write_Seven_Zip_Volumes
+                 (Bytes, Base, Volume_Size => 40, Status => Status);
+               if Status /= Zlib.Ok then
+                  Fail
+                    (Root & "/tests/fixtures/corpus.txt:" & Line_Number'Image
+                     & ": corpus " & Id & " 7z volume fixture write failed");
+               end if;
+            end;
+            return;
+         end if;
+
          for Index in Bytes'Range loop
             Data (Ada.Streams.Stream_Element_Offset (Index - Bytes'First + 1)) :=
               Ada.Streams.Stream_Element (Bytes (Index));
@@ -3046,6 +3094,24 @@ procedure Check_All is
          Ada.Streams.Stream_IO.Write (File, Data);
          Ada.Streams.Stream_IO.Close (File);
       end Write_Corpus_Archive;
+
+      function Open_Corpus_Archive
+        return Archive.Archives.Readers.Dispatch.Open_Result
+      is
+      begin
+         if Is_Seven_Zip_Volume then
+            Write_Corpus_Archive;
+            return Archive.Archives.Readers.Dispatch.Open_File
+              (Payload_Path,
+               Max_Bytes   => 256 * 1_024 * 1_024,
+               Source_Name => Source);
+         end if;
+
+         return Open_Dispatch (Bytes, Source);
+      end Open_Corpus_Archive;
+
+      Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+        Open_Corpus_Archive;
 
       function First_Regular_Entry
         return Archive.Archives.Entries.Archive_Entry
@@ -3161,6 +3227,7 @@ procedure Check_All is
       Has_Platform_Collision : Boolean := False;
       Has_Zip_Unicode : Boolean := False;
       Has_Zip64_Overflow : Boolean := False;
+      Has_Seven_Zip_Volume : Boolean := False;
    begin
       if not Ada.Directories.Exists (Manifest) then
          Fail (Manifest & ": corpus manifest is missing");
@@ -3206,6 +3273,8 @@ procedure Check_All is
                      Has_Zip_Unicode := True;
                   elsif Id = "archive-zip-zip64-too-large" then
                      Has_Zip64_Overflow := True;
+                  elsif Id = "archive-seven-zip-volume" then
+                     Has_Seven_Zip_Volume := True;
                   elsif Id = "archive-zip-truncated-central"
                     or else Id = "archive-gzip-truncated"
                     or else Id = "archive-tar-truncated"
@@ -3229,6 +3298,7 @@ procedure Check_All is
         or else not Has_Zip_Deflate or else not Has_Gzip or else not Has_Malformed
         or else not Has_Platform_Collision
         or else not Has_Zip_Unicode or else not Has_Zip64_Overflow
+        or else not Has_Seven_Zip_Volume
       then
          Fail (Manifest & ": corpus manifest is missing required format/security breadth");
       end if;
