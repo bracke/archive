@@ -44,7 +44,7 @@ package body Archive.Archives.Formats is
          when Tar_GZip_Format => return ".tar.gz;.tgz";
          when Zip_Format => return ".zip";
          when GZip_Format => return ".gz";
-         when Seven_Zip_Format => return ".7z";
+         when Seven_Zip_Format => return ".7z;.7z.001";
          when Rar_Format => return ".rar";
          when Xz_Format => return ".xz";
          when BZip2_Format => return ".bz2;.bzip2";

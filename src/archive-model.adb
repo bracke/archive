@@ -36,7 +36,7 @@ package body Archive.Model is
          return Archive.Archives.Formats.Zip_Format;
       elsif Has_Suffix (Path, ".gz") then
          return Archive.Archives.Formats.GZip_Format;
-      elsif Has_Suffix (Path, ".7z") then
+      elsif Has_Suffix (Path, ".7z") or else Has_Suffix (Path, ".7z.001") then
          return Archive.Archives.Formats.Seven_Zip_Format;
       elsif Has_Suffix (Path, ".rar") then
          return Archive.Archives.Formats.Rar_Format;

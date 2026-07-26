@@ -635,6 +635,10 @@ package body Archive_Suite.Core is
            (Archive.Archives.Formats.Extension_Hints (Archive.Archives.Formats.Tar_GZip_Format) =
             ".tar.gz;.tgz",
             "format extension hints are registry-owned");
+         Assert
+           (Archive.Archives.Formats.Extension_Hints (Archive.Archives.Formats.Seven_Zip_Format) =
+            ".7z;.7z.001",
+            "7z first-volume extension hint is registry-owned");
       end;
    end Test_Format_Detection;
 
@@ -10573,6 +10577,9 @@ package body Archive_Suite.Core is
          Archive.Model.Publish_Archive (Hint_Model, "unsupported.7z");
          Assert (Archive.Model.Published_Format (Hint_Model) = Archive.Archives.Formats.Seven_Zip_Format,
                  "source path extension records recognized unsupported format hint");
+         Archive.Model.Publish_Archive (Hint_Model, "bundle.7z.001");
+         Assert (Archive.Model.Published_Format (Hint_Model) = Archive.Archives.Formats.Seven_Zip_Format,
+                 "source path extension records 7z first-volume format hint");
       end;
       Archive.Model.Publish_Archive (Model, "other.zip");
       Archive.Model.Publish_Archive (Model, "sample.zip");
