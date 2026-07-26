@@ -1103,6 +1103,8 @@ procedure Check_All is
       Require_Document_Text
         ("docs/release-guide.md", "The malformed-input corpus gate is enforced by Ada tooling");
       Require_Document_Text
+        ("docs/release-guide.md", "metadata is pinned for release validation");
+      Require_Document_Text
         ("docs/release-guide.md", "release builds are enforced by Ada tooling");
       Require_Document_Text
         ("docs/release-guide.md", "integration tests are enforced by Ada tooling");
@@ -1126,6 +1128,8 @@ procedure Check_All is
         ("docs/fixture-guide.md", "zip-unsupported-method");
       Require_Document_Text
         ("docs/fixture-guide.md", "zip-encrypted");
+      Require_Document_Text
+        ("docs/fixture-guide.md", "zip-multi-disk");
       Require_Document_Text
         ("docs/fixture-guide.md", "gzip-bad-trailer");
       Require_Document_Text

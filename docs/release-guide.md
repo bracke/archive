@@ -40,9 +40,10 @@ gates as `enforced` and `check_all` must fail if an enforced command or
 repository validation step fails.
 
 The malformed-input corpus gate is enforced by Ada tooling: `check_all`
-executes the corpus against production path, extraction, and detection code,
-and `release_report` validates that the corpus manifest is present and
-well-formed.
+executes the corpus against production path, extraction, and detection code.
+`release_report` validates that the fixture manifest and corpus manifest are
+present, well-formed, release-breadth complete, and that fixture size/CRC
+metadata is pinned for release validation.
 The corpus remains deterministic and network-free: newly added archive cases
 must be generated or checked in with stable identifiers, and local-header ZIP
 corruption is validated before release as part of the same Ada gate.

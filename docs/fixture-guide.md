@@ -30,6 +30,7 @@ gzip-empty
 zip-bad-crc
 zip-unsupported-method
 zip-encrypted
+zip-multi-disk
 gzip-bad-trailer
 ```
 
