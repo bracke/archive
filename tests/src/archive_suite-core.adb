@@ -510,8 +510,9 @@ package body Archive_Suite.Core is
 
       R := Detect_Bytes (Seven);
       Assert
-        (R.Status = Archive.Archives.Formats.Recognized_Unsupported,
-         "7z signature is recognized but unsupported");
+        (R.Status = Archive.Archives.Formats.Detected,
+         "7z signature is detected for the supported zlib-backed subset");
+      Assert (R.Format = Archive.Archives.Formats.Seven_Zip_Format, "7z format id");
 
       R := Detect_Bytes (Cab);
       Assert (R.Format = Archive.Archives.Formats.Cab_Format, "cab unsupported format id");
@@ -2289,12 +2290,14 @@ package body Archive_Suite.Core is
       Gz : constant Zlib.Byte_Array := Zlib.GZip (Plain, Zlib.Fixed, Status);
       Tar_Gz_Status : Zlib.Status_Code;
       Tar_Gz : constant Zlib.Byte_Array := Zlib.GZip (One_File_Tar, Zlib.Fixed, Tar_Gz_Status);
+      Seven_Status : Zlib.Status_Code;
       Seven : constant Zlib.Byte_Array :=
-        [1 => 16#37#, 2 => 16#7A#, 3 => 16#BC#, 4 => 16#AF#, 5 => 16#27#, 6 => 16#1C#];
+        Zlib.Seven_Zip_Stored (Plain, "payload.bin", Seven_Status);
       Tar : constant Zlib.Byte_Array := One_File_Tar;
    begin
       Assert (Status = Zlib.Ok, "dispatch gzip fixture builds");
       Assert (Tar_Gz_Status = Zlib.Ok, "dispatch tar.gz fixture builds");
+      Assert (Seven_Status = Zlib.Ok, "dispatch 7z fixture builds");
 
       declare
          Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
@@ -2378,11 +2381,23 @@ package body Archive_Suite.Core is
       declare
          Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
            Open_Dispatch (Seven, Source_Name => "sample.7z");
+         Item : constant Archive.Archives.Entries.Archive_Entry :=
+           Archive.Archives.Index.Entry_For (Opened.Index, 2);
+         Payload : constant Test_Stream_Result :=
+           Stream_Dispatch_Payload (Seven, "sample.7z", Item);
       begin
-         Assert (Opened.Status = Archive.Archives.Errors.Unsupported_Format,
-                 "recognized unsupported dispatch rejected");
+         Assert (Opened.Status = Archive.Archives.Errors.Ok,
+                 "7z dispatch succeeds through zlib native reader");
          Assert (Opened.Format = Archive.Archives.Formats.Seven_Zip_Format,
-                 "unsupported dispatch retains format");
+                 "7z dispatch records format");
+         Assert (Archive.Archives.Index.Physical_Count (Opened.Index) = 1,
+                 "7z dispatch publishes physical entry");
+         Assert
+           (Payload.Status = Archive.Archives.Errors.Ok
+            and then Payload.Integrity = Archive.Archives.Entries.Verified
+            and then Payload.Bytes_Written = 3
+            and then Bytes_Of (Payload) (3) = Zlib.Byte (Character'Pos ('c')),
+            "7z dispatch payload reads through zlib");
       end;
    end Test_Reader_Dispatch;
 

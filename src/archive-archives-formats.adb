@@ -133,6 +133,24 @@ package body Archive.Archives.Formats is
                Can_Remove_Entries          => False,
                Can_Rename_Entries          => True,
                Requires_Rewrite_For_Update => True);
+         when Seven_Zip_Format =>
+            return
+              (Can_Index                   => True,
+               Can_Open_Entry_Streams      => True,
+               Can_Verify_Metadata         => True,
+               Can_Verify_Payload          => True,
+               Supports_Duplicates         => False,
+               Supports_Symbolic_Links     => False,
+               Supports_Hard_Links         => False,
+               Supports_Encryption         => True,
+               Supports_Random_Access      => False,
+               Requires_Temporary_Backing  => False,
+               Can_Create                  => False,
+               Can_Add_Entries             => False,
+               Can_Replace_Entries         => False,
+               Can_Remove_Entries          => False,
+               Can_Rename_Entries          => False,
+               Requires_Rewrite_For_Update => False);
          when others =>
             return (others => False);
       end case;
@@ -153,7 +171,7 @@ package body Archive.Archives.Formats is
         and then B (Bytes, 4) = 16#27#
         and then B (Bytes, 5) = 16#1C#
       then
-         return (Recognized_Unsupported, Seven_Zip_Format);
+         return (Detected, Seven_Zip_Format);
       elsif Bytes'Length >= 7
         and then B (Bytes, 0) = 16#52#
         and then B (Bytes, 1) = 16#61#
