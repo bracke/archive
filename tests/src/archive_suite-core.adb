@@ -1479,6 +1479,26 @@ package body Archive_Suite.Core is
          end loop;
          return Result;
       end With_Original_Name;
+
+      function With_Long_Optional_Field (Name_Field : Boolean) return Zlib.Byte_Array is
+         Field_Length : constant Natural := 4_097;
+         Body_Length  : constant Natural := Gz'Length - 10;
+         Result       : Zlib.Byte_Array
+           (1 .. 10 + Field_Length + 1 + Body_Length) := [others => 0];
+      begin
+         for Index in 1 .. 10 loop
+            Result (Index) := Gz (Index);
+         end loop;
+         Result (4) :=
+           (if Name_Field then 16#08# else 16#10#);
+         for Index in 11 .. 10 + Field_Length loop
+            Result (Index) := Zlib.Byte (Character'Pos ('x'));
+         end loop;
+         for Index in 11 .. Gz'Last loop
+            Result (10 + Field_Length + 1 + Index - 10) := Gz (Index);
+         end loop;
+         return Result;
+      end With_Long_Optional_Field;
    begin
       Assert (Status = Zlib.Ok, "test fixture gzip succeeds");
       declare
@@ -1648,6 +1668,22 @@ package body Archive_Suite.Core is
       begin
          Assert (Parsed.Status = Archive.Archives.Errors.Invalid_Format,
                  "gzip invalid header crc is rejected during indexing");
+      end;
+
+      declare
+         Parsed : constant Archive.Archives.Readers.Gzip.Gzip_Index_Result :=
+           Index_Gzip (With_Long_Optional_Field (Name_Field => True));
+      begin
+         Assert (Parsed.Status = Archive.Archives.Errors.Limit_Exceeded,
+                 "gzip original filename beyond metadata limit is rejected explicitly");
+      end;
+
+      declare
+         Parsed : constant Archive.Archives.Readers.Gzip.Gzip_Index_Result :=
+           Index_Gzip (With_Long_Optional_Field (Name_Field => False));
+      begin
+         Assert (Parsed.Status = Archive.Archives.Errors.Limit_Exceeded,
+                 "gzip comment beyond metadata limit is rejected explicitly");
       end;
 
       declare

@@ -193,7 +193,12 @@ package body Archive.Archives.Readers.Gzip is
          declare
             Len : constant Natural := U16 (Bytes, Pos);
          begin
-            if Len > Max_Field_Length or else not In_Range (Bytes, Pos + 2, Len) then
+            if Len > Max_Field_Length then
+               return (Name_Length => 0,
+                       Status => Archive.Archives.Errors.Limit_Exceeded,
+                       Info => <>,
+                       Name => "");
+            elsif not In_Range (Bytes, Pos + 2, Len) then
                return (Name_Length => 0,
                        Status => Archive.Archives.Errors.Invalid_Format,
                        Info => <>,
@@ -214,7 +219,7 @@ package body Archive.Archives.Readers.Gzip is
                while Pos < Bytes'Length and then Octet (Bytes, Pos) /= 0 loop
                   if Pos - Start >= Max_Field_Length then
                      return (Name_Length => 0,
-                             Status => Archive.Archives.Errors.Invalid_Format,
+                             Status => Archive.Archives.Errors.Limit_Exceeded,
                              Info => <>,
                              Name => "");
                   end if;
@@ -239,7 +244,7 @@ package body Archive.Archives.Readers.Gzip is
                while Pos < Bytes'Length and then Octet (Bytes, Pos) /= 0 loop
                   if Pos - Start >= Max_Field_Length then
                      return (Name_Length => 0,
-                             Status => Archive.Archives.Errors.Invalid_Format,
+                             Status => Archive.Archives.Errors.Limit_Exceeded,
                              Info => <>,
                              Name => "");
                   end if;
