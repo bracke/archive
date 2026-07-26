@@ -43,6 +43,27 @@ package Archive.Writes.Execution is
       Cancelled        : Boolean := False)
       return Archive.Writes.Results.Publish_Result;
 
+   function Publish_Zip_BZip2
+     (Destination_Path : String;
+      Plan             : Archive.Writes.Plans.Write_Plan;
+      Overwrite        : Boolean := False;
+      Cancelled        : Boolean := False)
+      return Archive.Writes.Results.Publish_Result;
+
+   function Publish_Zip_LZMA
+     (Destination_Path : String;
+      Plan             : Archive.Writes.Plans.Write_Plan;
+      Overwrite        : Boolean := False;
+      Cancelled        : Boolean := False)
+      return Archive.Writes.Results.Publish_Result;
+
+   function Publish_Zip_Zstd
+     (Destination_Path : String;
+      Plan             : Archive.Writes.Plans.Write_Plan;
+      Overwrite        : Boolean := False;
+      Cancelled        : Boolean := False)
+      return Archive.Writes.Results.Publish_Result;
+
    function Publish_Zip_Deflate
      (Destination_Path : String;
       Plan             : Archive.Writes.Plans.Write_Plan;

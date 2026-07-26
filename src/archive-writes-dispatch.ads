@@ -3,7 +3,12 @@ with Archive.Writes.Plans;
 with Archive.Writes.Results;
 
 package Archive.Writes.Dispatch is
-   type Zip_Method is (Zip_Stored_Method, Zip_Deflate_Method);
+   type Zip_Method is
+     (Zip_Stored_Method,
+      Zip_Deflate_Method,
+      Zip_BZip2_Method,
+      Zip_LZMA_Method,
+      Zip_Zstd_Method);
 
    function Publish
      (Format           : Archive.Archives.Formats.Format_Id;

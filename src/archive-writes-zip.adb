@@ -16,6 +16,7 @@ package body Archive.Writes.Zip is
    use Ada.Strings.Unbounded;
    use type Ada.Streams.Stream_Element_Offset;
    use type Interfaces.Unsigned_32;
+   use type Interfaces.Unsigned_64;
    use type Archive.Archives.Entries.Entry_Kind;
    use type Archive.Archives.Entries.Integrity_State;
    use type Archive.Types.Entry_Id;
@@ -23,6 +24,7 @@ package body Archive.Writes.Zip is
    use type Archive.Writes.Plans.Plan_Status;
    use type Archive.Writes.Plans.Write_Action;
    use type Archive.Archives.Errors.Error_Code;
+   use type Zlib.Status_Code;
 
    Max_Zip_Metadata : constant Natural := 8192;
    File_Chunk_Size : constant Ada.Streams.Stream_Element_Count := 32_768;
@@ -69,6 +71,7 @@ package body Archive.Writes.Zip is
      (Plan : Archive.Writes.Plans.Write_Plan;
       Sink : in out Output_Sink'Class;
       Deflate : Boolean;
+      External_Method : String := "";
       Source_Path : String := "";
       Source_Name : String := "")
       return Archive.Archives.Errors.Error_Code
@@ -78,6 +81,7 @@ package body Archive.Writes.Zip is
       Write_Status : Archive.Archives.Errors.Error_Code := Archive.Archives.Errors.Ok;
       Entry_Count : Natural := 0;
       Offset  : Interfaces.Unsigned_32 := 0;
+      External : constant Boolean := External_Method /= "";
 
       procedure Write_Buffer (Buffer : Byte_Buffer) is
          Data : Ada.Streams.Stream_Element_Array
@@ -429,13 +433,54 @@ package body Archive.Writes.Zip is
          Good : Boolean := False;
          Local_Offset : Interfaces.Unsigned_32;
       begin
-         Measure_File (Path, Size, CRC, Good);
-         if not Good then
-            OK := False;
-            return;
-         end if;
          Local_Offset := Offset;
-         if Deflate then
+
+         if External then
+            declare
+               Method : Interfaces.Unsigned_16 := 0;
+               External_CRC : Interfaces.Unsigned_32 := 0;
+               Uncompressed_Size : Interfaces.Unsigned_64 := 0;
+               Status : Zlib.Status_Code := Zlib.Ok;
+               Payload : constant Zlib.Byte_Array :=
+                 Zlib.Compress_ZIP_External_File
+                   (Path, External_Method, Method, External_CRC,
+                    Uncompressed_Size, Status);
+            begin
+               if Status /= Zlib.Ok
+                 or else Uncompressed_Size > Interfaces.Unsigned_64 (Interfaces.Unsigned_32'Last)
+                 or else Interfaces.Unsigned_64 (Payload'Length) >
+                   Interfaces.Unsigned_64 (Interfaces.Unsigned_32'Last)
+               then
+                  OK := False;
+                  Write_Status :=
+                    (if Status = Zlib.Unsupported_Method
+                     then Archive.Archives.Errors.Unsupported_Method
+                     else Archive.Archives.Errors.Write_Failed);
+                  return;
+               end if;
+
+               Size := Interfaces.Unsigned_32 (Uncompressed_Size);
+               CRC := Archive.Types.CRC32_Value (External_CRC);
+               Compressed_Size := Interfaces.Unsigned_32 (Payload'Length);
+               Write_Local_Header
+                 (Name, CRC, Size, Compressed_Size, Natural (Method), 0);
+               Write_Bytes (Payload, Good);
+               if not Good then
+                  OK := False;
+                  return;
+               end if;
+               Append_Central
+                 (Name, CRC, Size, Compressed_Size, Natural (Method), 0, Local_Offset);
+            end;
+         else
+            Measure_File (Path, Size, CRC, Good);
+            if not Good then
+               OK := False;
+               return;
+            end if;
+         end if;
+
+         if not External and then Deflate then
             Write_Local_Header (Name, 0, 0, 0, 8, 8);
             Deflate_File (Path, Compressed_Size, Good);
             if not Good then
@@ -444,7 +489,7 @@ package body Archive.Writes.Zip is
             end if;
             Write_Data_Descriptor (CRC, Compressed_Size, Size);
             Append_Central (Name, CRC, Size, Compressed_Size, 8, 8, Local_Offset);
-         else
+         elsif not External then
             Write_Local_Header (Name, CRC, Size, Size, 0, 0);
             Copy_File (Path, Good);
             if not Good then
@@ -522,6 +567,12 @@ package body Archive.Writes.Zip is
             Continue := OK;
          end Consume;
       begin
+         if External then
+            OK := False;
+            Write_Status := Archive.Archives.Errors.Unsupported_Method;
+            return;
+         end if;
+
          Write_Local_Header (Name, 0, 0, 0, (if Deflate then 8 else 0), 8);
          Start_Data := Offset;
 
@@ -742,5 +793,16 @@ package body Archive.Writes.Zip is
         (Plan, Sink, Deflate => True,
          Source_Path => Source_Path, Source_Name => Source_Name);
    end Build_Deflate_Stream;
+
+   function Build_External_Stream
+     (Plan        : Archive.Writes.Plans.Write_Plan;
+      Sink        : in out Output_Sink'Class;
+      Method_Name : String)
+      return Archive.Archives.Errors.Error_Code
+   is
+   begin
+      return Build_Stream
+        (Plan, Sink, Deflate => False, External_Method => Method_Name);
+   end Build_External_Stream;
 
 end Archive.Writes.Zip;

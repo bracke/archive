@@ -655,6 +655,7 @@ package body Archive.Writes.Execution is
      (Destination_Path : String;
       Plan             : Archive.Writes.Plans.Write_Plan;
       Deflate          : Boolean;
+      External_Method  : String := "";
       Source_Path      : String := "";
       Source_Name      : String := "";
       Overwrite        : Boolean := False;
@@ -677,7 +678,10 @@ package body Archive.Writes.Execution is
       Ada.Directories.Create_Path (Root);
       Ada.Streams.Stream_IO.Create (Sink.File, Ada.Streams.Stream_IO.Out_File, Temp);
       Build_Status :=
-        (if Deflate
+        (if External_Method /= ""
+         then Archive.Writes.Zip.Build_External_Stream
+           (Plan, Sink, External_Method)
+         elsif Deflate
          then
            (if Source_Path = ""
             then Archive.Writes.Zip.Build_Deflate_Stream (Plan, Sink)
@@ -781,6 +785,61 @@ package body Archive.Writes.Execution is
          Overwrite => Overwrite,
          Cancelled => Cancelled);
    end Publish_Zip_Deflate;
+
+   function Publish_Zip_External
+     (Destination_Path : String;
+      Plan             : Archive.Writes.Plans.Write_Plan;
+      Method_Name      : String;
+      Overwrite        : Boolean := False;
+      Cancelled        : Boolean := False)
+      return Archive.Writes.Results.Publish_Result
+   is
+   begin
+      return Publish_Zip
+        (Destination_Path, Plan, Deflate => False,
+         External_Method => Method_Name,
+         Overwrite => Overwrite,
+         Cancelled => Cancelled);
+   end Publish_Zip_External;
+
+   function Publish_Zip_BZip2
+     (Destination_Path : String;
+      Plan             : Archive.Writes.Plans.Write_Plan;
+      Overwrite        : Boolean := False;
+      Cancelled        : Boolean := False)
+      return Archive.Writes.Results.Publish_Result
+   is
+   begin
+      return Publish_Zip_External
+        (Destination_Path, Plan, "BZip2",
+         Overwrite => Overwrite, Cancelled => Cancelled);
+   end Publish_Zip_BZip2;
+
+   function Publish_Zip_LZMA
+     (Destination_Path : String;
+      Plan             : Archive.Writes.Plans.Write_Plan;
+      Overwrite        : Boolean := False;
+      Cancelled        : Boolean := False)
+      return Archive.Writes.Results.Publish_Result
+   is
+   begin
+      return Publish_Zip_External
+        (Destination_Path, Plan, "LZMA",
+         Overwrite => Overwrite, Cancelled => Cancelled);
+   end Publish_Zip_LZMA;
+
+   function Publish_Zip_Zstd
+     (Destination_Path : String;
+      Plan             : Archive.Writes.Plans.Write_Plan;
+      Overwrite        : Boolean := False;
+      Cancelled        : Boolean := False)
+      return Archive.Writes.Results.Publish_Result
+   is
+   begin
+      return Publish_Zip_External
+        (Destination_Path, Plan, "ZSTD",
+         Overwrite => Overwrite, Cancelled => Cancelled);
+   end Publish_Zip_Zstd;
 
    function Publish_Tar_Internal
      (Destination_Path : String;

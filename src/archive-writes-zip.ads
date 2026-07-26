@@ -33,4 +33,10 @@ package Archive.Writes.Zip is
       Source_Path : String;
       Source_Name : String := "")
       return Archive.Archives.Errors.Error_Code;
+
+   function Build_External_Stream
+     (Plan        : Archive.Writes.Plans.Write_Plan;
+      Sink        : in out Output_Sink'Class;
+      Method_Name : String)
+      return Archive.Archives.Errors.Error_Code;
 end Archive.Writes.Zip;

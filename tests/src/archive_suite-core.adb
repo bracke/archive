@@ -6081,6 +6081,9 @@ package body Archive_Suite.Core is
       Root : constant String := "obj/write-dispatch-test";
       Host_File : constant String := Root & "/input.txt";
       Zip_Target : constant String := Root & "/dispatch-stream.zip";
+      Zip_Bzip2_Target : constant String := Root & "/dispatch-stream-bzip2.zip";
+      Zip_LZMA_Target : constant String := Root & "/dispatch-stream-lzma.zip";
+      Zip_Zstd_Target : constant String := Root & "/dispatch-stream-zstd.zip";
       Tar_Gz_Target : constant String := Root & "/dispatch-stream.tar.gz";
       Seven_Zip_Target : constant String := Root & "/dispatch-stream.7z";
       Bzip2_Target : constant String := Root & "/dispatch-stream.bz2";
@@ -6091,12 +6094,41 @@ package body Archive_Suite.Core is
          2 => Ada.Streams.Stream_Element (Character'Pos ('k'))];
       Physical : Archive.Archives.Entries.Entry_Vectors.Vector;
       Requests : Archive.Writes.Plans.Write_Request_Vectors.Vector;
+
+      function Method_For
+        (Index : Archive.Archives.Index.Archive_Index;
+         Path  : String)
+         return Archive.Archives.Entries.Compression_Method
+      is
+      begin
+         for Raw_Id in 1 .. Archive.Archives.Index.Entry_Count (Index) loop
+            declare
+               Item : constant Archive.Archives.Entries.Archive_Entry :=
+                 Archive.Archives.Index.Entry_For
+                   (Index, Archive.Types.Entry_Id (Raw_Id));
+            begin
+               if To_String (Item.Original_Path) = Path then
+                  return Item.Method;
+               end if;
+            end;
+         end loop;
+         return Archive.Archives.Entries.Unknown_Compression;
+      end Method_For;
    begin
       if not Ada.Directories.Exists (Root) then
          Ada.Directories.Create_Path (Root);
       end if;
       if Ada.Directories.Exists (Zip_Target) then
          Ada.Directories.Delete_File (Zip_Target);
+      end if;
+      if Ada.Directories.Exists (Zip_Bzip2_Target) then
+         Ada.Directories.Delete_File (Zip_Bzip2_Target);
+      end if;
+      if Ada.Directories.Exists (Zip_LZMA_Target) then
+         Ada.Directories.Delete_File (Zip_LZMA_Target);
+      end if;
+      if Ada.Directories.Exists (Zip_Zstd_Target) then
+         Ada.Directories.Delete_File (Zip_Zstd_Target);
       end if;
       if Ada.Directories.Exists (Tar_Gz_Target) then
          Ada.Directories.Delete_File (Tar_Gz_Target);
@@ -6150,6 +6182,24 @@ package body Archive_Suite.Core is
               Zip_Target,
               Plan,
               Method => Archive.Writes.Dispatch.Zip_Deflate_Method);
+         Zip_Bzip2_Published : constant Archive.Writes.Results.Publish_Result :=
+           Archive.Writes.Dispatch.Publish
+             (Archive.Archives.Formats.Zip_Format,
+              Zip_Bzip2_Target,
+              Plan,
+              Method => Archive.Writes.Dispatch.Zip_BZip2_Method);
+         Zip_LZMA_Published : constant Archive.Writes.Results.Publish_Result :=
+           Archive.Writes.Dispatch.Publish
+             (Archive.Archives.Formats.Zip_Format,
+              Zip_LZMA_Target,
+              Plan,
+              Method => Archive.Writes.Dispatch.Zip_LZMA_Method);
+         Zip_Zstd_Published : constant Archive.Writes.Results.Publish_Result :=
+           Archive.Writes.Dispatch.Publish
+             (Archive.Archives.Formats.Zip_Format,
+              Zip_Zstd_Target,
+              Plan,
+              Method => Archive.Writes.Dispatch.Zip_Zstd_Method);
          Tar_Gz_Published : constant Archive.Writes.Results.Publish_Result :=
            Archive.Writes.Dispatch.Publish
              (Archive.Archives.Formats.Tar_GZip_Format,
@@ -6172,6 +6222,12 @@ package body Archive_Suite.Core is
               Plan);
          Zip_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
            Archive.Archives.Readers.Dispatch.Open_File (Zip_Target);
+         Zip_Bzip2_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+           Archive.Archives.Readers.Dispatch.Open_File (Zip_Bzip2_Target);
+         Zip_LZMA_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+           Archive.Archives.Readers.Dispatch.Open_File (Zip_LZMA_Target);
+         Zip_Zstd_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+           Archive.Archives.Readers.Dispatch.Open_File (Zip_Zstd_Target);
          Tar_Gz_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
            Archive.Archives.Readers.Dispatch.Open_File
              (Tar_Gz_Target, Source_Name => Tar_Gz_Target, Retain_Backing => True);
@@ -6188,6 +6244,15 @@ package body Archive_Suite.Core is
            (Zip_Published.Status = Archive.Writes.Results.Write_Completed,
             "write dispatch streams zip publication to file");
          Assert
+           (Zip_Bzip2_Published.Status = Archive.Writes.Results.Write_Completed,
+            "write dispatch publishes zip bzip2 payload through zlib");
+         Assert
+           (Zip_LZMA_Published.Status = Archive.Writes.Results.Write_Completed,
+            "write dispatch publishes zip lzma payload through zlib");
+         Assert
+           (Zip_Zstd_Published.Status = Archive.Writes.Results.Write_Completed,
+            "write dispatch publishes zip zstd payload through zlib");
+         Assert
            (Tar_Gz_Published.Status = Archive.Writes.Results.Write_Completed,
             "write dispatch streams tar.gz publication to file");
          Assert
@@ -6203,6 +6268,21 @@ package body Archive_Suite.Core is
            (Zip_Opened.Status = Archive.Archives.Errors.Ok
             and then Zip_Opened.Format = Archive.Archives.Formats.Zip_Format,
             "streamed dispatch zip publication reopens");
+         Assert
+           (Zip_Bzip2_Opened.Status = Archive.Archives.Errors.Ok
+            and then Method_For (Zip_Bzip2_Opened.Index, "docs/readme.txt") =
+              Archive.Archives.Entries.BZip2_Compression,
+            "write dispatch zip bzip2 publication reopens with method 12");
+         Assert
+           (Zip_LZMA_Opened.Status = Archive.Archives.Errors.Ok
+            and then Method_For (Zip_LZMA_Opened.Index, "docs/readme.txt") =
+              Archive.Archives.Entries.LZMA_Compression,
+            "write dispatch zip lzma publication reopens with method 14");
+         Assert
+           (Zip_Zstd_Opened.Status = Archive.Archives.Errors.Ok
+            and then Method_For (Zip_Zstd_Opened.Index, "docs/readme.txt") =
+              Archive.Archives.Entries.Zstd_Compression,
+            "write dispatch zip zstd publication reopens with method 20 or 93");
          Assert
            (Tar_Gz_Opened.Status = Archive.Archives.Errors.Ok
             and then Tar_Gz_Opened.Format = Archive.Archives.Formats.Tar_GZip_Format,

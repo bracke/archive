@@ -14,7 +14,7 @@ Current V1 support:
 | TAR.GZ / TGZ | supported | supported | supported | supported | supported by save-in-place and save-as publication | `zlib` + `tarlib` |
 | ZIP stored | supported | supported | supported | supported | supported by save-in-place and save-as publication | archive ZIP adapter |
 | ZIP DEFLATE | supported | supported | supported | supported | supported by save-in-place and save-as publication | archive ZIP adapter + `zlib` |
-| ZIP BZip2 / LZMA / Zstandard | supported | supported | supported | supported | rewritten through stored/Deflate ZIP publication | archive ZIP adapter + `zlib` |
+| ZIP BZip2 / LZMA / Zstandard | supported | supported | supported | supported | supported for host-file publication | archive ZIP adapter + `zlib` |
 | gzip | supported | supported | supported | supported | supported single-file replacement | `zlib` |
 | 7z | supported for the native zlib-backed subset | supported | supported | supported | supported by stored file-list publication | `zlib` |
 | bzip2 | supported as one logical file | supported | supported | supported | supported single-file replacement | `zlib` |
