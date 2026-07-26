@@ -10,6 +10,7 @@ with Archive.Archives.Readers.Iso;
 with Archive.Archives.Readers.Seven_Zip;
 with Archive.Archives.Readers.Tar;
 with Archive.Archives.Readers.Zip;
+with Archive.Archives.Readers.Xz;
 with Archive.Archives.Readers.Zstd;
 with Archive.Writes.Execution;
 
@@ -207,6 +208,36 @@ package body Archive.Archives.Readers.Dispatch is
             declare
                Parsed : constant Archive.Archives.Readers.Zstd.Zstd_Index_Result :=
                  Archive.Archives.Readers.Zstd.Index_File
+                   (Path,
+                    Max_Bytes,
+                    Source_Name =>
+                      (if Source_Name'Length > 0 then Source_Name else Path));
+               Entries : Archive.Archives.Entries.Entry_Vectors.Vector;
+            begin
+               Result.Status := Parsed.Status;
+               if Parsed.Status = Archive.Archives.Errors.Ok then
+                  Entries.Append (Parsed.Item);
+                  Result.Index := Archive.Archives.Index.Build (Entries).Index;
+               end if;
+               return Result;
+            end;
+         elsif Detection.Format = Archive.Archives.Formats.Xz_Format then
+            declare
+               Size : constant Ada.Directories.File_Size := Ada.Directories.Size (Path);
+               Limit : constant Ada.Directories.File_Size :=
+                 Ada.Directories.File_Size (Max_Bytes);
+            begin
+               if Size > Limit
+                 or else Size > Ada.Directories.File_Size (Natural'Last)
+               then
+                  Result.Status := Archive.Archives.Errors.Limit_Exceeded;
+                  return Result;
+               end if;
+            end;
+
+            declare
+               Parsed : constant Archive.Archives.Readers.Xz.Xz_Index_Result :=
+                 Archive.Archives.Readers.Xz.Index_File
                    (Path,
                     Max_Bytes,
                     Source_Name =>
@@ -457,6 +488,24 @@ package body Archive.Archives.Readers.Dispatch is
 
                Payload : constant Archive.Archives.Readers.Zstd.Stream_Result :=
                  Archive.Archives.Readers.Zstd.Stream_Payload_File
+                   (Path, 256 * 1_024 * 1_024, Item, Forward'Access);
+            begin
+               return (Status => Payload.Status,
+                       Integrity => Payload.Integrity,
+                       Bytes_Written => Payload.Bytes_Written);
+            end;
+
+         when Archive.Archives.Formats.Xz_Format =>
+            declare
+               procedure Forward
+                 (Bytes : Zlib.Byte_Array;
+                  Continue : in out Boolean) is
+               begin
+                  Consumer.all (Bytes, Continue);
+               end Forward;
+
+               Payload : constant Archive.Archives.Readers.Xz.Stream_Result :=
+                 Archive.Archives.Readers.Xz.Stream_Payload_File
                    (Path, 256 * 1_024 * 1_024, Item, Forward'Access);
             begin
                return (Status => Payload.Status,

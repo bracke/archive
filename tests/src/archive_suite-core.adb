@@ -28,6 +28,7 @@ with Archive.Archives.Readers.Iso;
 with Archive.Archives.Readers.Dispatch;
 with Archive.Archives.Readers.Tar;
 with Archive.Archives.Readers.Zip;
+with Archive.Archives.Readers.Xz;
 with Archive.Archives.Streams;
 with Archive.Commands;
 with Archive.Compression.Zlib;
@@ -501,6 +502,9 @@ package body Archive_Suite.Core is
       Cab : constant Zlib.Byte_Array :=
         [1 => Character'Pos ('M'), 2 => Character'Pos ('S'),
          3 => Character'Pos ('C'), 4 => Character'Pos ('F')];
+      Xz : constant Zlib.Byte_Array :=
+        [1 => 16#FD#, 2 => 16#37#, 3 => 16#7A#,
+         4 => 16#58#, 5 => 16#5A#, 6 => 16#00#];
       Cpio : constant Zlib.Byte_Array :=
         [1 => Character'Pos ('0'), 2 => Character'Pos ('7'),
          3 => Character'Pos ('0'), 4 => Character'Pos ('7'),
@@ -540,6 +544,12 @@ package body Archive_Suite.Core is
         (R.Status = Archive.Archives.Formats.Detected,
          "zstd signature is detected for the supported zlib-backed single-file reader");
       Assert (R.Format = Archive.Archives.Formats.Zstd_Format, "zstd format id");
+
+      R := Detect_Bytes (Xz);
+      Assert
+        (R.Status = Archive.Archives.Formats.Detected,
+         "xz signature is detected for the supported zlib-backed single-file reader");
+      Assert (R.Format = Archive.Archives.Formats.Xz_Format, "xz format id");
 
       R := Detect_Bytes (Cab);
       Assert (R.Status = Archive.Archives.Formats.Detected, "cab signature is detected");
@@ -597,6 +607,9 @@ package body Archive_Suite.Core is
                  "bzip2 supports single logical-file creation only");
          Assert (Zstd_Caps.Can_Create and then not Zstd_Caps.Can_Add_Entries,
                  "zstd supports single logical-file creation only");
+         Assert (Xz.Can_Index and then Xz.Can_Open_Entry_Streams
+                 and then not Xz.Can_Create,
+                 "xz supports read workflows without advertising write capability");
          Assert (Ar_Caps.Can_Index and then Ar_Caps.Can_Open_Entry_Streams
                  and then not Ar_Caps.Can_Create,
                  "ar supports read workflows without advertising write capability");
@@ -612,8 +625,6 @@ package body Archive_Suite.Core is
                  and then Iso_Caps.Supports_Random_Access
                  and then not Iso_Caps.Can_Create,
                  "iso supports read workflows without advertising write capability");
-         Assert (not Xz.Can_Create and then not Xz.Can_Index,
-                 "unsupported formats do not advertise write capability");
          Assert
            (Archive.Archives.Formats.Description_Key (Archive.Archives.Formats.Zip_Format) =
             "format.zip.description",
@@ -2703,6 +2714,8 @@ package body Archive_Suite.Core is
       Zstd_Status : Zlib.Status_Code;
       Zstd : constant Zlib.Byte_Array :=
         Zlib.Zstd_Encoder.Encode (Plain, Zstd_Status);
+      Xz_Status : Zlib.Status_Code;
+      Xz : constant Zlib.Byte_Array := Zlib.XZ_LZMA2 (Plain, Xz_Status);
       Tar : constant Zlib.Byte_Array := One_File_Tar;
       Ar : constant Zlib.Byte_Array := One_File_Ar;
       Cab : constant Zlib.Byte_Array := One_File_Cab;
@@ -2715,6 +2728,7 @@ package body Archive_Suite.Core is
       Assert (Seven_Status = Zlib.Ok, "dispatch 7z fixture builds");
       Assert (Bzip2_Status = Zlib.Ok, "dispatch bzip2 fixture builds");
       Assert (Zstd_Status = Zlib.Ok, "dispatch zstd fixture builds");
+      Assert (Xz_Status = Zlib.Ok, "dispatch xz fixture builds");
 
       declare
          Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
@@ -2964,6 +2978,28 @@ package body Archive_Suite.Core is
             and then Payload.Bytes_Written = 3
             and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('b')),
             "bzip2 dispatch payload reads through zlib");
+      end;
+
+      declare
+         Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+           Open_Dispatch (Xz, Source_Name => "sample.txt.xz");
+         Item : constant Archive.Archives.Entries.Archive_Entry :=
+           Archive.Archives.Index.Entry_For (Opened.Index, 2);
+         Payload : constant Test_Stream_Result :=
+           Stream_Dispatch_Payload (Xz, "sample.txt.xz", Item);
+      begin
+         Assert (Opened.Status = Archive.Archives.Errors.Ok,
+                 "xz dispatch succeeds through zlib decoder");
+         Assert (Opened.Format = Archive.Archives.Formats.Xz_Format,
+                 "xz dispatch records format");
+         Assert (Archive.Archives.Index.Physical_Count (Opened.Index) = 1,
+                 "xz dispatch publishes logical entry");
+         Assert
+           (Payload.Status = Archive.Archives.Errors.Ok
+            and then Payload.Integrity = Archive.Archives.Entries.Verified
+            and then Payload.Bytes_Written = 3
+            and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('b')),
+            "xz dispatch payload reads through zlib");
       end;
    end Test_Reader_Dispatch;
 

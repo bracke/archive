@@ -854,11 +854,15 @@ procedure Check_All is
       Require_Document_Text
         ("docs/FORMAT_SUPPORT.md", "bounded stored and MSZIP CAB folder");
       Require_Document_Text
+        ("docs/FORMAT_SUPPORT.md", "zlib-backed XZ one-block LZMA2 decoding");
+      Require_Document_Text
         ("README.md", "supported for native zlib-backed layouts");
       Require_Document_Text
         ("README.md", "ISO 9660");
       Require_Document_Text
         ("README.md", "CAB stored / MSZIP");
+      Require_Document_Text
+        ("README.md", "one-block LZMA2 streams");
       Require_Document_Text
         ("share/archive.catalog", "native zlib-backed layouts");
       Require_Document_Text
@@ -1134,9 +1138,13 @@ procedure Check_All is
       Forbid_Document_Text
         ("README.md", "XZ, CAB, split ZIP");
       Forbid_Document_Text
+        ("README.md", "RAR, XZ, split ZIP");
+      Forbid_Document_Text
         ("docs/FORMAT_SUPPORT.md", "native zlib-backed subset");
       Forbid_Document_Text
         ("docs/FORMAT_SUPPORT.md", "- CAB");
+      Forbid_Document_Text
+        ("docs/FORMAT_SUPPORT.md", "- XZ");
       Forbid_Document_Text
         ("docs/FORMAT_SUPPORT.md", "- ISO");
       Forbid_Document_Text
@@ -1151,6 +1159,8 @@ procedure Check_All is
         ("docs/PRODUCT_SCOPE.md", "CAB," & ASCII.LF & "ISO");
       Forbid_Document_Text
         ("docs/PRODUCT_SCOPE.md", "XZ, CAB");
+      Forbid_Document_Text
+        ("docs/PRODUCT_SCOPE.md", "RAR, XZ");
       Forbid_Document_Text
         ("docs/ai-implementation-guide.md", "supported native subset");
       Forbid_Document_Text
@@ -2253,6 +2263,8 @@ procedure Check_All is
          return Archive.Archives.Formats.Seven_Zip_Format;
       elsif Value = "Zstd_Format" then
          return Archive.Archives.Formats.Zstd_Format;
+      elsif Value = "Xz_Format" then
+         return Archive.Archives.Formats.Xz_Format;
       elsif Value = "BZip2_Format" then
          return Archive.Archives.Formats.BZip2_Format;
       elsif Value = "Rar_Format" then
@@ -2329,6 +2341,8 @@ procedure Check_All is
          return [16#37#, 16#7A#, 16#BC#, 16#AF#, 16#27#, 16#1C#];
       elsif Value = "zstd-signature" then
          return [16#28#, 16#B5#, 16#2F#, 16#FD#];
+      elsif Value = "xz-signature" then
+         return [16#FD#, 16#37#, 16#7A#, 16#58#, 16#5A#, 16#00#];
       elsif Value = "bzip2-signature" then
          return [Character'Pos ('B'), Character'Pos ('Z'), Character'Pos ('h')];
       elsif Value = "rar-signature" then
