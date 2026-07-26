@@ -44,6 +44,7 @@ procedure Check_All is
    use type Ada.Directories.File_Kind;
    use type Ada.Streams.Stream_Element_Offset;
    use type Interfaces.Unsigned_32;
+   use type Interfaces.Unsigned_64;
 
    function Tests_Root return String is
       Here : constant String := Ada.Directories.Current_Directory;
@@ -727,6 +728,10 @@ procedure Check_All is
       Require_Document_Text
         ("README.md", "docs/testing-guide.md");
       Require_Document_Text
+        ("README.md", "docs/settings-architecture.md");
+      Require_Document_Text
+        ("README.md", "docs/package-contracts.md");
+      Require_Document_Text
         ("README.md", "tests/bin/check_all");
       Require_Document_Text
         ("README.md", "bin/archive --live-smoke");
@@ -752,6 +757,18 @@ procedure Check_All is
         ("docs/FILES_MAPPING.md", "`Archive.Commands` is the central registry and executor");
       Require_Document_Text
         ("docs/FILES_MAPPING.md", "safe archive write planning");
+      Require_Document_Text
+        ("docs/FILES_MAPPING.md", "Startup and shutdown mapping");
+      Require_Document_Text
+        ("docs/FILES_MAPPING.md", "`Files.Model` maps to `Archive.Model`");
+      Require_Document_Text
+        ("docs/FILES_MAPPING.md", "`Files.Settings` maps to `Archive.Settings`");
+      Require_Document_Text
+        ("docs/FILES_MAPPING.md", "`Files.Localization` maps to `Archive.Localization`");
+      Require_Document_Text
+        ("docs/FILES_MAPPING.md", "`Guikit.Settings_Panel`");
+      Require_Document_Text
+        ("docs/FILES_MAPPING.md", "No private `files` package");
       Require_Document_Text
         ("docs/FORMAT_SUPPORT.md", "TAR.GZ / TGZ");
       Require_Document_Text
@@ -916,11 +933,39 @@ procedure Check_All is
       Require_Document_Text
         ("docs/FILES_MAPPING.md", "recent archives persist stable source paths");
       Require_Document_Text
+        ("docs/settings-architecture.md", "`Archive.Settings` is the only settings subsystem");
+      Require_Document_Text
+        ("docs/settings-architecture.md", "Schema 0 and schema 1 inputs migrate");
+      Require_Document_Text
+        ("docs/settings-architecture.md", "Loading an invalid settings file returns compiled defaults");
+      Require_Document_Text
+        ("docs/settings-architecture.md", "`tests/fixtures/settings/`");
+      Require_Document_Text
+        ("docs/package-contracts.md", "`Archive.Commands` is the only user-action executor");
+      Require_Document_Text
+        ("docs/package-contracts.md", "`Archive.Archives.Readers.Tar` consumes public `tarlib` reader APIs only");
+      Require_Document_Text
+        ("docs/package-contracts.md", "`Archive.Tasking.Services.Event_Bridge` is the protected worker-to-main");
+      Require_Document_Text
+        ("docs/package-contracts.md", "Do not parse TAR outside `tarlib`");
+      Require_Document_Text
         ("docs/PRODUCT_SCOPE.md", "Open Recent availability");
       Require_Document_Text
         ("docs/PRODUCT_SCOPE.md", "status bar snapshot carries localized lifecycle text");
       Require_Document_Text
         ("docs/phase-0-dependency-audit.md", "public TAR reading and writing surfaces");
+      Require_Document_Text
+        ("docs/phase-0-dependency-audit.md", "`Tarlib.Readers`");
+      Require_Document_Text
+        ("docs/phase-0-dependency-audit.md", "`Tarlib.Writers`");
+      Require_Document_Text
+        ("docs/phase-0-dependency-audit.md", "`Guikit.Item_Grid`");
+      Require_Document_Text
+        ("docs/phase-0-dependency-audit.md", "Messages.Runtime.Initialize");
+      Require_Document_Text
+        ("docs/phase-0-dependency-audit.md", "`Project_Tools.Processes`");
+      Require_Document_Text
+        ("docs/phase-0-dependency-audit.md", "Exact Build And Test Commands");
       Require_Document_Text
         ("docs/check-all-workflow.md", "product-scope documentation validation");
       Require_Document_Text
@@ -1184,6 +1229,19 @@ procedure Check_All is
       Put32_U (Bytes, Offset, Interfaces.Unsigned_32 (Value));
    end Put32;
 
+   procedure Put64_U
+     (Bytes  : in out Zlib.Byte_Array;
+      Offset : Natural;
+      Value  : Interfaces.Unsigned_64)
+   is
+      V : Interfaces.Unsigned_64 := Value;
+   begin
+      for I in 0 .. 7 loop
+         Bytes (Bytes'First + Offset + I) := Zlib.Byte (V mod 256);
+         V := V / 256;
+      end loop;
+   end Put64_U;
+
    procedure Put_Text (Bytes : in out Zlib.Byte_Array; Offset : Natural; Text : String) is
    begin
       for Index in Text'Range loop
@@ -1196,6 +1254,19 @@ procedure Check_All is
      ([1 => Zlib.Byte (Character'Pos ('a')),
        2 => Zlib.Byte (Character'Pos ('b')),
        3 => Zlib.Byte (Character'Pos ('c'))]);
+
+   function CRC32_String (Text : String) return Interfaces.Unsigned_32 is
+      Bytes : Zlib.Byte_Array (1 .. Text'Length);
+      State : Archive.Verification.CRC32.CRC32_State :=
+        Archive.Verification.CRC32.Initial;
+   begin
+      for Index in Text'Range loop
+         Bytes (Bytes'First + Index - Text'First) :=
+           Zlib.Byte (Character'Pos (Text (Index)));
+      end loop;
+      Archive.Verification.CRC32.Update (State, Bytes);
+      return Interfaces.Unsigned_32 (Archive.Verification.CRC32.Final (State));
+   end CRC32_String;
 
    function Generated_Tar return Zlib.Byte_Array is
       Sink   : aliased Memory_Tar_Sink;
@@ -1229,6 +1300,55 @@ procedure Check_All is
       return Tar_Sink_Bytes (Sink);
    end Generated_Tar;
 
+   function Generated_Tar_Duplicate_Path return Zlib.Byte_Array is
+      Sink   : aliased Memory_Tar_Sink;
+      Writer : Tarlib.Writers.Writer;
+      Status : Tarlib.Errors.Status;
+      One    : constant Ada.Streams.Stream_Element_Array :=
+        [1 => Ada.Streams.Stream_Element (Character'Pos ('1'))];
+      Two    : constant Ada.Streams.Stream_Element_Array :=
+        [1 => Ada.Streams.Stream_Element (Character'Pos ('2'))];
+   begin
+      Tarlib.Writers.Initialize (Writer, Sink, Status);
+      if Status.Code /= Tarlib.Errors.Success then
+         Fail ("generated duplicate TAR fixture writer initialization failed");
+      end if;
+
+      Tarlib.Writers.Begin_File
+        (Writer, "dup.txt", Tarlib.Byte_Count (One'Length), Status);
+      if Status.Code /= Tarlib.Errors.Success then
+         Fail ("generated duplicate TAR first entry start failed");
+      end if;
+      Tarlib.Writers.Write (Writer, One, Status);
+      if Status.Code /= Tarlib.Errors.Success then
+         Fail ("generated duplicate TAR first payload write failed");
+      end if;
+      Tarlib.Writers.End_Entry (Writer, Status);
+      if Status.Code /= Tarlib.Errors.Success then
+         Fail ("generated duplicate TAR first entry end failed");
+      end if;
+
+      Tarlib.Writers.Begin_File
+        (Writer, "dup.txt", Tarlib.Byte_Count (Two'Length), Status);
+      if Status.Code /= Tarlib.Errors.Success then
+         Fail ("generated duplicate TAR second entry start failed");
+      end if;
+      Tarlib.Writers.Write (Writer, Two, Status);
+      if Status.Code /= Tarlib.Errors.Success then
+         Fail ("generated duplicate TAR second payload write failed");
+      end if;
+      Tarlib.Writers.End_Entry (Writer, Status);
+      if Status.Code /= Tarlib.Errors.Success then
+         Fail ("generated duplicate TAR second entry end failed");
+      end if;
+
+      Tarlib.Writers.Finish (Writer, Status);
+      if Status.Code /= Tarlib.Errors.Success then
+         Fail ("generated duplicate TAR fixture finish failed");
+      end if;
+      return Tar_Sink_Bytes (Sink);
+   end Generated_Tar_Duplicate_Path;
+
    function Generated_Gzip return Zlib.Byte_Array is
       Status : Zlib.Status_Code;
       Result : constant Zlib.Byte_Array := Zlib.GZip (Payload_ABC, Zlib.Fixed, Status);
@@ -1238,6 +1358,34 @@ procedure Check_All is
       end if;
       return Result;
    end Generated_Gzip;
+
+   function Generated_Gzip_Empty return Zlib.Byte_Array is
+      Status : Zlib.Status_Code;
+      Empty  : constant Zlib.Byte_Array (1 .. 0) := [];
+      Result : constant Zlib.Byte_Array := Zlib.GZip (Empty, Zlib.Fixed, Status);
+   begin
+      if Status /= Zlib.Ok then
+         Fail ("generated empty gzip fixture failed");
+      end if;
+      return Result;
+   end Generated_Gzip_Empty;
+
+   function Generated_Gzip_Bad_Header_CRC return Zlib.Byte_Array is
+      Base   : constant Zlib.Byte_Array := Generated_Gzip;
+      Result : Zlib.Byte_Array (1 .. Base'Length + 2);
+   begin
+      for Offset in 0 .. 9 loop
+         Result (Result'First + Offset) := Base (Base'First + Offset);
+      end loop;
+      Result (Result'First + 3) :=
+        Zlib.Byte (Natural (Result (Result'First + 3)) + 16#02#);
+      Result (Result'First + 10) := 0;
+      Result (Result'First + 11) := 0;
+      for Offset in 10 .. Base'Length - 1 loop
+         Result (Result'First + Offset + 2) := Base (Base'First + Offset);
+      end loop;
+      return Result;
+   end Generated_Gzip_Bad_Header_CRC;
 
    function Generated_Gzip_Bad_Trailer return Zlib.Byte_Array is
       Result : Zlib.Byte_Array := Generated_Gzip;
@@ -1323,6 +1471,189 @@ procedure Check_All is
       return Bytes;
    end Generated_Zip_Local_Size_Mismatch;
 
+   function Generated_Zip_Data_Descriptor return Zlib.Byte_Array is
+      Name  : constant String := "a.txt";
+      Plain : constant Zlib.Byte_Array := Payload_ABC;
+      Payload : constant Zlib.Byte_Array := Plain;
+      CRC : constant Natural := 16#3524_41C2#;
+      Flags : constant Natural := 8;
+      Method : constant Natural := 0;
+      Local_Offset : constant Natural := 0;
+      Descriptor_Offset : constant Natural := 30 + Name'Length + Payload'Length;
+      Central_Offset : constant Natural := Descriptor_Offset + 16;
+      Central_Size : constant Natural := 46 + Name'Length;
+      EOCD_Offset : constant Natural := Central_Offset + Central_Size;
+      Total : constant Natural := EOCD_Offset + 22;
+      Bytes : Zlib.Byte_Array (1 .. Total) := [others => 0];
+   begin
+      Put32 (Bytes, Local_Offset, 16#0403_4B50#);
+      Put16 (Bytes, Local_Offset + 6, Flags);
+      Put16 (Bytes, Local_Offset + 8, Method);
+      Put16 (Bytes, Local_Offset + 26, Name'Length);
+      Put_Text (Bytes, Local_Offset + 30, Name);
+      for Index in Payload'Range loop
+         Bytes (Bytes'First + Local_Offset + 30 + Name'Length + Index - Payload'First) :=
+           Payload (Index);
+      end loop;
+
+      Put32 (Bytes, Descriptor_Offset, 16#0807_4B50#);
+      Put32 (Bytes, Descriptor_Offset + 4, CRC);
+      Put32 (Bytes, Descriptor_Offset + 8, Payload'Length);
+      Put32 (Bytes, Descriptor_Offset + 12, Plain'Length);
+
+      Put32 (Bytes, Central_Offset, 16#0201_4B50#);
+      Put16 (Bytes, Central_Offset + 8, Flags);
+      Put16 (Bytes, Central_Offset + 10, Method);
+      Put32 (Bytes, Central_Offset + 16, CRC);
+      Put32 (Bytes, Central_Offset + 20, Payload'Length);
+      Put32 (Bytes, Central_Offset + 24, Plain'Length);
+      Put16 (Bytes, Central_Offset + 28, Name'Length);
+      Put32 (Bytes, Central_Offset + 42, Local_Offset);
+      Put_Text (Bytes, Central_Offset + 46, Name);
+
+      Put32 (Bytes, EOCD_Offset, 16#0605_4B50#);
+      Put16 (Bytes, EOCD_Offset + 8, 1);
+      Put16 (Bytes, EOCD_Offset + 10, 1);
+      Put32 (Bytes, EOCD_Offset + 12, Central_Size);
+      Put32 (Bytes, EOCD_Offset + 16, Central_Offset);
+      return Bytes;
+   end Generated_Zip_Data_Descriptor;
+
+   function Generated_Zip_ZIP64 return Zlib.Byte_Array is
+      Name  : constant String := "a.txt";
+      Plain : constant Zlib.Byte_Array := Payload_ABC;
+      Payload : constant Zlib.Byte_Array := Plain;
+      CRC : constant Natural := 16#3524_41C2#;
+      Extra_Len : constant Natural := 20;
+      Local_Offset : constant Natural := 0;
+      Central_Offset : constant Natural := 30 + Name'Length + Extra_Len + Payload'Length;
+      Central_Size : constant Natural := 46 + Name'Length + Extra_Len;
+      EOCD_Offset : constant Natural := Central_Offset + Central_Size;
+      Total : constant Natural := EOCD_Offset + 22;
+      Bytes : Zlib.Byte_Array (1 .. Total) := [others => 0];
+   begin
+      Put32 (Bytes, Local_Offset, 16#0403_4B50#);
+      Put32 (Bytes, Local_Offset + 14, CRC);
+      Put32_U (Bytes, Local_Offset + 18, 16#FFFF_FFFF#);
+      Put32_U (Bytes, Local_Offset + 22, 16#FFFF_FFFF#);
+      Put16 (Bytes, Local_Offset + 26, Name'Length);
+      Put16 (Bytes, Local_Offset + 28, Extra_Len);
+      Put_Text (Bytes, Local_Offset + 30, Name);
+      Put16 (Bytes, Local_Offset + 30 + Name'Length, 16#0001#);
+      Put16 (Bytes, Local_Offset + 32 + Name'Length, 16);
+      Put64_U (Bytes, Local_Offset + 34 + Name'Length, Interfaces.Unsigned_64 (Plain'Length));
+      Put64_U (Bytes, Local_Offset + 42 + Name'Length, Interfaces.Unsigned_64 (Payload'Length));
+      for Index in Payload'Range loop
+         Bytes (Bytes'First + Local_Offset + 30 + Name'Length + Extra_Len + Index - Payload'First) :=
+           Payload (Index);
+      end loop;
+
+      Put32 (Bytes, Central_Offset, 16#0201_4B50#);
+      Put32 (Bytes, Central_Offset + 16, CRC);
+      Put32_U (Bytes, Central_Offset + 20, 16#FFFF_FFFF#);
+      Put32_U (Bytes, Central_Offset + 24, 16#FFFF_FFFF#);
+      Put16 (Bytes, Central_Offset + 28, Name'Length);
+      Put16 (Bytes, Central_Offset + 30, Extra_Len);
+      Put32 (Bytes, Central_Offset + 42, Local_Offset);
+      Put_Text (Bytes, Central_Offset + 46, Name);
+      Put16 (Bytes, Central_Offset + 46 + Name'Length, 16#0001#);
+      Put16 (Bytes, Central_Offset + 48 + Name'Length, 16);
+      Put64_U (Bytes, Central_Offset + 50 + Name'Length, Interfaces.Unsigned_64 (Plain'Length));
+      Put64_U (Bytes, Central_Offset + 58 + Name'Length, Interfaces.Unsigned_64 (Payload'Length));
+
+      Put32 (Bytes, EOCD_Offset, 16#0605_4B50#);
+      Put16 (Bytes, EOCD_Offset + 8, 1);
+      Put16 (Bytes, EOCD_Offset + 10, 1);
+      Put32 (Bytes, EOCD_Offset + 12, Central_Size);
+      Put32 (Bytes, EOCD_Offset + 16, Central_Offset);
+      return Bytes;
+   end Generated_Zip_ZIP64;
+
+   function Generated_Zip_ZIP64_Missing_Extra return Zlib.Byte_Array is
+      Bytes : Zlib.Byte_Array := Generated_Zip;
+      Central_Offset : constant Natural := 30 + 5 + 3;
+   begin
+      Put32_U (Bytes, Central_Offset + 20, 16#FFFF_FFFF#);
+      Put32_U (Bytes, Central_Offset + 24, 16#FFFF_FFFF#);
+      return Bytes;
+   end Generated_Zip_ZIP64_Missing_Extra;
+
+   function Generated_Zip_Central_CRC_Mismatch return Zlib.Byte_Array is
+      Bytes : Zlib.Byte_Array := Generated_Zip;
+      Central_Offset : constant Natural := 30 + 5 + 3;
+   begin
+      Put32 (Bytes, Central_Offset + 16, 0);
+      return Bytes;
+   end Generated_Zip_Central_CRC_Mismatch;
+
+   function Generated_Zip_Unicode_Path
+     (Bad_CRC     : Boolean := False;
+      Bad_Version : Boolean := False)
+      return Zlib.Byte_Array
+   is
+      Name  : constant String := "a.txt";
+      Unicode_Name : constant String := "unicode.txt";
+      Plain : constant Zlib.Byte_Array := Payload_ABC;
+      Payload : constant Zlib.Byte_Array := Plain;
+      CRC : constant Natural := 16#3524_41C2#;
+      Extra_Len : constant Natural := 4 + 5 + Unicode_Name'Length;
+      Local_Offset : constant Natural := 0;
+      Central_Offset : constant Natural := 30 + Name'Length + Payload'Length;
+      Central_Size : constant Natural := 46 + Name'Length + Extra_Len;
+      EOCD_Offset : constant Natural := Central_Offset + Central_Size;
+      Total : constant Natural := EOCD_Offset + 22;
+      Bytes : Zlib.Byte_Array (1 .. Total) := [others => 0];
+      Extra_Offset : constant Natural := Central_Offset + 46 + Name'Length;
+   begin
+      Put32 (Bytes, Local_Offset, 16#0403_4B50#);
+      Put32 (Bytes, Local_Offset + 14, CRC);
+      Put32 (Bytes, Local_Offset + 18, Payload'Length);
+      Put32 (Bytes, Local_Offset + 22, Plain'Length);
+      Put16 (Bytes, Local_Offset + 26, Name'Length);
+      Put_Text (Bytes, Local_Offset + 30, Name);
+      for Index in Payload'Range loop
+         Bytes (Bytes'First + Local_Offset + 30 + Name'Length + Index - Payload'First) :=
+           Payload (Index);
+      end loop;
+
+      Put32 (Bytes, Central_Offset, 16#0201_4B50#);
+      Put32 (Bytes, Central_Offset + 16, CRC);
+      Put32 (Bytes, Central_Offset + 20, Payload'Length);
+      Put32 (Bytes, Central_Offset + 24, Plain'Length);
+      Put16 (Bytes, Central_Offset + 28, Name'Length);
+      Put16 (Bytes, Central_Offset + 30, Extra_Len);
+      Put32 (Bytes, Central_Offset + 42, Local_Offset);
+      Put_Text (Bytes, Central_Offset + 46, Name);
+      Put16 (Bytes, Extra_Offset, 16#7075#);
+      Put16 (Bytes, Extra_Offset + 2, 5 + Unicode_Name'Length);
+      Bytes (Bytes'First + Extra_Offset + 4) :=
+        (if Bad_Version then 2 else 1);
+      Put32_U
+        (Bytes,
+         Extra_Offset + 5,
+         (if Bad_CRC then 0 else CRC32_String (Name)));
+      Put_Text (Bytes, Extra_Offset + 9, Unicode_Name);
+
+      Put32 (Bytes, EOCD_Offset, 16#0605_4B50#);
+      Put16 (Bytes, EOCD_Offset + 8, 1);
+      Put16 (Bytes, EOCD_Offset + 10, 1);
+      Put32 (Bytes, EOCD_Offset + 12, Central_Size);
+      Put32 (Bytes, EOCD_Offset + 16, Central_Offset);
+      return Bytes;
+   end Generated_Zip_Unicode_Path;
+
+   function Generated_Zip_ZIP64_Too_Large return Zlib.Byte_Array is
+      Bytes : Zlib.Byte_Array := Generated_Zip_ZIP64;
+      Name_Length : constant Natural := 5;
+      Central_Offset : constant Natural := 30 + Name_Length + 20 + 3;
+      Too_Large : constant Interfaces.Unsigned_64 :=
+        Interfaces.Shift_Left (Interfaces.Unsigned_64 (1), 63);
+   begin
+      Put64_U (Bytes, 30 + Name_Length + 4, Too_Large);
+      Put64_U (Bytes, Central_Offset + 46 + Name_Length + 4, Too_Large);
+      return Bytes;
+   end Generated_Zip_ZIP64_Too_Large;
+
    function Generated_Zip_Bad_Local_Signature return Zlib.Byte_Array is
       Bytes : Zlib.Byte_Array := Generated_Zip;
    begin
@@ -1336,22 +1667,44 @@ procedure Check_All is
          return Generated_Tar;
       elsif Id = "tar-gzip-basic" then
          return Generated_Tar_Gzip;
+      elsif Id = "tar-duplicate-path" then
+         return Generated_Tar_Duplicate_Path;
       elsif Id = "zip-stored-basic" then
          return Generated_Zip;
       elsif Id = "zip-deflate-basic" then
          return Generated_Zip (Method => 8);
+      elsif Id = "zip-data-descriptor" then
+         return Generated_Zip_Data_Descriptor;
+      elsif Id = "zip-zip64-basic" then
+         return Generated_Zip_ZIP64;
+      elsif Id = "zip-unicode-path" then
+         return Generated_Zip_Unicode_Path;
       elsif Id = "gzip-basic" then
          return Generated_Gzip;
+      elsif Id = "gzip-empty" then
+         return Generated_Gzip_Empty;
       elsif Id = "zip-bad-crc" then
          return Generated_Zip (Bad_CRC => True);
+      elsif Id = "zip-central-crc-mismatch" then
+         return Generated_Zip_Central_CRC_Mismatch;
+      elsif Id = "zip-unicode-path-bad-crc" then
+         return Generated_Zip_Unicode_Path (Bad_CRC => True);
+      elsif Id = "zip-unicode-path-bad-version" then
+         return Generated_Zip_Unicode_Path (Bad_Version => True);
       elsif Id = "zip-unsupported-method" then
          return Generated_Zip (Method => 99);
       elsif Id = "zip-encrypted" then
          return Generated_Zip (Encrypted => True);
+      elsif Id = "zip-zip64-missing-extra" then
+         return Generated_Zip_ZIP64_Missing_Extra;
+      elsif Id = "zip-zip64-too-large" then
+         return Generated_Zip_ZIP64_Too_Large;
       elsif Id = "zip-local-size-mismatch" then
          return Generated_Zip_Local_Size_Mismatch;
       elsif Id = "zip-bad-local-signature" then
          return Generated_Zip_Bad_Local_Signature;
+      elsif Id = "gzip-bad-header-crc" then
+         return Generated_Gzip_Bad_Header_CRC;
       elsif Id = "gzip-bad-trailer" then
          return Generated_Gzip_Bad_Trailer;
       else
@@ -1383,6 +1736,10 @@ procedure Check_All is
          return Truncated (Generated_Gzip, 3);
       elsif Value = "tar-truncated" then
          return Truncated (Generated_Tar, 1_400);
+      elsif Value = "zip-central-crc-mismatch" then
+         return Generated_Fixture ("zip-central-crc-mismatch");
+      elsif Value = "zip-zip64-missing-extra" then
+         return Generated_Fixture ("zip-zip64-missing-extra");
       elsif Value = "zip-unsupported-method" then
          return Generated_Fixture ("zip-unsupported-method");
       elsif Value = "zip-encrypted" then
@@ -1391,6 +1748,8 @@ procedure Check_All is
          return Generated_Fixture ("zip-local-size-mismatch");
       elsif Value = "zip-bad-local-signature" then
          return Generated_Fixture ("zip-bad-local-signature");
+      elsif Value = "gzip-bad-header-crc" then
+         return Generated_Fixture ("gzip-bad-header-crc");
       elsif Value = "gzip-bad-trailer" then
          return Generated_Fixture ("gzip-bad-trailer");
       else
@@ -1488,10 +1847,17 @@ procedure Check_All is
       Line_No  : Natural := 0;
       Count    : Natural := 0;
       Has_Tar   : Boolean := False;
+      Has_Settings_Current : Boolean := False;
+      Has_Settings_Migration : Boolean := False;
+      Has_Settings_Invalid : Boolean := False;
       Has_Tar_Gzip : Boolean := False;
       Has_Zip_Stored : Boolean := False;
       Has_Zip_Deflate : Boolean := False;
+      Has_Zip_Descriptor : Boolean := False;
+      Has_Zip64 : Boolean := False;
       Has_Gzip : Boolean := False;
+      Has_Gzip_Empty : Boolean := False;
+      Has_Tar_Duplicate : Boolean := False;
       Has_Zip_Bad_CRC : Boolean := False;
       Has_Zip_Unsupported : Boolean := False;
       Has_Zip_Encrypted : Boolean := False;
@@ -1518,14 +1884,28 @@ procedure Check_All is
                begin
                   if Id = "tar-basic" then
                      Has_Tar := True;
+                  elsif Id = "settings-current-valid" then
+                     Has_Settings_Current := True;
+                  elsif Id = "settings-schema0-migration" then
+                     Has_Settings_Migration := True;
+                  elsif Id = "settings-invalid-future-schema" then
+                     Has_Settings_Invalid := True;
                   elsif Id = "tar-gzip-basic" then
                      Has_Tar_Gzip := True;
+                  elsif Id = "tar-duplicate-path" then
+                     Has_Tar_Duplicate := True;
                   elsif Id = "zip-stored-basic" then
                      Has_Zip_Stored := True;
                   elsif Id = "zip-deflate-basic" then
                      Has_Zip_Deflate := True;
+                  elsif Id = "zip-data-descriptor" then
+                     Has_Zip_Descriptor := True;
+                  elsif Id = "zip-zip64-basic" then
+                     Has_Zip64 := True;
                   elsif Id = "gzip-basic" then
                      Has_Gzip := True;
+                  elsif Id = "gzip-empty" then
+                     Has_Gzip_Empty := True;
                   elsif Id = "zip-bad-crc" then
                      Has_Zip_Bad_CRC := True;
                   elsif Id = "zip-unsupported-method" then
@@ -1546,8 +1926,13 @@ procedure Check_All is
 
       if Count = 0 then
          Fail (Manifest & ": fixture manifest contains no fixtures");
-      elsif not Has_Tar or else not Has_Tar_Gzip or else not Has_Zip_Stored
+      elsif not Has_Settings_Current or else not Has_Settings_Migration
+        or else not Has_Settings_Invalid
+        or else not Has_Tar or else not Has_Tar_Gzip or else not Has_Zip_Stored
         or else not Has_Zip_Deflate or else not Has_Gzip
+        or else not Has_Tar_Duplicate
+        or else not Has_Zip_Descriptor or else not Has_Zip64
+        or else not Has_Gzip_Empty
         or else not Has_Zip_Bad_CRC
         or else not Has_Zip_Unsupported or else not Has_Zip_Encrypted
         or else not Has_Gzip_Bad_Trailer
@@ -1826,6 +2211,48 @@ procedure Check_All is
       end if;
    end Check_Platform_Key_Corpus_Case;
 
+   procedure Check_Platform_Collision_Corpus_Case
+     (Line : String; Line_Number : Positive; Id : String)
+   is
+      Left_Input  : constant String := Decode_Token (Field_Value (Line, "left"));
+      Right_Input : constant String := Decode_Token (Field_Value (Line, "right"));
+      Expected_Text : constant String := Field_Value (Line, "collision");
+      Platform : constant Archive.Extraction.Paths.Platform_Path_Model :=
+        Parse_Platform (Field_Value (Line, "platform"));
+      Left_Item  : Archive.Archives.Entries.Archive_Entry;
+      Right_Item : Archive.Archives.Entries.Archive_Entry;
+      Left_Path  : Archive.Extraction.Paths.Planned_Path;
+      Right_Path : Archive.Extraction.Paths.Planned_Path;
+      Expected   : Boolean;
+   begin
+      if Expected_Text = "true" then
+         Expected := True;
+      elsif Expected_Text = "false" then
+         Expected := False;
+      else
+         Fail
+           (Root & "/tests/fixtures/corpus.txt:" & Line_Number'Image
+            & ": corpus " & Id & " has invalid collision expectation");
+      end if;
+
+      Left_Item.Kind := Archive.Archives.Entries.Regular_File;
+      Left_Item.Original_Path := To_Unbounded_String (Left_Input);
+      Right_Item.Kind := Archive.Archives.Entries.Regular_File;
+      Right_Item.Original_Path := To_Unbounded_String (Right_Input);
+      Left_Path := Archive.Extraction.Paths.Plan_Relative_Path (Left_Item, Platform);
+      Right_Path := Archive.Extraction.Paths.Plan_Relative_Path (Right_Item, Platform);
+
+      if (Left_Path.Decision = Archive.Extraction.Paths.Path_Accepted
+          and then Right_Path.Decision = Archive.Extraction.Paths.Path_Accepted
+          and then To_String (Left_Path.Relative_Key) =
+                   To_String (Right_Path.Relative_Key)) /= Expected
+      then
+         Fail
+           (Root & "/tests/fixtures/corpus.txt:" & Line_Number'Image
+            & ": corpus " & Id & " platform collision mismatch");
+      end if;
+   end Check_Platform_Collision_Corpus_Case;
+
    procedure Check_Format_Corpus_Case
      (Line : String; Line_Number : Positive; Id : String)
    is
@@ -1959,6 +2386,8 @@ procedure Check_All is
          Check_Path_Corpus_Case (Line, Line_Number, Id);
       elsif Kind = "platform-key" then
          Check_Platform_Key_Corpus_Case (Line, Line_Number, Id);
+      elsif Kind = "platform-collision" then
+         Check_Platform_Collision_Corpus_Case (Line, Line_Number, Id);
       elsif Kind = "format" then
          Check_Format_Corpus_Case (Line, Line_Number, Id);
       elsif Kind = "archive" then
@@ -1985,6 +2414,9 @@ procedure Check_All is
       Has_Zip_Deflate : Boolean := False;
       Has_Gzip : Boolean := False;
       Has_Malformed : Boolean := False;
+      Has_Platform_Collision : Boolean := False;
+      Has_Zip_Unicode : Boolean := False;
+      Has_Zip64_Overflow : Boolean := False;
    begin
       if not Ada.Directories.Exists (Manifest) then
          Fail (Manifest & ": corpus manifest is missing");
@@ -2014,6 +2446,8 @@ procedure Check_All is
                     and then Field_Value (Line, "status") = "Recognized_Unsupported"
                   then
                      Has_Unsupported_Format := True;
+                  elsif Kind = "platform-collision" then
+                     Has_Platform_Collision := True;
                   elsif Id = "archive-tar-basic" then
                      Has_Tar := True;
                   elsif Id = "archive-tar-gzip-basic" then
@@ -2024,6 +2458,10 @@ procedure Check_All is
                      Has_Zip_Deflate := True;
                   elsif Id = "archive-gzip-basic" then
                      Has_Gzip := True;
+                  elsif Id = "archive-zip-unicode-path" then
+                     Has_Zip_Unicode := True;
+                  elsif Id = "archive-zip-zip64-too-large" then
+                     Has_Zip64_Overflow := True;
                   elsif Id = "archive-zip-truncated-central"
                     or else Id = "archive-gzip-truncated"
                     or else Id = "archive-tar-truncated"
@@ -2045,6 +2483,8 @@ procedure Check_All is
       elsif not Has_Path_Attack or else not Has_Unsupported_Format
         or else not Has_Tar or else not Has_Tar_Gzip or else not Has_Zip_Stored
         or else not Has_Zip_Deflate or else not Has_Gzip or else not Has_Malformed
+        or else not Has_Platform_Collision
+        or else not Has_Zip_Unicode or else not Has_Zip64_Overflow
       then
          Fail (Manifest & ": corpus manifest is missing required format/security breadth");
       end if;

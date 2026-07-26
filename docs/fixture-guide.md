@@ -19,9 +19,14 @@ Required generated fixture IDs cover the V1 matrix:
 ```text
 tar-basic
 tar-gzip-basic
+tar-duplicate-path
 zip-stored-basic
 zip-deflate-basic
+zip-data-descriptor
+zip-zip64-basic
+zip-unicode-path
 gzip-basic
+gzip-empty
 zip-bad-crc
 zip-unsupported-method
 zip-encrypted
@@ -38,9 +43,13 @@ unsupported signatures, invalid random input, TAR, TAR.GZ, ZIP stored, ZIP
 DEFLATE, standalone gzip, unsupported ZIP compression methods, encrypted ZIP
 entries, corrupt ZIP CRCs, corrupt gzip trailers, and malformed archive inputs.
 The in-repository corpus is deterministic and network-free; it includes
-local-header mismatch/signature cases and normalized safe-path cases in
-addition to attack paths. Larger externally sourced corpora can be added only
-as checked-in or generated records with stable hashes and Ada validation.
+local-header mismatch/signature cases, central/local CRC divergence, ZIP data
+descriptors, ZIP64 metadata, ZIP64 overflow rejection, missing ZIP64 extra
+fields, ZIP Unicode path extra fields and invalid Unicode-path CRC/version
+records, duplicate TAR paths, gzip empty payloads, gzip header CRC failures, and
+normalized safe-path and platform-collision cases in addition to attack paths.
+Larger externally sourced corpora can be added only as checked-in or generated
+records with stable hashes and Ada validation.
 
 Archive corpus records use this form:
 

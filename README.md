@@ -37,6 +37,10 @@ Testing, fixtures, and release workflow are documented in
 [`docs/testing-guide.md`](docs/testing-guide.md),
 [`docs/fixture-guide.md`](docs/fixture-guide.md), and
 [`docs/release-guide.md`](docs/release-guide.md).
+Settings migration/recovery rules are documented in
+[`docs/settings-architecture.md`](docs/settings-architecture.md), and package
+ownership boundaries are summarized in
+[`docs/package-contracts.md`](docs/package-contracts.md).
 
 ## Commands
 

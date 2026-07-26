@@ -16,11 +16,15 @@ implementation packages must not be imported.
 
 ## Application Model
 
+- Startup and shutdown mapping: `Files.Application` maps to
+  `Archive.Application`, while the live desktop entry point maps from
+  `Files.Application.Windows` to `Archive.Application.Windows`.
 - startup facade: `Archive.Application`
 - authoritative state: `Archive.Model.Application_Model`
 - lifecycle: no archive, opening, ready, warnings, failed, shutdown
 - immutable published archive indexes: `Archive.Archives.Index`
 - snapshots: `Archive.View_Snapshots`
+- `Files.Model` maps to `Archive.Model`
 
 Widgets must consume snapshots and commands. Widgets must not own archive
 reader handles, mutation plans, extraction plans, settings state, or worker
@@ -48,6 +52,8 @@ reason keys.
 
 ## Settings
 
+`Files.Settings` maps to `Archive.Settings`.
+
 `Archive.Settings` follows the `files` settings pattern:
 
 - compiled defaults
@@ -62,6 +68,8 @@ reason keys.
 Localized display strings must not be persisted as identifiers.
 
 ## Localization
+
+`Files.Localization` maps to `Archive.Localization`.
 
 `Archive.Localization` is the presentation boundary for user-visible text. Domain
 and worker packages return stable keys, typed data, and structured errors; they
@@ -81,8 +89,19 @@ The GUI shell must map to `files` concepts where applicable:
 - dialogs
 - focus and accessibility metadata
 
+Concrete `guikit` mappings are:
+
+- content rows and details layout: `Guikit.Item_Grid`
+- command palette overlay: `Guikit.Command_Palette`
+- settings overlay: `Guikit.Settings_Panel`
+- preview and property panels: `Guikit.List_Panel`
+
 Custom widgets require a concrete gap in `guikit` or reusable public `files`
 surface.
+
+No private `files` package may be imported. Shared behavior must be consumed
+through public reusable APIs, or the archive-specific equivalent must remain in
+`Archive.*`.
 
 ## Archive-Specific Extensions
 

@@ -4,5 +4,7 @@ package-file path=CHANGELOG.md kind=documentation required=true
 package-file path=LICENSES kind=license required=false
 package-file path=share/archive.catalog kind=catalog required=true
 package-file path=docs/FORMAT_SUPPORT.md kind=documentation required=true
+package-file path=docs/settings-architecture.md kind=documentation required=true
+package-file path=docs/package-contracts.md kind=documentation required=true
 package-file path=docs/release-guide.md kind=documentation required=true
 package-file path=tests/fixtures/corpus.txt kind=test-corpus required=true

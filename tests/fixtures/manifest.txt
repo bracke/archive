@@ -1,10 +1,18 @@
 # archive fixture manifest v1
 fixture id=plain-ok path=tests/fixtures/plain-ok.txt format=plain purpose=fixture-validation size=4 crc32=4788814E
+fixture id=settings-current-valid path=tests/fixtures/settings/current-valid.settings format=settings purpose=settings-current-schema size=540 crc32=C51FDCC3
+fixture id=settings-schema0-migration path=tests/fixtures/settings/schema0-migration.settings format=settings purpose=settings-migration size=135 crc32=0C006D5F
+fixture id=settings-invalid-future-schema path=tests/fixtures/settings/invalid-future-schema.settings format=settings purpose=settings-quarantine size=75 crc32=4B20C5ED
 fixture id=tar-basic path=generated:tar-basic format=tar purpose=tar-open-index size=2048 crc32=AE42BDC4
 fixture id=tar-gzip-basic path=generated:tar-gzip-basic format=tar.gz purpose=tar-gzip-open-index size=98 crc32=322CAE1E
+fixture id=tar-duplicate-path path=generated:tar-duplicate-path format=tar purpose=tar-duplicate-paths size=3072 crc32=1A4AF7A3
 fixture id=zip-stored-basic path=generated:zip-stored-basic format=zip purpose=zip-stored-open-index size=111 crc32=91E2A6FC
 fixture id=zip-deflate-basic path=generated:zip-deflate-basic format=zip purpose=zip-deflate-open-index size=113 crc32=9ABAE3AF
+fixture id=zip-data-descriptor path=generated:zip-data-descriptor format=zip purpose=zip-data-descriptor size=127 crc32=9B0623BB
+fixture id=zip-zip64-basic path=generated:zip-zip64-basic format=zip purpose=zip64-open-index size=151 crc32=8777E7F4
+fixture id=zip-unicode-path path=generated:zip-unicode-path format=zip purpose=zip-unicode-path-extra size=131 crc32=4DFF89CE
 fixture id=gzip-basic path=generated:gzip-basic format=gzip purpose=gzip-open-index size=23 crc32=BB1C56C2
+fixture id=gzip-empty path=generated:gzip-empty format=gzip purpose=gzip-empty-payload size=20 crc32=45378550
 fixture id=zip-bad-crc path=generated:zip-bad-crc format=zip purpose=zip-malformed-payload size=111 crc32=BB182EBC
 fixture id=zip-unsupported-method path=generated:zip-unsupported-method format=zip purpose=zip-unsupported-method size=111 crc32=D97324F5
 fixture id=zip-encrypted path=generated:zip-encrypted format=zip purpose=zip-encrypted-entry size=111 crc32=CFBFD41F

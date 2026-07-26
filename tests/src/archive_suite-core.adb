@@ -10642,6 +10642,16 @@ package body Archive_Suite.Core is
       pragma Unreferenced (T);
       Settings : Archive.Settings.Settings_Model := Archive.Settings.Default_Settings;
       OK       : Boolean := False;
+
+      function Settings_Fixture_Path (Name : String) return String is
+         Tests_Path : constant String := "fixtures/settings/" & Name;
+         Root_Path  : constant String := "tests/fixtures/settings/" & Name;
+      begin
+         if Ada.Directories.Exists (Tests_Path) then
+            return Tests_Path;
+         end if;
+         return Root_Path;
+      end Settings_Fixture_Path;
    begin
       Assert (Settings.Preview_Visible, "preview visible by default");
       Assert
@@ -10850,8 +10860,60 @@ package body Archive_Suite.Core is
       end;
 
       declare
+         Current : constant Archive.Settings.Settings_Parse_Result :=
+           Archive.Settings.Load (Settings_Fixture_Path ("current-valid.settings"));
+         Migrated : constant Archive.Settings.Settings_Parse_Result :=
+           Archive.Settings.Load (Settings_Fixture_Path ("schema0-migration.settings"));
+      begin
+         Assert (Current.Success, "current settings fixture loads");
+         Assert
+           (Current.Settings.Default_View = Archive.Types.Details_View
+            and then not Current.Settings.Directories_First
+            and then not Current.Settings.Preview_Visible
+            and then Current.Settings.Preview_Byte_Limit = 64,
+            "current settings fixture retains view and preview fields");
+         Assert
+           (Current.Settings.Conflict_Policy = Archive.Settings.Rename
+            and then Current.Settings.Write_Conflict_Policy = Archive.Settings.Overwrite
+            and then Current.Settings.Link_Policy = Archive.Settings.Safe_Internal_Links
+            and then not Current.Settings.Show_Unsafe_Entries
+            and then Current.Settings.Startup_Reopen_Recent,
+            "current settings fixture retains stable policy tokens");
+         Assert
+           (Natural (Current.Settings.Details_Columns.Length) = 2
+            and then Current.Settings.Details_Columns.Element (2) =
+              Archive.View_Snapshots.Columns.Path_Safety_Column,
+            "current settings fixture uses stable details column ids");
+         Assert
+           (Natural (Current.Settings.Recent_Archives.Length) = 2
+            and then To_String (Current.Settings.Recent_Archives.Element (1)) =
+              "/archives/one.zip"
+            and then To_String (Current.Settings.Recent_Archives.Element (2)) =
+              "/archives/two.tar.gz",
+            "current settings fixture deduplicates recent archives deterministically");
+
+         Assert (Migrated.Success, "schema zero settings fixture migrates");
+         Assert
+           (Migrated.Settings.Default_View = Archive.Types.Compact_View
+            and then not Migrated.Settings.Preview_Visible
+            and then Migrated.Settings.Conflict_Policy = Archive.Settings.Ask
+            and then Migrated.Settings.Write_Conflict_Policy = Archive.Settings.Ask
+            and then Migrated.Settings.Link_Policy = Archive.Settings.Skip_Links,
+            "schema zero fixture fills current conservative defaults");
+         Assert
+           (Ada.Strings.Fixed.Index
+              (Archive.Settings.Serialize (Migrated.Settings), "schema=2") = 1,
+            "schema zero fixture serializes to the current schema");
+      end;
+
+      declare
          Dir  : constant String := "obj/settings-io-test";
          Path : constant String := Dir & "/archive.settings";
+         Invalid_Fixture : constant String :=
+           Settings_Fixture_Path ("invalid-future-schema.settings");
+         Invalid_Copy : constant String := Dir & "/invalid-future-schema.settings";
+         Invalid_Quarantine : constant String :=
+           Archive.Settings.Quarantine_Path (Invalid_Copy);
       begin
          if not Ada.Directories.Exists (Dir) then
             Ada.Directories.Create_Path (Dir);
@@ -10922,6 +10984,35 @@ package body Archive_Suite.Core is
               ((not Ada.Directories.Exists (Path))
                and then Ada.Directories.Exists (Archive.Settings.Quarantine_Path (Path)),
                "invalid settings load quarantines original file");
+         end;
+
+         if Ada.Directories.Exists (Invalid_Copy) then
+            Ada.Directories.Delete_File (Invalid_Copy);
+         end if;
+         if Ada.Directories.Exists (Invalid_Quarantine) then
+            Ada.Directories.Delete_File (Invalid_Quarantine);
+         end if;
+         Write_Bytes (Invalid_Copy, Read_All_Bytes (Invalid_Fixture));
+         declare
+            Loaded : constant Archive.Settings.Settings_Parse_Result :=
+              Archive.Settings.Load (Invalid_Copy);
+         begin
+            Assert (not Loaded.Success, "invalid settings fixture fails load");
+            Assert
+              (To_String (Loaded.Error_Key) = "settings.invalid",
+               "invalid settings fixture reports stable recovery key");
+            Assert
+              (Loaded.Settings.Default_View = Archive.Types.Grid_View
+               and then Loaded.Settings.Preview_Visible,
+               "invalid settings fixture recovers to compiled defaults");
+            Assert
+              ((not Ada.Directories.Exists (Invalid_Copy))
+               and then Ada.Directories.Exists (Invalid_Quarantine),
+               "invalid settings fixture is quarantined during load");
+            Assert
+              (CRC32_Compute (Read_All_Bytes (Invalid_Quarantine)) =
+                 CRC32_Compute (Read_All_Bytes (Invalid_Fixture)),
+               "settings quarantine preserves the invalid input bytes");
          end;
       end;
    end Test_Settings;

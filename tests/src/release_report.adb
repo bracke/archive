@@ -451,6 +451,9 @@ procedure Release_Report is
       Has_Zip_Deflate : Boolean := False;
       Has_Gzip : Boolean := False;
       Has_Malformed : Boolean := False;
+      Has_Platform_Collision : Boolean := False;
+      Has_Zip_Unicode : Boolean := False;
+      Has_Zip64_Overflow : Boolean := False;
       Has_Zip_Unsupported_Method : Boolean := False;
       Has_Zip_Encrypted : Boolean := False;
       Has_Gzip_Bad_Trailer : Boolean := False;
@@ -492,9 +495,9 @@ procedure Release_Report is
                Count := Count + 1;
                Require_Field (Line, "id", Line_No);
                Require_Field (Line, "kind", Line_No);
-               Require_Field (Line, "input", Line_No);
 
                if Kind = "path" then
+                  Require_Field (Line, "input", Line_No);
                   Require_Field (Line, "safety", Line_No);
                   Require_Field (Line, "decision", Line_No);
                   Require_Field (Line, "platform", Line_No);
@@ -502,15 +505,24 @@ procedure Release_Report is
                      Has_Path_Attack := True;
                   end if;
                elsif Kind = "platform-key" then
+                  Require_Field (Line, "input", Line_No);
                   Require_Field (Line, "expected", Line_No);
                   Require_Field (Line, "platform", Line_No);
+               elsif Kind = "platform-collision" then
+                  Require_Field (Line, "left", Line_No);
+                  Require_Field (Line, "right", Line_No);
+                  Require_Field (Line, "platform", Line_No);
+                  Require_Field (Line, "collision", Line_No);
+                  Has_Platform_Collision := True;
                elsif Kind = "format" then
+                  Require_Field (Line, "input", Line_No);
                   Require_Field (Line, "expected", Line_No);
                   Require_Field (Line, "status", Line_No);
                   if Field_Value (Line, "status") = "Recognized_Unsupported" then
                      Has_Unsupported_Format := True;
                   end if;
                elsif Kind = "archive" then
+                  Require_Field (Line, "input", Line_No);
                   Require_Field (Line, "source", Line_No);
                   Require_Field (Line, "open", Line_No);
                   Require_Field (Line, "entries", Line_No);
@@ -524,6 +536,10 @@ procedure Release_Report is
                      Has_Zip_Deflate := True;
                   elsif Id = "archive-gzip-basic" then
                      Has_Gzip := True;
+                  elsif Id = "archive-zip-unicode-path" then
+                     Has_Zip_Unicode := True;
+                  elsif Id = "archive-zip-zip64-too-large" then
+                     Has_Zip64_Overflow := True;
                   elsif Id = "archive-zip-truncated-central"
                     or else Id = "archive-gzip-truncated"
                     or else Id = "archive-tar-truncated"
@@ -560,6 +576,8 @@ procedure Release_Report is
       elsif not Has_Path_Attack or else not Has_Unsupported_Format
         or else not Has_Tar or else not Has_Tar_Gzip or else not Has_Zip_Stored
         or else not Has_Zip_Deflate or else not Has_Gzip or else not Has_Malformed
+        or else not Has_Platform_Collision
+        or else not Has_Zip_Unicode or else not Has_Zip64_Overflow
         or else not Has_Zip_Unsupported_Method or else not Has_Zip_Encrypted
         or else not Has_Gzip_Bad_Trailer
       then

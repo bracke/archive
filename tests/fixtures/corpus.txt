@@ -18,6 +18,10 @@ case id=case-fold-collision-left kind=platform-key input=Readme.txt expected=rea
 case id=case-fold-collision-right kind=platform-key input=README.TXT expected=readme.txt platform=Windows
 case id=mac-normalization-left kind=platform-key input=Café.txt expected=cafe.txt platform=MacOS
 case id=mac-normalization-right kind=platform-key input=Café.txt expected=cafe.txt platform=MacOS
+case id=collision-windows-case-fold kind=platform-collision left=Readme.txt right=README.TXT platform=Windows collision=true
+case id=collision-windows-directory-case-fold kind=platform-collision left=Docs/Readme.txt right=docs/readme.TXT platform=Windows collision=true
+case id=collision-macos-accent-normalization kind=platform-collision left=Café.txt right=Café.txt platform=MacOS collision=true
+case id=collision-posix-case-distinct kind=platform-collision left=Readme.txt right=README.TXT platform=POSIX collision=false
 case id=unsupported-7z kind=format input=7z-signature expected=Seven_Zip_Format status=Recognized_Unsupported
 case id=unsupported-rar kind=format input=rar-signature expected=Rar_Format status=Recognized_Unsupported
 case id=unsupported-cab kind=format input=cab-signature expected=Cab_Format status=Recognized_Unsupported
@@ -28,15 +32,26 @@ case id=unsupported-split-zip kind=format input=split-zip-signature expected=Spl
 case id=invalid-random kind=format input=random-bytes expected=Unknown_Format status=Invalid
 case id=archive-tar-basic kind=archive input=tar-basic source=fixture.tar open=Ok entries=1
 case id=archive-tar-gzip-basic kind=archive input=tar-gzip-basic source=fixture.tar.gz open=Ok entries=1
+case id=archive-tar-duplicate-path kind=archive input=tar-duplicate-path source=fixture.tar open=Ok entries=2
 case id=archive-zip-stored-basic kind=archive input=zip-stored-basic source=fixture.zip open=Ok entries=1
 case id=archive-zip-deflate-basic kind=archive input=zip-deflate-basic source=fixture.zip open=Ok entries=1
+case id=archive-zip-data-descriptor kind=archive input=zip-data-descriptor source=fixture.zip open=Ok entries=1
+case id=archive-zip-zip64-basic kind=archive input=zip-zip64-basic source=fixture.zip open=Ok entries=1
+case id=archive-zip-unicode-path kind=archive input=zip-unicode-path source=fixture.zip open=Ok entries=1
 case id=archive-gzip-basic kind=archive input=gzip-basic source=fixture.gz open=Ok entries=1
+case id=archive-gzip-empty kind=archive input=gzip-empty source=fixture.gz open=Ok entries=1
 case id=archive-zip-bad-crc kind=archive input=zip-bad-crc source=fixture.zip open=Ok entries=1
+case id=archive-zip-central-crc-mismatch kind=archive input=zip-central-crc-mismatch source=fixture.zip open=Ok entries=1 payload=Invalid_Format
+case id=archive-zip-unicode-path-bad-crc kind=archive input=zip-unicode-path-bad-crc source=fixture.zip open=Invalid_Format entries=0
+case id=archive-zip-unicode-path-bad-version kind=archive input=zip-unicode-path-bad-version source=fixture.zip open=Invalid_Format entries=0
 case id=archive-zip-unsupported-method kind=archive input=zip-unsupported-method source=fixture.zip open=Ok entries=1 payload=Unsupported_Method
 case id=archive-zip-encrypted kind=archive input=zip-encrypted source=fixture.zip open=Ok entries=1 payload=Unsupported_Method
+case id=archive-zip-zip64-missing-extra kind=archive input=zip-zip64-missing-extra source=fixture.zip open=Invalid_Format entries=0
+case id=archive-zip-zip64-too-large kind=archive input=zip-zip64-too-large source=fixture.zip open=Invalid_Format entries=0
 case id=archive-zip-local-size-mismatch kind=archive input=zip-local-size-mismatch source=fixture.zip open=Invalid_Format entries=0
 case id=archive-zip-bad-local-signature kind=archive input=zip-bad-local-signature source=fixture.zip open=Invalid_Format entries=0
 case id=archive-zip-truncated-central kind=archive input=zip-truncated-central source=fixture.zip open=Invalid_Format entries=0
+case id=archive-gzip-bad-header-crc kind=archive input=gzip-bad-header-crc source=fixture.gz open=Invalid_Format entries=0
 case id=archive-gzip-truncated kind=archive input=gzip-truncated source=fixture.gz open=Ok entries=1 payload=Invalid_Format
 case id=archive-gzip-bad-trailer kind=archive input=gzip-bad-trailer source=fixture.gz open=Ok entries=1 payload=Invalid_Format
 case id=archive-tar-truncated kind=archive input=tar-truncated source=fixture.tar open=Invalid_Format entries=0
