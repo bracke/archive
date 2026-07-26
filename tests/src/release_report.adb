@@ -465,6 +465,7 @@ procedure Release_Report is
       Has_Zip64_Overflow : Boolean := False;
       Has_Zip_Unsupported_Method : Boolean := False;
       Has_Zip_Encrypted : Boolean := False;
+      Has_Zip_Multi_Disk : Boolean := False;
       Has_Gzip_Bad_Trailer : Boolean := False;
 
       procedure Require_Field
@@ -559,6 +560,8 @@ procedure Release_Report is
                      Has_Zip_Unsupported_Method := True;
                   elsif Id = "archive-zip-encrypted" then
                      Has_Zip_Encrypted := True;
+                  elsif Id = "archive-zip-multi-disk" then
+                     Has_Zip_Multi_Disk := True;
                   elsif Id = "archive-gzip-bad-trailer" then
                      Has_Gzip_Bad_Trailer := True;
                   end if;
@@ -588,6 +591,7 @@ procedure Release_Report is
         or else not Has_Platform_Collision
         or else not Has_Zip_Unicode or else not Has_Zip64_Overflow
         or else not Has_Zip_Unsupported_Method or else not Has_Zip_Encrypted
+        or else not Has_Zip_Multi_Disk
         or else not Has_Gzip_Bad_Trailer
       then
          Invalid := Invalid + 1;
