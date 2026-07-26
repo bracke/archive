@@ -1,5 +1,4 @@
 with Ada.Directories;
-with Ada.Numerics.Discrete_Random;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
 with Ada.Strings.Unbounded;
@@ -24,9 +23,6 @@ package body Archive.Writes.Execution is
    use type Ada.Streams.Stream_Element_Offset;
 
    Chunk_Size : constant Ada.Streams.Stream_Element_Count := 32_768;
-   subtype Temp_Nonce is Natural range 0 .. 16#7FFF_FFFF#;
-   package Temp_Nonce_Random is new Ada.Numerics.Discrete_Random (Temp_Nonce);
-   Temp_Generator : Temp_Nonce_Random.Generator;
 
    type File_Zip_Sink is limited new Archive.Writes.Zip.Output_Sink with record
       File : Ada.Streams.Stream_IO.File_Type;
@@ -198,56 +194,16 @@ package body Archive.Writes.Execution is
       return ".";
    end Parent_Directory;
 
-   function Hex_Digit (Value : Natural) return Character is
-      Hex_Chars : constant String := "0123456789abcdef";
-   begin
-      return Hex_Chars (Hex_Chars'First + Value);
-   end Hex_Digit;
-
-   function Hex_Image (Value : Temp_Nonce) return String is
-      Result : String (1 .. 8);
-      Work   : Natural := Natural (Value);
-   begin
-      for Index in reverse Result'Range loop
-         Result (Index) := Hex_Digit (Work mod 16);
-         Work := Work / 16;
-      end loop;
-      return Result;
-   end Hex_Image;
-
-   function Candidate_Sibling
-     (Destination_Path : String;
-      Role             : String;
-      Nonce            : Temp_Nonce)
-      return String
-   is
-   begin
-      return Destination_Path & ".archive-" & Role & "-" & Hex_Image (Nonce);
-   end Candidate_Sibling;
-
-   function Fresh_Sibling_Path
+   function Fresh_Write_Sibling_Path
      (Root             : String;
       Destination_Path : String;
       Role             : String)
       return String
    is
-      Candidate : String :=
-        Candidate_Sibling
-          (Destination_Path, Role, Temp_Nonce_Random.Random (Temp_Generator));
    begin
-      for Attempt in 1 .. 64 loop
-         Candidate :=
-           Candidate_Sibling
-             (Destination_Path, Role, Temp_Nonce_Random.Random (Temp_Generator));
-         if Archive.Temporary_Resources.Under_Root (Root, Candidate)
-           and then not Ada.Directories.Exists (Candidate)
-         then
-            return Candidate;
-         end if;
-      end loop;
-
-      return "";
-   end Fresh_Sibling_Path;
+      return Archive.Temporary_Resources.Fresh_Sibling_Path
+        (Root, Destination_Path, Role);
+   end Fresh_Write_Sibling_Path;
 
    function Verify_Staged_Archive
      (Path            : String;
@@ -357,7 +313,7 @@ package body Archive.Writes.Execution is
 
          declare
             Backup : constant String :=
-              Fresh_Sibling_Path (Root, Destination_Path, "old");
+              Fresh_Write_Sibling_Path (Root, Destination_Path, "old");
          begin
             if Backup = "" then
                if Ada.Directories.Exists (Temp) then
@@ -411,7 +367,7 @@ package body Archive.Writes.Execution is
       return Archive.Writes.Results.Publish_Result
    is
       Root : constant String := Parent_Directory (Destination_Path);
-      Temp : constant String := Fresh_Sibling_Path (Root, Destination_Path, "save");
+      Temp : constant String := Fresh_Write_Sibling_Path (Root, Destination_Path, "save");
       Status : constant Archive.Writes.Results.Write_Status :=
         Preflight (Destination_Path, Plan, Root, Overwrite, Cancelled);
       OK : Boolean := False;
@@ -460,7 +416,7 @@ package body Archive.Writes.Execution is
       return Archive.Writes.Results.Publish_Result
    is
       Root : constant String := Parent_Directory (Destination_Path);
-      Temp : constant String := Fresh_Sibling_Path (Root, Destination_Path, "save");
+      Temp : constant String := Fresh_Write_Sibling_Path (Root, Destination_Path, "save");
       Status : constant Archive.Writes.Results.Write_Status :=
         Preflight (Destination_Path, Plan, Root, Overwrite, Cancelled);
       Sink : File_Zip_Sink;
@@ -589,7 +545,7 @@ package body Archive.Writes.Execution is
       return Archive.Writes.Results.Publish_Result
    is
       Root : constant String := Parent_Directory (Destination_Path);
-      Temp : constant String := Fresh_Sibling_Path (Root, Destination_Path, "save");
+      Temp : constant String := Fresh_Write_Sibling_Path (Root, Destination_Path, "save");
       Status : constant Archive.Writes.Results.Write_Status :=
         Preflight (Destination_Path, Plan, Root, Overwrite, Cancelled);
       Sink : File_Tar_Sink;
@@ -789,14 +745,14 @@ package body Archive.Writes.Execution is
       return Archive.Writes.Results.Publish_Result
    is
       Root : constant String := Parent_Directory (Destination_Path);
-      Temp : constant String := Fresh_Sibling_Path (Root, Destination_Path, "save");
+      Temp : constant String := Fresh_Write_Sibling_Path (Root, Destination_Path, "save");
       Status : constant Archive.Writes.Results.Write_Status :=
         Preflight (Destination_Path, Plan, Root, Overwrite, Cancelled);
       Sink : File_Tar_Gzip_Sink;
       Build_Status : Archive.Archives.Errors.Error_Code := Archive.Archives.Errors.Ok;
       Finish_Status : Archive.Archives.Errors.Error_Code := Archive.Archives.Errors.Ok;
       Source_Tar : constant String :=
-        Fresh_Sibling_Path (Root, Destination_Path, "source-tar");
+        Fresh_Write_Sibling_Path (Root, Destination_Path, "source-tar");
    begin
       if Status /= Archive.Writes.Results.Write_Completed then
          return (Status => Status);
@@ -908,7 +864,7 @@ package body Archive.Writes.Execution is
       return Archive.Writes.Results.Publish_Result
    is
       Root : constant String := Parent_Directory (Destination_Path);
-      Temp : constant String := Fresh_Sibling_Path (Root, Destination_Path, "save");
+      Temp : constant String := Fresh_Write_Sibling_Path (Root, Destination_Path, "save");
       Status : constant Archive.Writes.Results.Write_Status :=
         Preflight (Destination_Path, Plan, Root, Overwrite, Cancelled);
       Input  : Ada.Streams.Stream_IO.File_Type;
@@ -1053,6 +1009,4 @@ package body Archive.Writes.Execution is
          Fail_Cleanup;
          return (Status => Archive.Writes.Results.Write_Failed_Staging);
    end Publish_Gzip;
-begin
-   Temp_Nonce_Random.Reset (Temp_Generator);
 end Archive.Writes.Execution;

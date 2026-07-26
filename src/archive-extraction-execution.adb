@@ -1,5 +1,4 @@
 with Ada.Directories;
-with Ada.Numerics.Discrete_Random;
 with Ada.Streams.Stream_IO;
 with Ada.Strings.Unbounded;
 
@@ -17,57 +16,6 @@ package body Archive.Extraction.Execution is
    use type Archive.Resource_Limits.Limit_Value;
    use type Archive.Types.CRC32_Value;
    use type Archive.Extraction.Paths.Path_Decision;
-
-   subtype Temp_Nonce is Natural range 0 .. 16#7FFF_FFFF#;
-   package Temp_Nonce_Random is new Ada.Numerics.Discrete_Random (Temp_Nonce);
-   Temp_Generator : Temp_Nonce_Random.Generator;
-
-   function Hex_Digit (Value : Natural) return Character is
-      Hex_Chars : constant String := "0123456789abcdef";
-   begin
-      return Hex_Chars (Hex_Chars'First + Value);
-   end Hex_Digit;
-
-   function Hex_Image (Value : Temp_Nonce) return String is
-      Result : String (1 .. 8);
-      Work   : Natural := Natural (Value);
-   begin
-      for Index in reverse Result'Range loop
-         Result (Index) := Hex_Digit (Work mod 16);
-         Work := Work / 16;
-      end loop;
-      return Result;
-   end Hex_Image;
-
-   function Candidate_Sibling
-     (Target : String;
-      Role   : String;
-      Nonce  : Temp_Nonce)
-      return String
-   is
-   begin
-      return Target & ".archive-" & Role & "-" & Hex_Image (Nonce);
-   end Candidate_Sibling;
-
-   function Fresh_Sibling_Path
-     (Root   : String;
-      Target : String;
-      Role   : String)
-      return String
-   is
-      Candidate : String := Candidate_Sibling (Target, Role, Temp_Nonce_Random.Random (Temp_Generator));
-   begin
-      for Attempt in 1 .. 64 loop
-         Candidate := Candidate_Sibling (Target, Role, Temp_Nonce_Random.Random (Temp_Generator));
-         if Archive.Temporary_Resources.Under_Root (Root, Candidate)
-           and then not Ada.Directories.Exists (Candidate)
-         then
-            return Candidate;
-         end if;
-      end loop;
-
-      return "";
-   end Fresh_Sibling_Path;
 
    function Parent_Directory (Path : String) return String is
    begin
@@ -131,7 +79,8 @@ package body Archive.Extraction.Execution is
          then Destination_Root (Destination_Root'First .. Destination_Root'Last - 1)
          else Destination_Root);
       Target   : constant String := Root & "/" & Relative;
-      Temp     : constant String := Fresh_Sibling_Path (Root, Target, "tmp");
+      Temp     : constant String :=
+        Archive.Temporary_Resources.Fresh_Sibling_Path (Root, Target, "tmp");
       File     : Ada.Streams.Stream_IO.File_Type;
       Written  : Archive.Resource_Limits.Limit_Value := 0;
       CRC      : Archive.Verification.CRC32.CRC32_State := Archive.Verification.CRC32.Initial;
@@ -244,7 +193,8 @@ package body Archive.Extraction.Execution is
 
       if Ada.Directories.Exists (Target) then
          declare
-            Backup : constant String := Fresh_Sibling_Path (Root, Target, "old");
+            Backup : constant String :=
+              Archive.Temporary_Resources.Fresh_Sibling_Path (Root, Target, "old");
          begin
             if Backup = "" then
                if Ada.Directories.Exists (Temp) then
@@ -413,6 +363,4 @@ package body Archive.Extraction.Execution is
             Blocked_Count   => Result.Blocked_Count,
             Last_Status     => Archive.Extraction.Results.Failed_Write);
    end Execute_Plan_Streaming;
-begin
-   Temp_Nonce_Random.Reset (Temp_Generator);
 end Archive.Extraction.Execution;

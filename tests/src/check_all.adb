@@ -382,8 +382,8 @@ procedure Check_All is
 
       if Ends_With (Path, "/archive-extraction-execution.adb")
         and then
-          (not Contains (Content, "Fresh_Sibling_Path")
-           or else not Contains (Content, "Temp_Nonce_Random")
+          (not Contains (Content, "Archive.Temporary_Resources.Fresh_Sibling_Path")
+           or else Contains (Content, "Temp_Nonce_Random")
            or else Contains (Content, "Target & "".archive-tmp""")
            or else Contains (Content, "Target & "".archive-old"""))
       then
@@ -392,12 +392,21 @@ procedure Check_All is
 
       if Ends_With (Path, "/archive-writes-execution.adb")
         and then
-          (not Contains (Content, "Fresh_Sibling_Path")
-           or else not Contains (Content, "Temp_Nonce_Random")
+          (not Contains (Content, "Archive.Temporary_Resources.Fresh_Sibling_Path")
+           or else Contains (Content, "Temp_Nonce_Random")
            or else Contains (Content, "Destination_Path & "".archive-save-""")
            or else Contains (Content, "Destination_Path & "".archive-old"""))
       then
          Fail (Path & ": write publication must use randomized sibling staging names");
+      end if;
+
+      if Ends_With (Path, "/archive-temporary_resources.adb")
+        and then
+          (not Contains (Content, "Temp_Nonce_Random")
+           or else not Contains (Content, "Fresh_Sibling_Path")
+           or else not Contains (Content, "Under_Root (Root, Candidate)"))
+      then
+         Fail (Path & ": temporary resources must own randomized sibling allocation");
       end if;
 
       if Ends_With (Path, "/archive-writes-plans.adb")

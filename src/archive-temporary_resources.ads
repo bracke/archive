@@ -60,4 +60,10 @@ package Archive.Temporary_Resources is
    end Registry;
 
    function Under_Root (Root : String; Path : String) return Boolean;
+
+   function Fresh_Sibling_Path
+     (Root   : String;
+      Target : String;
+      Role   : String)
+      return String;
 end Archive.Temporary_Resources;

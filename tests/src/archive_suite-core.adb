@@ -8273,6 +8273,9 @@ package body Archive_Suite.Core is
       Id3      : Archive.Temporary_Resources.Resource_Id;
       Stored   : Boolean;
       Decision : Archive.Temporary_Resources.Cleanup_Decision;
+      Fresh    : constant String :=
+        Archive.Temporary_Resources.Fresh_Sibling_Path
+          ("/tmp/archive", "/tmp/archive/session/file", "tmp");
    begin
       Assert
         (Archive.Temporary_Resources.Under_Root ("/tmp/archive", "/tmp/archive/session/file"),
@@ -8280,6 +8283,11 @@ package body Archive_Suite.Core is
       Assert
         (not Archive.Temporary_Resources.Under_Root ("/tmp/archive", "/tmp/archive-evil/file"),
          "prefix sibling is not under temp root");
+      Assert
+        (Fresh /= ""
+         and then Fresh /= "/tmp/archive/session/file"
+         and then Archive.Temporary_Resources.Under_Root ("/tmp/archive", Fresh),
+         "fresh sibling temp path is contained and distinct");
 
       Registry.Register
         (Archive.Temporary_Resources.Preview_File, Owner => 1,
