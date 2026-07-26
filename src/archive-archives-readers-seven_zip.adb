@@ -50,6 +50,12 @@ package body Archive.Archives.Readers.Seven_Zip is
          Value   => Archive.Types.CRC32_Value (Value));
    end CRC_Of;
 
+   function Name_Looks_Directory (Name : String) return Boolean is
+   begin
+      return Name'Length > 0
+        and then (Name (Name'Last) = '/' or else Name (Name'Last) = '\');
+   end Name_Looks_Directory;
+
    function Effective_Read_Limit
      (Path      : String;
       Max_Bytes : Positive)
@@ -107,7 +113,7 @@ package body Archive.Archives.Readers.Seven_Zip is
                Item.Original_Path := To_Unbounded_String (Name);
                Item.Display_Name := To_Unbounded_String (Name);
                Item.Kind :=
-                 (if Native.Is_Directory
+                 (if Native.Is_Directory and then Name_Looks_Directory (Name)
                   then Archive.Archives.Entries.Directory
                   else Archive.Archives.Entries.Regular_File);
                Item.Compressed := Size_Of (Native.Compressed_Size);

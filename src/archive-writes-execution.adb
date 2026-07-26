@@ -563,7 +563,7 @@ package body Archive.Writes.Execution is
          end if;
 
          if Z_Status = Zlib.Ok then
-            Zlib.Seven_Zip_Stored_Files (Input_Paths, Temp, Entry_Names, Z_Status);
+            Zlib.Seven_Zip_Deflate_Files (Input_Paths, Temp, Entry_Names, Z_Status);
          end if;
       end;
 

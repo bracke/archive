@@ -6151,6 +6151,26 @@ package body Archive_Suite.Core is
          end loop;
          return Archive.Archives.Entries.Unknown_Compression;
       end Method_For;
+
+      function Entry_For_Path
+        (Index : Archive.Archives.Index.Archive_Index;
+         Path  : String)
+         return Archive.Archives.Entries.Archive_Entry
+      is
+      begin
+         for Raw_Id in 1 .. Archive.Archives.Index.Entry_Count (Index) loop
+            declare
+               Item : constant Archive.Archives.Entries.Archive_Entry :=
+                 Archive.Archives.Index.Entry_For
+                   (Index, Archive.Types.Entry_Id (Raw_Id));
+            begin
+               if To_String (Item.Original_Path) = Path then
+                  return Item;
+               end if;
+            end;
+         end loop;
+         return (others => <>);
+      end Entry_For_Path;
    begin
       if not Ada.Directories.Exists (Root) then
          Ada.Directories.Create_Path (Root);
@@ -6270,6 +6290,17 @@ package body Archive_Suite.Core is
              (Tar_Gz_Target, Source_Name => Tar_Gz_Target, Retain_Backing => True);
          Seven_Zip_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
            Archive.Archives.Readers.Dispatch.Open_File (Seven_Zip_Target);
+         Seven_Zip_Item : constant Archive.Archives.Entries.Archive_Entry :=
+           (if Seven_Zip_Opened.Status = Archive.Archives.Errors.Ok
+            then Entry_For_Path (Seven_Zip_Opened.Index, "docs/readme.txt")
+            else (others => <>));
+         Seven_Zip_Payload : constant Test_Stream_Result :=
+           (if Seven_Zip_Opened.Status = Archive.Archives.Errors.Ok
+            then Stream_Dispatch_Payload_File
+              (Seven_Zip_Target,
+               Seven_Zip_Target,
+               Seven_Zip_Item)
+            else Empty_Test_Stream (Archive.Archives.Errors.Invalid_Format));
          Bzip2_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
            Archive.Archives.Readers.Dispatch.Open_File
              (Bzip2_Target, Source_Name => "dispatch-stream.bz2");
@@ -6328,7 +6359,38 @@ package body Archive_Suite.Core is
            (Seven_Zip_Opened.Status = Archive.Archives.Errors.Ok
             and then Seven_Zip_Opened.Format = Archive.Archives.Formats.Seven_Zip_Format
             and then Archive.Archives.Index.Physical_Count (Seven_Zip_Opened.Index) = 1,
-            "write dispatch 7z publication reopens");
+            "write dispatch 7z Deflate publication reopens");
+         Assert
+           (Seven_Zip_Payload.Status = Archive.Archives.Errors.Ok
+            and then Seven_Zip_Payload.Integrity = Archive.Archives.Entries.Verified
+            and then Seven_Zip_Payload.Bytes_Written = 2
+            and then Bytes_Of (Seven_Zip_Payload) (1) =
+              Zlib.Byte (Character'Pos ('o'))
+            and then Bytes_Of (Seven_Zip_Payload) (2) =
+              Zlib.Byte (Character'Pos ('k')),
+            "write dispatch 7z Deflate publication streams payload: status="
+            & Archive.Archives.Errors.Error_Code'Image (Seven_Zip_Payload.Status)
+            & " integrity="
+            & Archive.Archives.Entries.Integrity_State'Image
+                (Seven_Zip_Payload.Integrity)
+            & " bytes="
+            & Natural'Image (Seven_Zip_Payload.Bytes_Written)
+            & " kind="
+            & Archive.Archives.Entries.Entry_Kind'Image (Seven_Zip_Item.Kind)
+            & " compressed_present="
+            & Boolean'Image (Seven_Zip_Item.Compressed.Present)
+            & " compressed="
+            & (if Seven_Zip_Item.Compressed.Present
+               then Archive.Types.Uncompressed_Size'Image
+                 (Seven_Zip_Item.Compressed.Value)
+               else "absent")
+            & " uncompressed_present="
+            & Boolean'Image (Seven_Zip_Item.Uncompressed.Present)
+            & " uncompressed="
+            & (if Seven_Zip_Item.Uncompressed.Present
+               then Archive.Types.Uncompressed_Size'Image
+                 (Seven_Zip_Item.Uncompressed.Value)
+               else "absent"));
          Assert
            (Bzip2_Opened.Status = Archive.Archives.Errors.Ok
             and then Bzip2_Opened.Format = Archive.Archives.Formats.BZip2_Format
