@@ -653,7 +653,6 @@ procedure Check_All is
       Require_Catalog_Key (Catalog, "command.unavailable.not_ready");
       Require_Catalog_Key (Catalog, "command.unavailable.no_recent_archives");
       Require_Catalog_Key (Catalog, "command.unavailable.unsupported_write_action");
-      Require_Catalog_Key (Catalog, "command.unavailable.read_only_archive");
       Require_Catalog_Key (Catalog, "menu.file");
       Require_Catalog_Key (Catalog, "menu.edit");
       Require_Catalog_Key (Catalog, "menu.view");
@@ -824,6 +823,10 @@ procedure Check_All is
         ("docs/PRODUCT_SCOPE.md", "`Archive.UI`");
       Forbid_Document_Text
         ("share/archive.catalog", "read-only archive browser");
+      Forbid_Document_Text
+        ("share/archive.catalog", "command.unavailable.read_only_archive");
+      Forbid_Document_Text
+        ("docs/IMPLEMENTATION_PLAN.md", "read-only");
       Require_Document_Text
         ("docs/FILES_MAPPING.md", "`Archive.Commands` is the central registry and executor");
       Require_Document_Text

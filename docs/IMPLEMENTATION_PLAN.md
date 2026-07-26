@@ -38,7 +38,7 @@ attempts, runtime validation, and resize handling where display/Vulkan are
 available; the deterministic malformed/security corpus now includes additional
 safe-path normalization and ZIP local-header corruption cases; and release
 documentation now describes the current read/write gate without stale
-read-only or gzip-publication caveats.
+browser-only or gzip-publication caveats.
 
 ## Phase 0: Baseline And Scope Lock
 
@@ -47,7 +47,7 @@ Acceptance:
 - `docs/PRODUCT_SCOPE.md` defines the current read/write scope.
 - `docs/IMPLEMENTATION_PLAN.md` is validated by `tests/bin/check_all`.
 - README, manifests, localization text, and AI guide do not describe the app
-  as read-only.
+  as browser-only.
 - `tests/bin/check_all` passes.
 
 Current status: mostly complete.
