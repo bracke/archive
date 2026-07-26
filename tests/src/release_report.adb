@@ -514,6 +514,7 @@ procedure Release_Report is
       Has_Zip_Descriptor : Boolean := False;
       Has_Zip64 : Boolean := False;
       Has_Zip_Unsupported : Boolean := False;
+      Has_Zip_PPMd : Boolean := False;
       Has_Zip_Encrypted : Boolean := False;
       Has_Zip_Multi_Disk : Boolean := False;
       Has_Gzip : Boolean := False;
@@ -582,6 +583,8 @@ procedure Release_Report is
             return (True, 131, "001789A9");
          elsif Id = "zip-unsupported-method" then
             return (True, 111, "D97324F5");
+         elsif Id = "zip-ppmd" then
+            return (True, 111, "811B9BE2");
          elsif Id = "zip-encrypted" then
             return (True, 111, "CFBFD41F");
          elsif Id = "zip-zip64-missing-extra" then
@@ -746,6 +749,8 @@ procedure Release_Report is
                   Has_Zip64 := True;
                elsif Id = "zip-unsupported-method" then
                   Has_Zip_Unsupported := True;
+               elsif Id = "zip-ppmd" then
+                  Has_Zip_PPMd := True;
                elsif Id = "zip-encrypted" then
                   Has_Zip_Encrypted := True;
                elsif Id = "zip-multi-disk" then
@@ -799,7 +804,8 @@ procedure Release_Report is
         or else not Has_Zip_Central_CRC_Mismatch
         or else not Has_Zip_Unicode_Bad_CRC
         or else not Has_Zip_Unicode_Bad_Version
-        or else not Has_Zip_Unsupported or else not Has_Zip_Encrypted
+        or else not Has_Zip_Unsupported or else not Has_Zip_PPMd
+        or else not Has_Zip_Encrypted
         or else not Has_Zip64_Missing_Extra
         or else not Has_Zip64_Too_Large
         or else not Has_Zip_Local_Size_Mismatch

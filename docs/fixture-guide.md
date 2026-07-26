@@ -33,6 +33,7 @@ zip-central-crc-mismatch
 zip-unicode-path-bad-crc
 zip-unicode-path-bad-version
 zip-unsupported-method
+zip-ppmd
 zip-encrypted
 zip-zip64-missing-extra
 zip-zip64-too-large

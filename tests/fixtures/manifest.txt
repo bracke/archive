@@ -18,6 +18,7 @@ fixture id=zip-central-crc-mismatch path=generated:zip-central-crc-mismatch form
 fixture id=zip-unicode-path-bad-crc path=generated:zip-unicode-path-bad-crc format=zip purpose=zip-unicode-path-extra-bad-crc size=131 crc32=D686D927
 fixture id=zip-unicode-path-bad-version path=generated:zip-unicode-path-bad-version format=zip purpose=zip-unicode-path-extra-bad-version size=131 crc32=001789A9
 fixture id=zip-unsupported-method path=generated:zip-unsupported-method format=zip purpose=zip-unsupported-method size=111 crc32=D97324F5
+fixture id=zip-ppmd path=generated:zip-ppmd format=zip purpose=zip-ppmd-unsupported-method size=111 crc32=811B9BE2
 fixture id=zip-encrypted path=generated:zip-encrypted format=zip purpose=zip-encrypted-entry size=111 crc32=CFBFD41F
 fixture id=zip-zip64-missing-extra path=generated:zip-zip64-missing-extra format=zip purpose=zip64-missing-extra size=111 crc32=132876B0
 fixture id=zip-zip64-too-large path=generated:zip-zip64-too-large format=zip purpose=zip64-overflow-boundary size=151 crc32=6D402500

@@ -1938,6 +1938,8 @@ procedure Check_All is
          return Generated_Zip_Unicode_Path (Bad_Version => True);
       elsif Id = "zip-unsupported-method" then
          return Generated_Zip (Method => 99);
+      elsif Id = "zip-ppmd" then
+         return Generated_Zip (Method => 98);
       elsif Id = "zip-encrypted" then
          return Generated_Zip (Encrypted => True);
       elsif Id = "zip-zip64-missing-extra" then
@@ -2144,6 +2146,7 @@ procedure Check_All is
       Has_Zip_Unicode_Bad_CRC : Boolean := False;
       Has_Zip_Unicode_Bad_Version : Boolean := False;
       Has_Zip_Unsupported : Boolean := False;
+      Has_Zip_PPMd : Boolean := False;
       Has_Zip_Encrypted : Boolean := False;
       Has_Zip64_Missing_Extra : Boolean := False;
       Has_Zip64_Too_Large : Boolean := False;
@@ -2206,6 +2209,8 @@ procedure Check_All is
                      Has_Zip_Unicode_Bad_Version := True;
                   elsif Id = "zip-unsupported-method" then
                      Has_Zip_Unsupported := True;
+                  elsif Id = "zip-ppmd" then
+                     Has_Zip_PPMd := True;
                   elsif Id = "zip-encrypted" then
                      Has_Zip_Encrypted := True;
                   elsif Id = "zip-zip64-missing-extra" then
@@ -2245,7 +2250,8 @@ procedure Check_All is
         or else not Has_Zip_Central_CRC_Mismatch
         or else not Has_Zip_Unicode_Bad_CRC
         or else not Has_Zip_Unicode_Bad_Version
-        or else not Has_Zip_Unsupported or else not Has_Zip_Encrypted
+        or else not Has_Zip_Unsupported or else not Has_Zip_PPMd
+        or else not Has_Zip_Encrypted
         or else not Has_Zip64_Missing_Extra
         or else not Has_Zip64_Too_Large
         or else not Has_Zip_Local_Size_Mismatch
