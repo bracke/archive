@@ -1999,6 +1999,21 @@ procedure Check_All is
          if Opened.Status /= Archive.Archives.Errors.Ok then
             Fail ("generated bad-CRC ZIP should remain indexable");
          end if;
+      elsif Id = "zip-central-crc-mismatch" then
+         if Opened.Status /= Archive.Archives.Errors.Ok then
+            Fail ("generated central/local CRC mismatch ZIP should remain indexable");
+         end if;
+      elsif Id = "zip-unicode-path-bad-crc"
+        or else Id = "zip-unicode-path-bad-version"
+        or else Id = "zip-zip64-missing-extra"
+        or else Id = "zip-zip64-too-large"
+        or else Id = "zip-local-size-mismatch"
+        or else Id = "zip-bad-local-signature"
+        or else Id = "gzip-bad-header-crc"
+      then
+         if Opened.Status /= Archive.Archives.Errors.Invalid_Format then
+            Fail ("generated malformed fixture " & Id & " should be rejected as invalid");
+         end if;
       elsif Id = "zip-multi-disk" then
          if Opened.Status /= Archive.Archives.Errors.Unsupported_Format then
             Fail ("generated multi-disk ZIP should be rejected as unsupported");
@@ -2111,9 +2126,17 @@ procedure Check_All is
       Has_Gzip_Empty : Boolean := False;
       Has_Tar_Duplicate : Boolean := False;
       Has_Zip_Bad_CRC : Boolean := False;
+      Has_Zip_Central_CRC_Mismatch : Boolean := False;
+      Has_Zip_Unicode_Bad_CRC : Boolean := False;
+      Has_Zip_Unicode_Bad_Version : Boolean := False;
       Has_Zip_Unsupported : Boolean := False;
       Has_Zip_Encrypted : Boolean := False;
+      Has_Zip64_Missing_Extra : Boolean := False;
+      Has_Zip64_Too_Large : Boolean := False;
+      Has_Zip_Local_Size_Mismatch : Boolean := False;
+      Has_Zip_Bad_Local_Signature : Boolean := False;
       Has_Zip_Multi_Disk : Boolean := False;
+      Has_Gzip_Bad_Header_CRC : Boolean := False;
       Has_Gzip_Bad_Trailer : Boolean := False;
    begin
       if not Ada.Directories.Exists (Manifest) then
@@ -2161,12 +2184,28 @@ procedure Check_All is
                      Has_Gzip_Empty := True;
                   elsif Id = "zip-bad-crc" then
                      Has_Zip_Bad_CRC := True;
+                  elsif Id = "zip-central-crc-mismatch" then
+                     Has_Zip_Central_CRC_Mismatch := True;
+                  elsif Id = "zip-unicode-path-bad-crc" then
+                     Has_Zip_Unicode_Bad_CRC := True;
+                  elsif Id = "zip-unicode-path-bad-version" then
+                     Has_Zip_Unicode_Bad_Version := True;
                   elsif Id = "zip-unsupported-method" then
                      Has_Zip_Unsupported := True;
                   elsif Id = "zip-encrypted" then
                      Has_Zip_Encrypted := True;
+                  elsif Id = "zip-zip64-missing-extra" then
+                     Has_Zip64_Missing_Extra := True;
+                  elsif Id = "zip-zip64-too-large" then
+                     Has_Zip64_Too_Large := True;
+                  elsif Id = "zip-local-size-mismatch" then
+                     Has_Zip_Local_Size_Mismatch := True;
+                  elsif Id = "zip-bad-local-signature" then
+                     Has_Zip_Bad_Local_Signature := True;
                   elsif Id = "zip-multi-disk" then
                      Has_Zip_Multi_Disk := True;
+                  elsif Id = "gzip-bad-header-crc" then
+                     Has_Gzip_Bad_Header_CRC := True;
                   elsif Id = "gzip-bad-trailer" then
                      Has_Gzip_Bad_Trailer := True;
                   end if;
@@ -2189,8 +2228,16 @@ procedure Check_All is
         or else not Has_Zip_Descriptor or else not Has_Zip64
         or else not Has_Gzip_Empty
         or else not Has_Zip_Bad_CRC
+        or else not Has_Zip_Central_CRC_Mismatch
+        or else not Has_Zip_Unicode_Bad_CRC
+        or else not Has_Zip_Unicode_Bad_Version
         or else not Has_Zip_Unsupported or else not Has_Zip_Encrypted
+        or else not Has_Zip64_Missing_Extra
+        or else not Has_Zip64_Too_Large
+        or else not Has_Zip_Local_Size_Mismatch
+        or else not Has_Zip_Bad_Local_Signature
         or else not Has_Zip_Multi_Disk
+        or else not Has_Gzip_Bad_Header_CRC
         or else not Has_Gzip_Bad_Trailer
       then
          Fail (Manifest & ": fixture manifest is missing required archive matrix entries");

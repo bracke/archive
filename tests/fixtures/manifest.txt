@@ -14,7 +14,15 @@ fixture id=zip-unicode-path path=generated:zip-unicode-path format=zip purpose=z
 fixture id=gzip-basic path=generated:gzip-basic format=gzip purpose=gzip-open-index size=23 crc32=BB1C56C2
 fixture id=gzip-empty path=generated:gzip-empty format=gzip purpose=gzip-empty-payload size=20 crc32=45378550
 fixture id=zip-bad-crc path=generated:zip-bad-crc format=zip purpose=zip-malformed-payload size=111 crc32=BB182EBC
+fixture id=zip-central-crc-mismatch path=generated:zip-central-crc-mismatch format=zip purpose=zip-central-local-crc-mismatch size=111 crc32=F05368A1
+fixture id=zip-unicode-path-bad-crc path=generated:zip-unicode-path-bad-crc format=zip purpose=zip-unicode-path-extra-bad-crc size=131 crc32=D686D927
+fixture id=zip-unicode-path-bad-version path=generated:zip-unicode-path-bad-version format=zip purpose=zip-unicode-path-extra-bad-version size=131 crc32=001789A9
 fixture id=zip-unsupported-method path=generated:zip-unsupported-method format=zip purpose=zip-unsupported-method size=111 crc32=D97324F5
 fixture id=zip-encrypted path=generated:zip-encrypted format=zip purpose=zip-encrypted-entry size=111 crc32=CFBFD41F
+fixture id=zip-zip64-missing-extra path=generated:zip-zip64-missing-extra format=zip purpose=zip64-missing-extra size=111 crc32=132876B0
+fixture id=zip-zip64-too-large path=generated:zip-zip64-too-large format=zip purpose=zip64-overflow-boundary size=151 crc32=6D402500
+fixture id=zip-local-size-mismatch path=generated:zip-local-size-mismatch format=zip purpose=zip-local-central-size-mismatch size=111 crc32=FFF9E6F2
+fixture id=zip-bad-local-signature path=generated:zip-bad-local-signature format=zip purpose=zip-bad-local-signature size=111 crc32=075C7652
 fixture id=zip-multi-disk path=generated:zip-multi-disk format=zip purpose=zip-multi-disk-unsupported size=111 crc32=D0D8818C
+fixture id=gzip-bad-header-crc path=generated:gzip-bad-header-crc format=gzip purpose=gzip-header-crc-failure size=25 crc32=DCD39199
 fixture id=gzip-bad-trailer path=generated:gzip-bad-trailer format=gzip purpose=gzip-malformed-trailer size=23 crc32=941F1893

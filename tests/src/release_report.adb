@@ -469,6 +469,14 @@ procedure Release_Report is
       Has_Gzip : Boolean := False;
       Has_Gzip_Empty : Boolean := False;
       Has_Zip_Bad_CRC : Boolean := False;
+      Has_Zip_Central_CRC_Mismatch : Boolean := False;
+      Has_Zip_Unicode_Bad_CRC : Boolean := False;
+      Has_Zip_Unicode_Bad_Version : Boolean := False;
+      Has_Zip64_Missing_Extra : Boolean := False;
+      Has_Zip64_Too_Large : Boolean := False;
+      Has_Zip_Local_Size_Mismatch : Boolean := False;
+      Has_Zip_Bad_Local_Signature : Boolean := False;
+      Has_Gzip_Bad_Header_CRC : Boolean := False;
       Has_Gzip_Bad_Trailer : Boolean := False;
 
       procedure Require_Field
@@ -516,12 +524,28 @@ procedure Release_Report is
             return (True, 20, "45378550");
          elsif Id = "zip-bad-crc" then
             return (True, 111, "BB182EBC");
+         elsif Id = "zip-central-crc-mismatch" then
+            return (True, 111, "F05368A1");
+         elsif Id = "zip-unicode-path-bad-crc" then
+            return (True, 131, "D686D927");
+         elsif Id = "zip-unicode-path-bad-version" then
+            return (True, 131, "001789A9");
          elsif Id = "zip-unsupported-method" then
             return (True, 111, "D97324F5");
          elsif Id = "zip-encrypted" then
             return (True, 111, "CFBFD41F");
+         elsif Id = "zip-zip64-missing-extra" then
+            return (True, 111, "132876B0");
+         elsif Id = "zip-zip64-too-large" then
+            return (True, 151, "6D402500");
+         elsif Id = "zip-local-size-mismatch" then
+            return (True, 111, "FFF9E6F2");
+         elsif Id = "zip-bad-local-signature" then
+            return (True, 111, "075C7652");
          elsif Id = "zip-multi-disk" then
             return (True, 111, "D0D8818C");
+         elsif Id = "gzip-bad-header-crc" then
+            return (True, 25, "DCD39199");
          elsif Id = "gzip-bad-trailer" then
             return (True, 23, "941F1893");
          else
@@ -676,8 +700,24 @@ procedure Release_Report is
                   Has_Gzip_Empty := True;
                elsif Id = "zip-bad-crc" then
                   Has_Zip_Bad_CRC := True;
+               elsif Id = "zip-central-crc-mismatch" then
+                  Has_Zip_Central_CRC_Mismatch := True;
+               elsif Id = "zip-unicode-path-bad-crc" then
+                  Has_Zip_Unicode_Bad_CRC := True;
+               elsif Id = "zip-unicode-path-bad-version" then
+                  Has_Zip_Unicode_Bad_Version := True;
                elsif Id = "gzip-bad-trailer" then
                   Has_Gzip_Bad_Trailer := True;
+               elsif Id = "zip-zip64-missing-extra" then
+                  Has_Zip64_Missing_Extra := True;
+               elsif Id = "zip-zip64-too-large" then
+                  Has_Zip64_Too_Large := True;
+               elsif Id = "zip-local-size-mismatch" then
+                  Has_Zip_Local_Size_Mismatch := True;
+               elsif Id = "zip-bad-local-signature" then
+                  Has_Zip_Bad_Local_Signature := True;
+               elsif Id = "gzip-bad-header-crc" then
+                  Has_Gzip_Bad_Header_CRC := True;
                end if;
             else
                Invalid := Invalid + 1;
@@ -700,8 +740,16 @@ procedure Release_Report is
         or else not Has_Zip_Descriptor or else not Has_Zip64
         or else not Has_Gzip or else not Has_Gzip_Empty
         or else not Has_Zip_Bad_CRC
+        or else not Has_Zip_Central_CRC_Mismatch
+        or else not Has_Zip_Unicode_Bad_CRC
+        or else not Has_Zip_Unicode_Bad_Version
         or else not Has_Zip_Unsupported or else not Has_Zip_Encrypted
+        or else not Has_Zip64_Missing_Extra
+        or else not Has_Zip64_Too_Large
+        or else not Has_Zip_Local_Size_Mismatch
+        or else not Has_Zip_Bad_Local_Signature
         or else not Has_Zip_Multi_Disk
+        or else not Has_Gzip_Bad_Header_CRC
         or else not Has_Gzip_Bad_Trailer
       then
          Invalid := Invalid + 1;
@@ -755,35 +803,45 @@ procedure Release_Report is
          end if;
       end Require_Field;
 
+      function Registered_Fixture_Id (Value : String) return Boolean is
+         Fixture_Manifest : constant String := Root & "/tests/fixtures/manifest.txt";
+         Fixture_File     : Ada.Text_IO.File_Type;
+         Fixture_Buffer   : String (1 .. 1024);
+         Fixture_Last     : Natural;
+      begin
+         if Value = "" or else not Ada.Directories.Exists (Fixture_Manifest) then
+            return False;
+         end if;
+
+         Ada.Text_IO.Open (Fixture_File, Ada.Text_IO.In_File, Fixture_Manifest);
+         while not Ada.Text_IO.End_Of_File (Fixture_File) loop
+            Ada.Text_IO.Get_Line (Fixture_File, Fixture_Buffer, Fixture_Last);
+            declare
+               Fixture_Line : constant String := Fixture_Buffer (1 .. Fixture_Last);
+            begin
+               if Fixture_Last > 0
+                 and then Starts_With (Fixture_Line, "fixture ")
+                 and then Field_Value (Fixture_Line, "id") = Value
+               then
+                  Ada.Text_IO.Close (Fixture_File);
+                  return True;
+               end if;
+            end;
+         end loop;
+         Ada.Text_IO.Close (Fixture_File);
+         return False;
+      exception
+         when others =>
+            if Ada.Text_IO.Is_Open (Fixture_File) then
+               Ada.Text_IO.Close (Fixture_File);
+            end if;
+            return False;
+      end Registered_Fixture_Id;
+
       function Known_Archive_Input (Value : String) return Boolean is
       begin
-         return Value in
-           "tar-basic"
-           | "tar-gzip-basic"
-           | "tar-duplicate-path"
-           | "zip-stored-basic"
-           | "zip-deflate-basic"
-           | "zip-data-descriptor"
-           | "zip-zip64-basic"
-           | "zip-unicode-path"
-           | "gzip-basic"
-           | "gzip-empty"
-           | "zip-bad-crc"
-           | "zip-central-crc-mismatch"
-           | "zip-unicode-path-bad-crc"
-           | "zip-unicode-path-bad-version"
-           | "zip-unsupported-method"
-           | "zip-encrypted"
-           | "zip-multi-disk"
-           | "zip-zip64-missing-extra"
-           | "zip-zip64-too-large"
-           | "zip-local-size-mismatch"
-           | "zip-bad-local-signature"
-           | "zip-truncated-central"
-           | "gzip-bad-header-crc"
-           | "gzip-truncated"
-           | "gzip-bad-trailer"
-           | "tar-truncated";
+         return Registered_Fixture_Id (Value)
+           or else Value in "zip-truncated-central" | "gzip-truncated" | "tar-truncated";
       end Known_Archive_Input;
    begin
       if not Ada.Directories.Exists (Manifest) then

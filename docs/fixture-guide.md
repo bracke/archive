@@ -29,9 +29,17 @@ zip-unicode-path
 gzip-basic
 gzip-empty
 zip-bad-crc
+zip-central-crc-mismatch
+zip-unicode-path-bad-crc
+zip-unicode-path-bad-version
 zip-unsupported-method
 zip-encrypted
+zip-zip64-missing-extra
+zip-zip64-too-large
+zip-local-size-mismatch
+zip-bad-local-signature
 zip-multi-disk
+gzip-bad-header-crc
 gzip-bad-trailer
 ```
 
