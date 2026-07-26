@@ -454,13 +454,22 @@ procedure Release_Report is
       Count    : Natural := 0;
       Has_Plain : Boolean := False;
       Has_Tar : Boolean := False;
+      Has_Settings_Current : Boolean := False;
+      Has_Settings_Migration : Boolean := False;
+      Has_Settings_Invalid : Boolean := False;
       Has_Tar_Gzip : Boolean := False;
+      Has_Tar_Duplicate : Boolean := False;
       Has_Zip_Stored : Boolean := False;
       Has_Zip_Deflate : Boolean := False;
+      Has_Zip_Descriptor : Boolean := False;
+      Has_Zip64 : Boolean := False;
       Has_Zip_Unsupported : Boolean := False;
       Has_Zip_Encrypted : Boolean := False;
       Has_Zip_Multi_Disk : Boolean := False;
       Has_Gzip : Boolean := False;
+      Has_Gzip_Empty : Boolean := False;
+      Has_Zip_Bad_CRC : Boolean := False;
+      Has_Gzip_Bad_Trailer : Boolean := False;
 
       procedure Require_Field
         (Line        : String;
@@ -507,12 +516,24 @@ procedure Release_Report is
                   Has_Plain := True;
                elsif Id = "tar-basic" then
                   Has_Tar := True;
+               elsif Id = "settings-current-valid" then
+                  Has_Settings_Current := True;
+               elsif Id = "settings-schema0-migration" then
+                  Has_Settings_Migration := True;
+               elsif Id = "settings-invalid-future-schema" then
+                  Has_Settings_Invalid := True;
                elsif Id = "tar-gzip-basic" then
                   Has_Tar_Gzip := True;
+               elsif Id = "tar-duplicate-path" then
+                  Has_Tar_Duplicate := True;
                elsif Id = "zip-stored-basic" then
                   Has_Zip_Stored := True;
                elsif Id = "zip-deflate-basic" then
                   Has_Zip_Deflate := True;
+               elsif Id = "zip-data-descriptor" then
+                  Has_Zip_Descriptor := True;
+               elsif Id = "zip-zip64-basic" then
+                  Has_Zip64 := True;
                elsif Id = "zip-unsupported-method" then
                   Has_Zip_Unsupported := True;
                elsif Id = "zip-encrypted" then
@@ -521,6 +542,12 @@ procedure Release_Report is
                   Has_Zip_Multi_Disk := True;
                elsif Id = "gzip-basic" then
                   Has_Gzip := True;
+               elsif Id = "gzip-empty" then
+                  Has_Gzip_Empty := True;
+               elsif Id = "zip-bad-crc" then
+                  Has_Zip_Bad_CRC := True;
+               elsif Id = "gzip-bad-trailer" then
+                  Has_Gzip_Bad_Trailer := True;
                end if;
             else
                Invalid := Invalid + 1;
@@ -535,10 +562,17 @@ procedure Release_Report is
       if Count = 0 then
          Invalid := Invalid + 1;
          Put_Line (Standard_Error, Manifest & ": fixture manifest contains no fixtures");
-      elsif not Has_Plain or else not Has_Tar or else not Has_Tar_Gzip
+      elsif not Has_Plain
+        or else not Has_Settings_Current or else not Has_Settings_Migration
+        or else not Has_Settings_Invalid
+        or else not Has_Tar or else not Has_Tar_Gzip or else not Has_Tar_Duplicate
         or else not Has_Zip_Stored or else not Has_Zip_Deflate
+        or else not Has_Zip_Descriptor or else not Has_Zip64
+        or else not Has_Gzip or else not Has_Gzip_Empty
+        or else not Has_Zip_Bad_CRC
         or else not Has_Zip_Unsupported or else not Has_Zip_Encrypted
-        or else not Has_Zip_Multi_Disk or else not Has_Gzip
+        or else not Has_Zip_Multi_Disk
+        or else not Has_Gzip_Bad_Trailer
       then
          Invalid := Invalid + 1;
          Put_Line
