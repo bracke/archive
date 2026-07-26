@@ -38,6 +38,7 @@ case id=archive-tar-gzip-basic kind=archive input=tar-gzip-basic source=fixture.
 case id=archive-tar-duplicate-path kind=archive input=tar-duplicate-path source=fixture.tar open=Ok entries=2
 case id=archive-cab-unsupported-method kind=archive input=cab-unsupported-method source=fixture.cab open=Unsupported_Method entries=0
 case id=archive-xz-unsupported-check kind=archive input=xz-unsupported-check source=fixture.xz open=Unsupported_Method entries=0
+case id=archive-seven-zip-encrypted kind=archive input=seven-zip-encrypted source=fixture.7z open=Ok entries=1 payload=Unsupported_Method
 case id=archive-zip-stored-basic kind=archive input=zip-stored-basic source=fixture.zip open=Ok entries=1
 case id=archive-zip-deflate-basic kind=archive input=zip-deflate-basic source=fixture.zip open=Ok entries=1
 case id=archive-zip-data-descriptor kind=archive input=zip-data-descriptor source=fixture.zip open=Ok entries=1

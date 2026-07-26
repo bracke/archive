@@ -511,6 +511,7 @@ procedure Release_Report is
       Has_Tar_Duplicate : Boolean := False;
       Has_Cab_Unsupported : Boolean := False;
       Has_Xz_Unsupported : Boolean := False;
+      Has_Seven_Zip_Encrypted : Boolean := False;
       Has_Zip_Stored : Boolean := False;
       Has_Zip_Deflate : Boolean := False;
       Has_Zip_Descriptor : Boolean := False;
@@ -565,6 +566,8 @@ procedure Release_Report is
             return (True, 77, "67F88E19");
          elsif Id = "xz-unsupported-check" then
             return (True, 56, "C7296238");
+         elsif Id = "seven-zip-encrypted" then
+            return (True, 163, "5FE648EF");
          elsif Id = "zip-stored-basic" then
             return (True, 111, "91E2A6FC");
          elsif Id = "zip-deflate-basic" then
@@ -749,6 +752,8 @@ procedure Release_Report is
                   Has_Cab_Unsupported := True;
                elsif Id = "xz-unsupported-check" then
                   Has_Xz_Unsupported := True;
+               elsif Id = "seven-zip-encrypted" then
+                  Has_Seven_Zip_Encrypted := True;
                elsif Id = "zip-stored-basic" then
                   Has_Zip_Stored := True;
                elsif Id = "zip-deflate-basic" then
@@ -809,6 +814,7 @@ procedure Release_Report is
         or else not Has_Tar or else not Has_Tar_Gzip or else not Has_Tar_Duplicate
         or else not Has_Cab_Unsupported
         or else not Has_Xz_Unsupported
+        or else not Has_Seven_Zip_Encrypted
         or else not Has_Zip_Stored or else not Has_Zip_Deflate
         or else not Has_Zip_Descriptor or else not Has_Zip64
         or else not Has_Gzip or else not Has_Gzip_Empty

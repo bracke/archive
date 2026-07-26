@@ -1623,6 +1623,32 @@ procedure Check_All is
       return Result;
    end Generated_Xz_Unsupported_Check;
 
+   function Generated_Seven_Zip_Encrypted return Zlib.Byte_Array is
+   begin
+      return
+        [16#37#, 16#7A#, 16#BC#, 16#AF#, 16#27#, 16#1C#, 16#00#, 16#04#,
+         16#56#, 16#B1#, 16#C1#, 16#DA#, 16#10#, 16#00#, 16#00#, 16#00#,
+         16#00#, 16#00#, 16#00#, 16#00#, 16#73#, 16#00#, 16#00#, 16#00#,
+         16#00#, 16#00#, 16#00#, 16#00#, 16#F2#, 16#36#, 16#A6#, 16#CC#,
+         16#E0#, 16#A9#, 16#C3#, 16#B4#, 16#22#, 16#91#, 16#7D#, 16#29#,
+         16#EC#, 16#73#, 16#4C#, 16#DA#, 16#B7#, 16#02#, 16#C5#, 16#AF#,
+         16#01#, 16#04#, 16#06#, 16#00#, 16#01#, 16#09#, 16#10#, 16#00#,
+         16#07#, 16#0B#, 16#01#, 16#00#, 16#02#, 16#24#, 16#06#, 16#F1#,
+         16#07#, 16#01#, 16#12#, 16#53#, 16#0F#, 16#90#, 16#61#, 16#89#,
+         16#94#, 16#98#, 16#E7#, 16#19#, 16#88#, 16#98#, 16#0D#, 16#3B#,
+         16#27#, 16#01#, 16#0F#, 16#42#, 16#12#, 16#23#, 16#03#, 16#01#,
+         16#01#, 16#05#, 16#5D#, 16#00#, 16#00#, 16#80#, 16#00#, 16#01#,
+         16#00#, 16#0C#, 16#08#, 16#03#, 16#00#, 16#08#, 16#0D#, 16#01#,
+         16#0A#, 16#01#, 16#C2#, 16#41#, 16#24#, 16#35#, 16#00#, 16#00#,
+         16#05#, 16#01#, 16#11#, 16#19#, 16#00#, 16#70#, 16#00#, 16#61#,
+         16#00#, 16#79#, 16#00#, 16#6C#, 16#00#, 16#6F#, 16#00#, 16#61#,
+         16#00#, 16#64#, 16#00#, 16#2E#, 16#00#, 16#74#, 16#00#, 16#78#,
+         16#00#, 16#74#, 16#00#, 16#00#, 16#00#, 16#14#, 16#0A#, 16#01#,
+         16#00#, 16#F4#, 16#24#, 16#0E#, 16#C7#, 16#2B#, 16#1D#, 16#DD#,
+         16#01#, 16#15#, 16#06#, 16#01#, 16#00#, 16#20#, 16#00#, 16#00#,
+         16#00#, 16#00#, 16#00#];
+   end Generated_Seven_Zip_Encrypted;
+
    function Generated_Gzip return Zlib.Byte_Array is
       Status : Zlib.Status_Code;
       Result : constant Zlib.Byte_Array := Zlib.GZip (Payload_ABC, Zlib.Fixed, Status);
@@ -1971,6 +1997,8 @@ procedure Check_All is
          return Generated_Cab (2);
       elsif Id = "xz-unsupported-check" then
          return Generated_Xz_Unsupported_Check;
+      elsif Id = "seven-zip-encrypted" then
+         return Generated_Seven_Zip_Encrypted;
       elsif Id = "zip-stored-basic" then
          return Generated_Zip;
       elsif Id = "zip-deflate-basic" then
@@ -2208,6 +2236,7 @@ procedure Check_All is
       Has_Tar_Duplicate : Boolean := False;
       Has_Cab_Unsupported : Boolean := False;
       Has_Xz_Unsupported : Boolean := False;
+      Has_Seven_Zip_Encrypted : Boolean := False;
       Has_Zip_Bad_CRC : Boolean := False;
       Has_Zip_Central_CRC_Mismatch : Boolean := False;
       Has_Zip_Unicode_Bad_CRC : Boolean := False;
@@ -2258,6 +2287,8 @@ procedure Check_All is
                      Has_Cab_Unsupported := True;
                   elsif Id = "xz-unsupported-check" then
                      Has_Xz_Unsupported := True;
+                  elsif Id = "seven-zip-encrypted" then
+                     Has_Seven_Zip_Encrypted := True;
                   elsif Id = "zip-stored-basic" then
                      Has_Zip_Stored := True;
                   elsif Id = "zip-deflate-basic" then
@@ -2317,6 +2348,7 @@ procedure Check_All is
         or else not Has_Tar_Duplicate
         or else not Has_Cab_Unsupported
         or else not Has_Xz_Unsupported
+        or else not Has_Seven_Zip_Encrypted
         or else not Has_Zip_Descriptor or else not Has_Zip64
         or else not Has_Gzip_Empty
         or else not Has_Zip_Bad_CRC
