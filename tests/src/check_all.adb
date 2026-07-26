@@ -878,9 +878,11 @@ procedure Check_All is
       Require_Document_Text
         ("docs/ai-implementation-guide.md", "`Archive.Archives.Opening`: source validation");
       Require_Document_Text
-        ("docs/ai-implementation-guide.md", "`Archive.Archives.Streams`: bounded compatibility helper");
+        ("docs/ai-implementation-guide.md", "`Archive.Archives.Streams`: bounded source-stream boundary");
       Require_Document_Text
         ("docs/ai-implementation-guide.md", "Production readers should prefer file-backed metadata");
+      Forbid_Document_Text
+        ("docs/ai-implementation-guide.md", "compatibility helper");
       Require_Document_Text
         ("docs/ai-implementation-guide.md", "`Archive.Archives.Opening.Tasks`: native Ada open worker");
       Require_Document_Text

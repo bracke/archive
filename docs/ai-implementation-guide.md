@@ -42,9 +42,10 @@
 - `Archive.Archives.Opening`: source validation, source fingerprinting,
   file-backed reader dispatch, source-change rejection, and generation-aware
   model publication for archive open attempts.
-- `Archive.Archives.Streams`: bounded compatibility helper for narrowly scoped
-  fixtures and probes. Production readers should prefer file-backed metadata
-  slices and entry payload streams rather than whole-archive materialization.
+- `Archive.Archives.Streams`: bounded source-stream boundary for narrowly scoped
+  prefix probes, fixture inputs, and guarded small-buffer conversions.
+  Production readers should prefer file-backed metadata slices and entry
+  payload streams rather than whole-archive materialization.
 - `Archive.Archives.Opening.Tasks`: native Ada open worker. It must prepare
   archive results off the GUI thread, store them in a protected result box, and
   publish only `Open_Completed` through `Archive.Tasking.Services.Event_Bridge`.
