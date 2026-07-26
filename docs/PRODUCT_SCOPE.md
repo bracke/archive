@@ -173,7 +173,9 @@ settings snapshot for menu construction.
 Recognized unsupported formats include RAR, split ZIP, multi-volume ZIP,
 encrypted entries outside supported 7z layouts, unsupported XZ layouts,
 unsupported CAB folder methods, ZIP PPMd, and unsupported ZIP methods or 7z
-layouts.
+layouts. 7z first-volume sources (`.7z.001`) are supported only for bounded
+volume sets whose joined archive image remains within the configured reader
+limit and whose native 7z layout is accepted by `zlib`.
 
 ## Non-Negotiable Invariants
 

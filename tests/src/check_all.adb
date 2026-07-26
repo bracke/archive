@@ -852,6 +852,8 @@ procedure Check_All is
       Require_Document_Text
         ("docs/FORMAT_SUPPORT.md", "supported native 7z layouts");
       Require_Document_Text
+        ("docs/FORMAT_SUPPORT.md", "bounded 7z first-volume reassembly");
+      Require_Document_Text
         ("docs/FORMAT_SUPPORT.md", "ISO 9660 directory-record indexing");
       Require_Document_Text
         ("docs/FORMAT_SUPPORT.md", "bounded stored and MSZIP CAB folder");
