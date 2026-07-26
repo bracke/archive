@@ -255,6 +255,20 @@ package body Archive.Preview is
       return Result;
    end Finish;
 
+   function Bytes_Received
+     (Accumulator : Preview_Accumulator)
+      return Natural is
+   begin
+      return Accumulator.Total;
+   end Bytes_Received;
+
+   function Limit_Reached
+     (Accumulator : Preview_Accumulator)
+      return Boolean is
+   begin
+      return Accumulator.Hit_Limit;
+   end Limit_Reached;
+
    function Generate_Entry_Metadata
      (Item      : Archive.Archives.Entries.Archive_Entry;
       Status    : Archive.Archives.Errors.Error_Code := Archive.Archives.Errors.Ok;

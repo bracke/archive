@@ -50,6 +50,14 @@ package Archive.Preview is
      (Accumulator : Preview_Accumulator)
       return Preview_Result;
 
+   function Bytes_Received
+     (Accumulator : Preview_Accumulator)
+      return Natural;
+
+   function Limit_Reached
+     (Accumulator : Preview_Accumulator)
+      return Boolean;
+
    function Generate_Entry_From_Accumulator
      (Item        : Archive.Archives.Entries.Archive_Entry;
       Accumulator : Preview_Accumulator;

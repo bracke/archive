@@ -2576,6 +2576,64 @@ package body Archive_Suite.Core is
                     "stale and cancelled streamed preview do not call producer");
          end;
       end;
+
+      declare
+         Item : Archive.Archives.Entries.Archive_Entry;
+         Chunk1 : constant Zlib.Byte_Array :=
+           [1 => Zlib.Byte (Character'Pos ('a')),
+            2 => Zlib.Byte (Character'Pos ('b'))];
+         Chunk2 : constant Zlib.Byte_Array :=
+           [1 => Zlib.Byte (Character'Pos ('c')),
+            2 => Zlib.Byte (Character'Pos ('d'))];
+         Tight_Limits : constant Archive.Preview.Preview_Limits :=
+           (Max_Input_Bytes => 3, Max_Text_Chars => 10, Max_Hex_Bytes => 10);
+         Chunks_Offered : Natural := 0;
+
+         function Produce_Limited
+           (Consumer : not null Archive.Preview.Service.Preview_Chunk_Consumer)
+            return Archive.Preview.Service.Preview_Stream_Status
+         is
+            Continue : Boolean := True;
+         begin
+            Chunks_Offered := Chunks_Offered + 1;
+            Consumer.all (Chunk1, Continue);
+            if Continue then
+               Chunks_Offered := Chunks_Offered + 1;
+               Consumer.all (Chunk2, Continue);
+            end if;
+            if Continue then
+               Chunks_Offered := Chunks_Offered + 1;
+               Consumer.all (Chunk1, Continue);
+            end if;
+            return
+              (Status => Archive.Archives.Errors.Ok,
+               Integrity => Archive.Archives.Entries.Verified);
+         end Produce_Limited;
+      begin
+         Item.Kind := Archive.Archives.Entries.Regular_File;
+
+         declare
+            Limited_Result : constant Archive.Preview.Service.Preview_Service_Result :=
+              Archive.Preview.Service.Complete_Streamed_Entry
+                (Item, Produce_Limited'Unrestricted_Access, Tight_Limits,
+                 Cancelled => False,
+                 Event => Current_Event,
+                 Current_Session => 5,
+                 Current_Preview => 9);
+         begin
+            Assert (Limited_Result.Accepted, "limited streamed preview is accepted");
+            Assert (Limited_Result.Bytes_Received = 3,
+                    "streamed preview retains only the configured input limit");
+            Assert (Limited_Result.Limit_Reached,
+                    "streamed preview reports the input limit boundary");
+            Assert (Limited_Result.Preview.Truncated,
+                    "streamed preview reports truncation after the limit");
+            Assert (To_String (Limited_Result.Preview.Text) = "abc",
+                    "streamed preview is generated from retained chunks");
+            Assert (Chunks_Offered = 2,
+                    "stream producer stops when consumer reports the limit");
+         end;
+      end;
    end Test_Preview_Service;
 
    procedure Test_Path_Safety (T : in out AUnit.Test_Cases.Test_Case'Class) is

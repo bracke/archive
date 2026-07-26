@@ -22,14 +22,22 @@ package body Archive.Preview.Service is
       end Consume;
    begin
       if Cancelled then
-         return (Accepted => False, Preview => (others => <>));
+         return
+           (Accepted       => False,
+            Preview        => (others => <>),
+            Bytes_Received => 0,
+            Limit_Reached  => False);
       end if;
 
       if Archive.Tasking.Events.Classify
         (Event, Current_Session, Current_Preview)
         = Archive.Tasking.Events.Reject_Stale_Event
       then
-         return (Accepted => False, Preview => (others => <>));
+         return
+           (Accepted       => False,
+            Preview        => (others => <>),
+            Bytes_Received => 0,
+            Limit_Reached  => False);
       end if;
 
       Archive.Preview.Initialize (Accumulator, Limits);
@@ -41,7 +49,9 @@ package body Archive.Preview.Service is
            (Accepted => True,
             Preview  =>
               Archive.Preview.Generate_Entry_From_Accumulator
-                (Item, Accumulator, Streamed.Status, Streamed.Integrity));
+                (Item, Accumulator, Streamed.Status, Streamed.Integrity),
+            Bytes_Received => Archive.Preview.Bytes_Received (Accumulator),
+            Limit_Reached  => Archive.Preview.Limit_Reached (Accumulator));
       end;
    end Complete_Streamed_Entry;
 end Archive.Preview.Service;

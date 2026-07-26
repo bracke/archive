@@ -8,6 +8,8 @@ package Archive.Preview.Service is
    type Preview_Service_Result is record
       Accepted : Boolean := False;
       Preview  : Archive.Preview.Preview_Result;
+      Bytes_Received : Natural := 0;
+      Limit_Reached  : Boolean := False;
    end record;
 
    type Preview_Chunk_Consumer is access procedure
