@@ -699,21 +699,11 @@ package body Archive.Archives.Readers.Zip is
                   end if;
 
                   declare
-                     Directory_Bytes  : Zlib.Byte_Array (1 .. Directory_Size);
-                     Directory_Status : Archive.Archives.Errors.Error_Code;
-                     Cursor          : Natural := 0;
+                     Cursor : Natural := 0;
                   begin
-                     Read_File_Slice
-                       (Path, Directory_Off, Directory_Bytes, Directory_Status);
-                     if Directory_Status /= Archive.Archives.Errors.Ok then
-                        return
-                          (Status  => Directory_Status,
-                           Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
-                     end if;
-
                      for Ordinal in 0 .. Entries_Total - 1 loop
-                        if not In_Range (Directory_Bytes, Cursor, 46)
-                          or else Signature (Directory_Bytes, Cursor) /= 16#0201_4B50#
+                        if Cursor > Directory_Size
+                          or else 46 > Directory_Size - Cursor
                         then
                            return
                              (Status  => Archive.Archives.Errors.Invalid_Format,
@@ -721,36 +711,53 @@ package body Archive.Archives.Readers.Zip is
                         end if;
 
                         declare
-                           Flags      : constant Interfaces.Unsigned_16 :=
-                             U16 (Directory_Bytes, Cursor + 8);
-                           Method     : constant Interfaces.Unsigned_16 :=
-                             U16 (Directory_Bytes, Cursor + 10);
-                           CRC        : constant Interfaces.Unsigned_32 :=
-                             U32 (Directory_Bytes, Cursor + 16);
-                           Comp_Size_Raw : constant Interfaces.Unsigned_32 :=
-                             U32 (Directory_Bytes, Cursor + 20);
-                           Uncomp_Raw    : constant Interfaces.Unsigned_32 :=
-                             U32 (Directory_Bytes, Cursor + 24);
-                           Name_Len   : constant Natural :=
-                             Natural (U16 (Directory_Bytes, Cursor + 28));
-                           Extra_Len  : constant Natural :=
-                             Natural (U16 (Directory_Bytes, Cursor + 30));
-                           Comment_Len : constant Natural :=
-                             Natural (U16 (Directory_Bytes, Cursor + 32));
-                           Local_Off_Raw : constant Interfaces.Unsigned_32 :=
-                             U32 (Directory_Bytes, Cursor + 42);
-                           Header_End : constant Natural := Cursor + 46;
+                           Central_Header : Zlib.Byte_Array (1 .. 46);
+                           Central_Status : Archive.Archives.Errors.Error_Code;
+                        begin
+                           Read_File_Slice
+                             (Path,
+                              Directory_Off + Cursor,
+                              Central_Header,
+                              Central_Status);
+                           if Central_Status /= Archive.Archives.Errors.Ok then
+                              return
+                                (Status  => Central_Status,
+                                 Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
+                           elsif Signature (Central_Header, 0) /= 16#0201_4B50# then
+                              return
+                                (Status  => Archive.Archives.Errors.Invalid_Format,
+                                 Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
+                           end if;
+
+                           declare
+                              Flags      : constant Interfaces.Unsigned_16 :=
+                                U16 (Central_Header, 8);
+                              Method     : constant Interfaces.Unsigned_16 :=
+                                U16 (Central_Header, 10);
+                              CRC        : constant Interfaces.Unsigned_32 :=
+                                U32 (Central_Header, 16);
+                              Comp_Size_Raw : constant Interfaces.Unsigned_32 :=
+                                U32 (Central_Header, 20);
+                              Uncomp_Raw    : constant Interfaces.Unsigned_32 :=
+                                U32 (Central_Header, 24);
+                              Name_Len   : constant Natural :=
+                                Natural (U16 (Central_Header, 28));
+                              Extra_Len  : constant Natural :=
+                                Natural (U16 (Central_Header, 30));
+                              Comment_Len : constant Natural :=
+                                Natural (U16 (Central_Header, 32));
+                              Local_Off_Raw : constant Interfaces.Unsigned_32 :=
+                                U32 (Central_Header, 42);
+                              Metadata_Len : constant Natural :=
+                                Name_Len + Extra_Len + Comment_Len;
                         begin
                            if not Within_Metadata_Limit
-                             (Name_Len + Extra_Len + Comment_Len)
+                             (Metadata_Len)
                            then
                               return
                                 (Status  => Archive.Archives.Errors.Limit_Exceeded,
                                  Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
-                           elsif not In_Range
-                             (Directory_Bytes,
-                              Header_End,
-                              Name_Len + Extra_Len + Comment_Len)
+                           elsif Metadata_Len > Directory_Size - Cursor - 46
                            then
                               return
                                 (Status  => Archive.Archives.Errors.Invalid_Format,
@@ -758,34 +765,50 @@ package body Archive.Archives.Readers.Zip is
                            end if;
 
                            declare
-                              Name : constant String :=
-                                Name_At (Directory_Bytes, Header_End, Name_Len);
-                              Extra_Offset : constant Natural := Header_End + Name_Len;
-                              Comment_Offset : constant Natural := Extra_Offset + Extra_Len;
-                              Unicode_Name : constant Unicode_Path_Result :=
-                                Unicode_Path_From_Extra
-                                  (Directory_Bytes, Extra_Offset, Extra_Len, Name);
-                              ZIP64 : constant ZIP64_Extra_Result :=
-                                ZIP64_From_Extra
-                                  (Directory_Bytes,
-                                   Extra_Offset,
-                                   Extra_Len,
-                                   Need_Uncomp => Uncomp_Raw = 16#FFFF_FFFF#,
-                                   Need_Comp   => Comp_Size_Raw = 16#FFFF_FFFF#,
-                                   Need_Local  => Local_Off_Raw = 16#FFFF_FFFF#);
-                              Comp_Size_64 : constant Interfaces.Unsigned_64 :=
-                                (if Comp_Size_Raw = 16#FFFF_FFFF#
-                                 then ZIP64.Compressed
-                                 else Interfaces.Unsigned_64 (Comp_Size_Raw));
-                              Uncomp_64 : constant Interfaces.Unsigned_64 :=
-                                (if Uncomp_Raw = 16#FFFF_FFFF#
-                                 then ZIP64.Uncompressed
-                                 else Interfaces.Unsigned_64 (Uncomp_Raw));
-                              Local_Off_64 : constant Interfaces.Unsigned_64 :=
-                                (if Local_Off_Raw = 16#FFFF_FFFF#
-                                 then ZIP64.Local_Offset
-                                 else Interfaces.Unsigned_64 (Local_Off_Raw));
-                              Item : Archive.Archives.Entries.Archive_Entry;
+                              Central_Metadata : Zlib.Byte_Array (1 .. Metadata_Len);
+                              Metadata_Status :
+                                Archive.Archives.Errors.Error_Code;
+                           begin
+                              Read_File_Slice
+                                (Path,
+                                 Directory_Off + Cursor + 46,
+                                 Central_Metadata,
+                                 Metadata_Status);
+                              if Metadata_Status /= Archive.Archives.Errors.Ok then
+                                 return
+                                   (Status  => Metadata_Status,
+                                    Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
+                              end if;
+
+                              declare
+                                 Name : constant String :=
+                                   Name_At (Central_Metadata, 0, Name_Len);
+                                 Extra_Offset : constant Natural := Name_Len;
+                                 Comment_Offset : constant Natural := Extra_Offset + Extra_Len;
+                                 Unicode_Name : constant Unicode_Path_Result :=
+                                   Unicode_Path_From_Extra
+                                     (Central_Metadata, Extra_Offset, Extra_Len, Name);
+                                 ZIP64 : constant ZIP64_Extra_Result :=
+                                   ZIP64_From_Extra
+                                     (Central_Metadata,
+                                      Extra_Offset,
+                                      Extra_Len,
+                                      Need_Uncomp => Uncomp_Raw = 16#FFFF_FFFF#,
+                                      Need_Comp   => Comp_Size_Raw = 16#FFFF_FFFF#,
+                                      Need_Local  => Local_Off_Raw = 16#FFFF_FFFF#);
+                                 Comp_Size_64 : constant Interfaces.Unsigned_64 :=
+                                   (if Comp_Size_Raw = 16#FFFF_FFFF#
+                                    then ZIP64.Compressed
+                                    else Interfaces.Unsigned_64 (Comp_Size_Raw));
+                                 Uncomp_64 : constant Interfaces.Unsigned_64 :=
+                                   (if Uncomp_Raw = 16#FFFF_FFFF#
+                                    then ZIP64.Uncompressed
+                                    else Interfaces.Unsigned_64 (Uncomp_Raw));
+                                 Local_Off_64 : constant Interfaces.Unsigned_64 :=
+                                   (if Local_Off_Raw = 16#FFFF_FFFF#
+                                    then ZIP64.Local_Offset
+                                    else Interfaces.Unsigned_64 (Local_Off_Raw));
+                                 Item : Archive.Archives.Entries.Archive_Entry;
                            begin
                               if not Unicode_Name.Valid
                                 or else not ZIP64.Valid
@@ -976,7 +999,7 @@ package body Archive.Archives.Readers.Zip is
                                        else Name)));
                               if Comment_Len > 0 then
                                  Item.Comment := To_Unbounded_String
-                                   (Name_At (Directory_Bytes, Comment_Offset, Comment_Len));
+                                   (Name_At (Central_Metadata, Comment_Offset, Comment_Len));
                               end if;
                               Item.CRC32 := (Present => True, Value => Archive.Types.CRC32_Value (CRC));
                               Item.Kind :=
@@ -1002,7 +1025,9 @@ package body Archive.Archives.Readers.Zip is
                               Result.Entries.Append (Item);
                            end;
 
-                           Cursor := Header_End + Name_Len + Extra_Len + Comment_Len;
+                              Cursor := Cursor + 46 + Metadata_Len;
+                           end;
+                        end;
                         end;
                      end loop;
 
