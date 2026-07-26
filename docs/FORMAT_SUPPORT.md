@@ -18,6 +18,7 @@ that registry and the AUnit format tests.
 | bzip2 | supported as one logical regular-file archive | supported through `zlib` bzip2 decoding | supported by bzip2 block and combined CRC validation | supported through safe extraction planning/execution | supported by bzip2 writer adapter | `zlib` |
 | Zstandard | supported as one logical regular-file archive | supported through `zlib` Zstandard decoding | supported by zlib frame validation and optional content checksum | supported through safe extraction planning/execution | supported by Zstandard writer adapter | `zlib` |
 | AR | supported for stored members, symbol tables, GNU string tables, and BSD long names | supported for stored regular-file members | supported by bounded member header and size validation | supported through safe extraction planning/execution | not supported | archive AR adapter |
+| CPIO newc/crc | supported for stored members and trailer termination | supported for regular-file members | supported by bounded fixed-header, name, size, and alignment validation | supported through safe extraction planning/execution | not supported | archive CPIO adapter |
 
 Current covered edge cases include ZIP comments, Unicode path extra fields,
 ZIP64 per-entry size extras within host bounds, data descriptors with and
@@ -30,14 +31,14 @@ device and FIFO metadata, PAX long paths, invalid TAR checksum, and TAR
 truncation, zlib-backed native 7z listing and payload extraction, and
 zlib-backed Deflate 7z file-list publication, zlib-backed bzip2 single-file
 decoding and publication, and zlib-backed Zstandard single-file decoding and
-publication, and stored Unix AR member indexing and payload streaming.
+publication, stored Unix AR member indexing and payload streaming, and CPIO
+newc member indexing and payload streaming.
 
 Recognized but unsupported:
 
 - RAR
 - XZ
 - CAB
-- CPIO
 - ISO
 - split ZIP / spanning ZIP
 

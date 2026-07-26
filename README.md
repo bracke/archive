@@ -20,8 +20,9 @@ Current V1 support:
 | bzip2 | supported as one logical file | supported | supported | supported | supported single-file replacement | `zlib` |
 | Zstandard | supported as one logical file | supported | supported | supported | supported single-file replacement | `zlib` |
 | AR | supported for stored members | supported | supported | supported | not supported | archive AR adapter |
+| CPIO newc | supported for stored members | supported | supported | supported | not supported | archive CPIO adapter |
 
-Recognized but unsupported in V1: RAR, XZ, CAB, CPIO, ISO, split ZIP, multi-volume ZIP, encrypted entries outside the supported 7z subset, ZIP PPMd, and other unsupported ZIP or 7z methods.
+Recognized but unsupported in V1: RAR, XZ, CAB, ISO, split ZIP, multi-volume ZIP, encrypted entries outside the supported 7z subset, ZIP PPMd, and other unsupported ZIP or 7z methods.
 
 ## Current Implementation Status
 

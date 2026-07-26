@@ -21,6 +21,7 @@ with Archive.Archives.Opening;
 with Archive.Archives.Opening.Tasks;
 with Archive.Archives.Paths;
 with Archive.Archives.Readers.Ar;
+with Archive.Archives.Readers.Cpio;
 with Archive.Archives.Readers.Gzip;
 with Archive.Archives.Readers.Dispatch;
 with Archive.Archives.Readers.Tar;
@@ -203,6 +204,7 @@ package body Archive_Suite.Core is
      (Bytes : Zlib.Byte_Array)
       return Archive.Archives.Readers.Tar.Tar_Index_Result;
    function One_File_Ar return Zlib.Byte_Array;
+   function One_File_Cpio return Zlib.Byte_Array;
    function Index_Gzip
      (Bytes       : Zlib.Byte_Array;
       Source_Name : String := "")
@@ -538,7 +540,8 @@ package body Archive_Suite.Core is
       Assert (R.Format = Archive.Archives.Formats.Cab_Format, "cab unsupported format id");
 
       R := Detect_Bytes (Cpio);
-      Assert (R.Format = Archive.Archives.Formats.Cpio_Format, "cpio unsupported format id");
+      Assert (R.Status = Archive.Archives.Formats.Detected, "cpio newc signature is detected");
+      Assert (R.Format = Archive.Archives.Formats.Cpio_Format, "cpio format id");
 
       R := Detect_Bytes (Ar);
       Assert (R.Status = Archive.Archives.Formats.Detected, "ar signature is detected");
@@ -567,6 +570,8 @@ package body Archive_Suite.Core is
            Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Zstd_Format);
          Ar_Caps : constant Archive.Archives.Formats.Format_Capabilities :=
            Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Ar_Format);
+         Cpio_Caps : constant Archive.Archives.Formats.Format_Capabilities :=
+           Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Cpio_Format);
          Xz : constant Archive.Archives.Formats.Format_Capabilities :=
            Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Xz_Format);
       begin
@@ -581,6 +586,10 @@ package body Archive_Suite.Core is
          Assert (Ar_Caps.Can_Index and then Ar_Caps.Can_Open_Entry_Streams
                  and then not Ar_Caps.Can_Create,
                  "ar supports read workflows without advertising write capability");
+         Assert (Cpio_Caps.Can_Index and then Cpio_Caps.Can_Open_Entry_Streams
+                 and then Cpio_Caps.Supports_Symbolic_Links
+                 and then not Cpio_Caps.Can_Create,
+                 "cpio supports read workflows without advertising write capability");
          Assert (not Xz.Can_Create and then not Xz.Can_Index,
                  "unsupported formats do not advertise write capability");
          Assert
@@ -681,6 +690,59 @@ package body Archive_Suite.Core is
       Bytes (72) := Zlib.Byte (Character'Pos (ASCII.LF));
       return Bytes;
    end One_File_Ar;
+
+   function One_File_Cpio return Zlib.Byte_Array is
+      Header_Length : constant Natural := 110;
+      Name : constant String := "a.txt" & Character'Val (0);
+      Payload : constant String := "abc";
+      Trailer : constant String := "TRAILER!!!" & Character'Val (0);
+      Data_Offset : constant Natural := ((Header_Length + Name'Length + 3) / 4) * 4;
+      Trailer_Offset : constant Natural := ((Data_Offset + Payload'Length + 3) / 4) * 4;
+      Total : constant Natural := ((Trailer_Offset + Header_Length + Trailer'Length + 3) / 4) * 4;
+      Bytes : Zlib.Byte_Array (1 .. Total) := [others => 0];
+
+      procedure Put_Hex8 (Offset : Natural; Value : Natural) is
+         Hex : constant String := "0123456789ABCDEF";
+         Work : Natural := Value;
+         Text : String (1 .. 8) := [others => '0'];
+      begin
+         for Pos in reverse Text'Range loop
+            Text (Pos) := Hex (Hex'First + Work mod 16);
+            Work := Work / 16;
+         end loop;
+         Put_Text (Bytes, Offset, Text);
+      end Put_Hex8;
+
+      procedure Put_Header
+        (Offset : Natural;
+         Name_Length : Natural;
+         File_Size : Natural;
+         Mode : Natural)
+      is
+      begin
+         Put_Text (Bytes, Offset, "070701");
+         Put_Hex8 (Offset + 6, 1);
+         Put_Hex8 (Offset + 14, Mode);
+         Put_Hex8 (Offset + 22, 0);
+         Put_Hex8 (Offset + 30, 0);
+         Put_Hex8 (Offset + 38, 1);
+         Put_Hex8 (Offset + 46, 0);
+         Put_Hex8 (Offset + 54, File_Size);
+         Put_Hex8 (Offset + 62, 0);
+         Put_Hex8 (Offset + 70, 0);
+         Put_Hex8 (Offset + 78, 0);
+         Put_Hex8 (Offset + 86, 0);
+         Put_Hex8 (Offset + 94, Name_Length);
+         Put_Hex8 (Offset + 102, 0);
+      end Put_Header;
+   begin
+      Put_Header (0, Name'Length, Payload'Length, 16#0000_81A4#);
+      Put_Text (Bytes, Header_Length, Name);
+      Put_Text (Bytes, Data_Offset, Payload);
+      Put_Header (Trailer_Offset, Trailer'Length, 0, 0);
+      Put_Text (Bytes, Trailer_Offset + Header_Length, Trailer);
+      return Bytes;
+   end One_File_Cpio;
 
    function One_File_Zip
      (Method    : Natural := 0;
@@ -2512,6 +2574,7 @@ package body Archive_Suite.Core is
         Zlib.Zstd_Encoder.Encode (Plain, Zstd_Status);
       Tar : constant Zlib.Byte_Array := One_File_Tar;
       Ar : constant Zlib.Byte_Array := One_File_Ar;
+      Cpio : constant Zlib.Byte_Array := One_File_Cpio;
    begin
       Assert (Status = Zlib.Ok, "dispatch gzip fixture builds");
       Assert (Tar_Gz_Status = Zlib.Ok, "dispatch tar.gz fixture builds");
@@ -2598,6 +2661,27 @@ package body Archive_Suite.Core is
             and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('a'))
             and then Bytes_Of (Payload) (3) = Zlib.Byte (Character'Pos ('c')),
             "ar dispatch streams stored member payload");
+      end;
+
+      declare
+         Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+           Open_Dispatch (Cpio, Source_Name => "sample.cpio");
+         Item : constant Archive.Archives.Entries.Archive_Entry :=
+           Archive.Archives.Index.Entry_For (Opened.Index, 2);
+         Payload : constant Test_Stream_Result :=
+           Stream_Dispatch_Payload (Cpio, "sample.cpio", Item);
+      begin
+         Assert (Opened.Status = Archive.Archives.Errors.Ok, "cpio dispatch succeeds");
+         Assert (Opened.Format = Archive.Archives.Formats.Cpio_Format, "cpio dispatch records format");
+         Assert (Archive.Archives.Index.Physical_Count (Opened.Index) = 1,
+                 "cpio dispatch publishes physical entry");
+         Assert
+           (Payload.Status = Archive.Archives.Errors.Ok
+            and then Payload.Integrity = Archive.Archives.Entries.Verified
+            and then Payload.Bytes_Written = 3
+            and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('a'))
+            and then Bytes_Of (Payload) (3) = Zlib.Byte (Character'Pos ('c')),
+            "cpio dispatch streams stored member payload");
       end;
 
       declare

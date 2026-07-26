@@ -58,6 +58,7 @@ Required V1 read workflows:
 | ZIP BZip2 / LZMA / Zstandard | supported | supported | supported | supported | archive ZIP adapter + `zlib` |
 | gzip | required | required | required | required | `zlib` |
 | AR | supported | supported | supported | supported | archive AR adapter |
+| CPIO newc | supported | supported | supported | supported | archive CPIO adapter |
 
 Required V1 write workflows:
 
@@ -161,7 +162,7 @@ Recent archive paths are persisted as stable data, not localized display labels,
 and shell snapshots expose the recent count and ordered path list through the
 settings snapshot for menu construction.
 
-Recognized unsupported formats include RAR, XZ, CAB, CPIO,
+Recognized unsupported formats include RAR, XZ, CAB,
 ISO, split ZIP, multi-volume ZIP, encrypted entries outside the supported
 7z subset, ZIP PPMd, and unsupported ZIP or 7z compression methods.
 
