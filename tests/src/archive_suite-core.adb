@@ -1499,6 +1499,27 @@ package body Archive_Suite.Core is
          end loop;
          return Result;
       end With_Long_Optional_Field;
+
+      function With_Long_Extra_Field return Zlib.Byte_Array is
+         Extra_Length : constant Natural := 4_097;
+         Body_Length  : constant Natural := Gz'Length - 10;
+         Result       : Zlib.Byte_Array
+           (1 .. 12 + Extra_Length + Body_Length) := [others => 0];
+      begin
+         for Index in 1 .. 10 loop
+            Result (Index) := Gz (Index);
+         end loop;
+         Result (4) := 16#04#;
+         Result (11) := Zlib.Byte (Extra_Length mod 256);
+         Result (12) := Zlib.Byte (Extra_Length / 256);
+         for Index in 13 .. 12 + Extra_Length loop
+            Result (Index) := Zlib.Byte (Character'Pos ('x'));
+         end loop;
+         for Index in 11 .. Gz'Last loop
+            Result (12 + Extra_Length + Index - 10) := Gz (Index);
+         end loop;
+         return Result;
+      end With_Long_Extra_Field;
    begin
       Assert (Status = Zlib.Ok, "test fixture gzip succeeds");
       declare
@@ -1676,6 +1697,14 @@ package body Archive_Suite.Core is
       begin
          Assert (Parsed.Status = Archive.Archives.Errors.Limit_Exceeded,
                  "gzip original filename beyond metadata limit is rejected explicitly");
+      end;
+
+      declare
+         Parsed : constant Archive.Archives.Readers.Gzip.Gzip_Index_Result :=
+           Index_Gzip (With_Long_Extra_Field);
+      begin
+         Assert (Parsed.Status = Archive.Archives.Errors.Limit_Exceeded,
+                 "gzip extra field beyond metadata limit is rejected explicitly");
       end;
 
       declare
