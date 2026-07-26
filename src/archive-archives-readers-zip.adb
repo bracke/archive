@@ -447,6 +447,8 @@ package body Archive.Archives.Readers.Zip is
             return Archive.Archives.Entries.LZMA_Compression;
          when 20 | 93 =>
             return Archive.Archives.Entries.Zstd_Compression;
+         when 98 =>
+            return Archive.Archives.Entries.PPMd_Compression;
          when others =>
             return Archive.Archives.Entries.Unsupported_Compression;
       end case;

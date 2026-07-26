@@ -870,6 +870,8 @@ procedure Check_All is
          "ISO 9660 directory-record indexing, stored file-extent streaming, "
          & "and flat-image rewrite publication");
       Require_Document_Text
+        ("docs/FORMAT_SUPPORT.md", "structurally recognized ZIP PPMd method 98");
+      Require_Document_Text
         ("README.md", "supported for native zlib-backed layouts");
       Require_Document_Text
         ("README.md", "ISO 9660");

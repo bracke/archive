@@ -42,8 +42,9 @@ Recognized but unsupported:
 - RAR
 - split ZIP / spanning ZIP
 
-Unsupported ZIP methods, including ZIP PPMd and non-bridge LZMA variants, remain
-visible as unsupported entries where the central directory can be safely parsed.
+Unsupported ZIP methods, including structurally recognized ZIP PPMd method 98
+and non-bridge LZMA variants, remain visible as unsupported entries where the
+central directory can be safely parsed.
 7z layouts outside the supported native layout set accepted by `zlib` fail closed
 with typed unsupported-method or invalid-format results.
 XZ layouts outside the supported one-stream, one-block LZMA2 subset fail closed

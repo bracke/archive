@@ -369,6 +369,7 @@ package body Archive.UI is
          when Archive.Archives.Entries.BZip2_Compression => return "bzip2";
          when Archive.Archives.Entries.LZMA_Compression => return "lzma";
          when Archive.Archives.Entries.Zstd_Compression => return "zstandard";
+         when Archive.Archives.Entries.PPMd_Compression => return "ppmd";
          when Archive.Archives.Entries.Unsupported_Compression => return "unsupported";
          when Archive.Archives.Entries.Unknown_Compression => return "unknown";
       end case;

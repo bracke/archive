@@ -24,6 +24,7 @@ package Archive.Archives.Entries is
       BZip2_Compression,
       LZMA_Compression,
       Zstd_Compression,
+      PPMd_Compression,
       Unsupported_Compression,
       Unknown_Compression);
 

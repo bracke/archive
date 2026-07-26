@@ -1496,21 +1496,36 @@ package body Archive_Suite.Core is
 
       declare
          Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
-           Index_Zip (One_File_Zip (Method => 99, Encrypted => True));
+           Index_Zip (One_File_Zip (Method => 98, Encrypted => True));
          Item : constant Archive.Archives.Entries.Archive_Entry := Parsed.Entries.Element (1);
          Payload : constant Test_Stream_Result :=
            Stream_Zip_Payload
-             (One_File_Zip (Method => 99, Encrypted => True), Item);
+             (One_File_Zip (Method => 98, Encrypted => True), Item);
       begin
-         Assert (Parsed.Status = Archive.Archives.Errors.Ok, "unsupported zip method remains inspectable");
+         Assert (Parsed.Status = Archive.Archives.Errors.Ok, "zip ppmd method remains inspectable");
          Assert
-           (Item.Method = Archive.Archives.Entries.Unsupported_Compression,
-            "unsupported method is explicit");
+           (Item.Method = Archive.Archives.Entries.PPMd_Compression,
+            "zip ppmd method is explicit");
          Assert (Item.Encryption = Archive.Archives.Entries.Encrypted, "encrypted flag retained");
          Assert (Payload.Status = Archive.Archives.Errors.Unsupported_Method,
-                 "encrypted unsupported zip entry cannot publish payload");
+                 "encrypted ppmd zip entry cannot publish payload");
          Assert (Payload.Integrity = Archive.Archives.Entries.Not_Available,
-                 "encrypted unsupported zip entry has unavailable integrity");
+                 "encrypted ppmd zip entry has unavailable integrity");
+      end;
+
+      declare
+         Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
+           Index_Zip (One_File_Zip (Method => 99));
+         Item : constant Archive.Archives.Entries.Archive_Entry := Parsed.Entries.Element (1);
+         Payload : constant Test_Stream_Result :=
+           Stream_Zip_Payload (One_File_Zip (Method => 99), Item);
+      begin
+         Assert (Parsed.Status = Archive.Archives.Errors.Ok, "unknown zip method remains inspectable");
+         Assert
+           (Item.Method = Archive.Archives.Entries.Unsupported_Compression,
+            "unknown unsupported zip method remains generic");
+         Assert (Payload.Status = Archive.Archives.Errors.Unsupported_Method,
+                 "unknown unsupported zip method cannot publish payload");
       end;
 
       declare
