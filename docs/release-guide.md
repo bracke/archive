@@ -33,6 +33,9 @@ validates every `package-file` record, verifies required inputs exist, and
 rejects malformed records before a package can be considered ready. The report
 also hashes every present package input so package contents changes are visible
 in machine-readable release metadata.
+Package paths must be contained relative repository paths, package kinds must be
+registered stable values, and existing package inputs must be ordinary files.
+Unsafe package manifest paths fail the Ada release checks.
 
 Every required release gate from the product scope is represented in the report
 as a stable `release_gates` entry. The current Ada tooling marks all required

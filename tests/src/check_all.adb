@@ -1097,6 +1097,8 @@ procedure Check_All is
       Require_Document_Text
         ("docs/release-guide.md", "`packaging/manifest.txt` is the package contents contract");
       Require_Document_Text
+        ("docs/release-guide.md", "Unsafe package manifest paths fail the Ada release checks");
+      Require_Document_Text
         ("docs/release-guide.md", "aggregate package CRC32 checksum");
       Require_Document_Text
         ("docs/release-guide.md", "Every required release gate from the product scope is represented");

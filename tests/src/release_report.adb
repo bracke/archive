@@ -17,6 +17,7 @@ procedure Release_Report is
    use Project_Tools.Text;
    use type Interfaces.Unsigned_32;
    use type Ada.Streams.Stream_Element_Offset;
+   use type Ada.Directories.File_Kind;
 
    function Tests_Root return String is
       Here : constant String := Ada.Directories.Current_Directory;
@@ -367,6 +368,38 @@ procedure Release_Report is
       Last     : Natural;
       Line_No  : Natural := 0;
       Count    : Natural := 0;
+
+      function Known_Package_Kind (Value : String) return Boolean is
+      begin
+         return Value in "documentation" | "license" | "catalog" | "test-corpus";
+      end Known_Package_Kind;
+
+      function Safe_Package_Path (Value : String) return Boolean is
+      begin
+         if Value = ""
+           or else Starts_With (Value, "/")
+           or else Starts_With (Value, "\")
+           or else Starts_With (Value, "../")
+           or else Starts_With (Value, "generated:")
+         then
+            return False;
+         end if;
+
+         for Index in Value'Range loop
+            if Value (Index) = ':' then
+               return False;
+            elsif Value (Index) = '.'
+              and then Index < Value'Last
+              and then Value (Index + 1) = '.'
+              and then (Index = Value'First or else Value (Index - 1) = '/')
+              and then (Index + 1 = Value'Last or else Value (Index + 2) = '/')
+            then
+               return False;
+            end if;
+         end loop;
+
+         return True;
+      end Safe_Package_Path;
    begin
       if not Ada.Directories.Exists (Manifest) then
          Missing := Missing + 1;
@@ -395,6 +428,16 @@ procedure Release_Report is
                   Put_Line
                     (Standard_Error,
                      Manifest & ":" & Line_No'Image & ": package-file has missing fields");
+               elsif not Safe_Package_Path (Path) then
+                  Invalid := Invalid + 1;
+                  Put_Line
+                    (Standard_Error,
+                     Manifest & ":" & Line_No'Image & ": package-file path is unsafe");
+               elsif not Known_Package_Kind (Kind) then
+                  Invalid := Invalid + 1;
+                  Put_Line
+                    (Standard_Error,
+                     Manifest & ":" & Line_No'Image & ": unknown package-file kind " & Kind);
                elsif Required /= "true" and then Required /= "false" then
                   Invalid := Invalid + 1;
                   Put_Line
@@ -413,6 +456,13 @@ procedure Release_Report is
                            Root & "/" & Path & ": required package input is missing");
                      end if;
                   else
+                     if Ada.Directories.Kind (Root & "/" & Path) /= Ada.Directories.Ordinary_File then
+                        Invalid := Invalid + 1;
+                        Put_Line
+                          (Standard_Error,
+                           Root & "/" & Path & ": package input is not an ordinary file");
+                     end if;
+
                      declare
                         Hashed : constant File_CRC_Result :=
                           Compute_File_CRC32 (Root & "/" & Path);
