@@ -648,6 +648,9 @@ begin
    Require_File (Root & "/alire.toml");
    Require_File (Root & "/archive.gpr");
    Require_File (Root & "/share/archive.catalog");
+   --  The load-only i18n serves formatting from data files at runtime, so a
+   --  release must bundle them (tools/i18n_bundle, run post-build).
+   Require_File (Root & "/share/i18n/formats.i18ndata");
    Require_File (Root & "/docs/IMPLEMENTATION_PLAN.md");
    Require_File (Root & "/docs/FORMAT_SUPPORT.md");
    Require_File (Root & "/docs/check-all-workflow.md");

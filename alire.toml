@@ -71,5 +71,19 @@ openglada_glfw = "~0.9.0"
 [[depends-on]]
 utilada = "^2.9.0"
 
+# Bundle i18n's generated locale data into share/i18n after every build. The
+# load-only i18n serves formatting from those files at runtime, so a deployed
+# bin/archive must ship them (found at Exe/../share/i18n). bundle_i18n_data is a
+# standalone Ada tool (tools/i18n_bundle) kept out of the app's own bin so it is
+# never installed; build it, then run it. Both steps are plain executables --
+# no shell. gprbuild is incremental, so the build step is a no-op once current.
+[[actions]]
+type = "post-build"
+command = ["gprbuild", "-P", "tools/i18n_bundle/bundle_i18n_data.gpr", "-p", "-q"]
+
+[[actions]]
+type = "post-build"
+command = ["tools/i18n_bundle/bin/bundle_i18n_data"]
+
 [build-profiles]
 "*" = "development"
