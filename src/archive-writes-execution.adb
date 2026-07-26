@@ -16,8 +16,6 @@ with Archive.Writes.Zip;
 with Tarlib.Errors;
 with Tarlib.Outputs;
 with Zlib;
-with Zlib.BZip2_Encoder;
-with Zlib.Zstd_Encoder;
 package body Archive.Writes.Execution is
    use type Archive.Writes.Plans.Plan_Status;
    use type Archive.Archives.Errors.Error_Code;
@@ -1666,8 +1664,6 @@ package body Archive.Writes.Execution is
       Status : constant Archive.Writes.Results.Write_Status :=
         Preflight (Destination_Path, Plan, Root, Overwrite, Cancelled);
       Source : Ada.Strings.Unbounded.Unbounded_String;
-      Output : Ada.Streams.Stream_IO.File_Type;
-      Write_Status : Archive.Archives.Errors.Error_Code := Archive.Archives.Errors.Ok;
       Z_Status : Zlib.Status_Code := Zlib.Ok;
    begin
       if Status /= Archive.Writes.Results.Write_Completed then
@@ -1710,39 +1706,16 @@ package body Archive.Writes.Execution is
          end if;
       end;
 
-      declare
-         Plain : constant Archive.Archives.Streams.Buffered_Source :=
-           Archive.Archives.Streams.Read_Bounded
-             (Ada.Strings.Unbounded.To_String (Source),
-              Positive'Max
-                (1,
-                 Positive
-                   (Ada.Directories.Size
-                      (Ada.Strings.Unbounded.To_String (Source)))));
-      begin
-         if Plain.Status /= Archive.Archives.Errors.Ok then
-            return (Status => Archive.Writes.Results.Write_Failed_Staging);
-         end if;
-
-         declare
-            Encoded : constant Zlib.Byte_Array :=
-              Zlib.Zstd_Encoder.Encode (Plain.Bytes, Z_Status);
-         begin
-            if Z_Status /= Zlib.Ok then
-               return (Status => Zlib_Write_Status (Z_Status));
-            end if;
-
-            Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Temp);
-            Write_Zlib_Bytes (Output, Encoded, Write_Status);
-            Ada.Streams.Stream_IO.Close (Output);
-         end;
-      end;
-
-      if Write_Status /= Archive.Archives.Errors.Ok then
+      Zlib.Zstd_File
+        (Ada.Strings.Unbounded.To_String (Source),
+         Temp,
+         Natural (Ada.Directories.Size (Ada.Strings.Unbounded.To_String (Source))),
+         Z_Status);
+      if Z_Status /= Zlib.Ok then
          if Ada.Directories.Exists (Temp) then
             Ada.Directories.Delete_File (Temp);
          end if;
-         return (Status => Archive.Writes.Results.Write_Failed_Staging);
+         return (Status => Zlib_Write_Status (Z_Status));
       end if;
 
       return Finalize_Staged_Archive
@@ -1750,9 +1723,6 @@ package body Archive.Writes.Execution is
          Archive.Archives.Formats.Zstd_Format, Destination_Path, Cancelled);
    exception
       when others =>
-         if Ada.Streams.Stream_IO.Is_Open (Output) then
-            Ada.Streams.Stream_IO.Close (Output);
-         end if;
          if Ada.Directories.Exists (Temp) then
             begin
                Ada.Directories.Delete_File (Temp);
@@ -1776,8 +1746,6 @@ package body Archive.Writes.Execution is
       Status : constant Archive.Writes.Results.Write_Status :=
         Preflight (Destination_Path, Plan, Root, Overwrite, Cancelled);
       Source : Ada.Strings.Unbounded.Unbounded_String;
-      Output : Ada.Streams.Stream_IO.File_Type;
-      Write_Status : Archive.Archives.Errors.Error_Code := Archive.Archives.Errors.Ok;
       Z_Status : Zlib.Status_Code := Zlib.Ok;
    begin
       if Status /= Archive.Writes.Results.Write_Completed then
@@ -1820,39 +1788,16 @@ package body Archive.Writes.Execution is
          end if;
       end;
 
-      declare
-         Plain : constant Archive.Archives.Streams.Buffered_Source :=
-           Archive.Archives.Streams.Read_Bounded
-             (Ada.Strings.Unbounded.To_String (Source),
-              Positive'Max
-                (1,
-                 Positive
-                   (Ada.Directories.Size
-                      (Ada.Strings.Unbounded.To_String (Source)))));
-      begin
-         if Plain.Status /= Archive.Archives.Errors.Ok then
-            return (Status => Archive.Writes.Results.Write_Failed_Staging);
-         end if;
-
-         declare
-            Encoded : constant Zlib.Byte_Array :=
-              Zlib.XZ_LZMA2 (Plain.Bytes, Z_Status);
-         begin
-            if Z_Status /= Zlib.Ok then
-               return (Status => Zlib_Write_Status (Z_Status));
-            end if;
-
-            Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Temp);
-            Write_Zlib_Bytes (Output, Encoded, Write_Status);
-            Ada.Streams.Stream_IO.Close (Output);
-         end;
-      end;
-
-      if Write_Status /= Archive.Archives.Errors.Ok then
+      Zlib.XZ_LZMA2_File
+        (Ada.Strings.Unbounded.To_String (Source),
+         Temp,
+         Natural (Ada.Directories.Size (Ada.Strings.Unbounded.To_String (Source))),
+         Z_Status);
+      if Z_Status /= Zlib.Ok then
          if Ada.Directories.Exists (Temp) then
             Ada.Directories.Delete_File (Temp);
          end if;
-         return (Status => Archive.Writes.Results.Write_Failed_Staging);
+         return (Status => Zlib_Write_Status (Z_Status));
       end if;
 
       return Finalize_Staged_Archive
@@ -1860,9 +1805,6 @@ package body Archive.Writes.Execution is
          Archive.Archives.Formats.Xz_Format, Destination_Path, Cancelled);
    exception
       when others =>
-         if Ada.Streams.Stream_IO.Is_Open (Output) then
-            Ada.Streams.Stream_IO.Close (Output);
-         end if;
          if Ada.Directories.Exists (Temp) then
             begin
                Ada.Directories.Delete_File (Temp);
@@ -3578,8 +3520,6 @@ package body Archive.Writes.Execution is
       Status : constant Archive.Writes.Results.Write_Status :=
         Preflight (Destination_Path, Plan, Root, Overwrite, Cancelled);
       Source : Ada.Strings.Unbounded.Unbounded_String;
-      Output : Ada.Streams.Stream_IO.File_Type;
-      Write_Status : Archive.Archives.Errors.Error_Code := Archive.Archives.Errors.Ok;
       Z_Status : Zlib.Status_Code := Zlib.Ok;
    begin
       if Status /= Archive.Writes.Results.Write_Completed then
@@ -3622,39 +3562,16 @@ package body Archive.Writes.Execution is
          end if;
       end;
 
-      declare
-         Plain : constant Archive.Archives.Streams.Buffered_Source :=
-           Archive.Archives.Streams.Read_Bounded
-             (Ada.Strings.Unbounded.To_String (Source),
-              Positive'Max
-                (1,
-                 Positive
-                   (Ada.Directories.Size
-                      (Ada.Strings.Unbounded.To_String (Source)))));
-      begin
-         if Plain.Status /= Archive.Archives.Errors.Ok then
-            return (Status => Archive.Writes.Results.Write_Failed_Staging);
-         end if;
-
-         declare
-            Encoded : constant Zlib.Byte_Array :=
-              Zlib.BZip2_Encoder.Encode (Plain.Bytes, Status => Z_Status);
-         begin
-            if Z_Status /= Zlib.Ok then
-               return (Status => Zlib_Write_Status (Z_Status));
-            end if;
-
-            Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Temp);
-            Write_Zlib_Bytes (Output, Encoded, Write_Status);
-            Ada.Streams.Stream_IO.Close (Output);
-         end;
-      end;
-
-      if Write_Status /= Archive.Archives.Errors.Ok then
+      Zlib.BZip2_File
+        (Ada.Strings.Unbounded.To_String (Source),
+         Temp,
+         Natural (Ada.Directories.Size (Ada.Strings.Unbounded.To_String (Source))),
+         Z_Status);
+      if Z_Status /= Zlib.Ok then
          if Ada.Directories.Exists (Temp) then
             Ada.Directories.Delete_File (Temp);
          end if;
-         return (Status => Archive.Writes.Results.Write_Failed_Staging);
+         return (Status => Zlib_Write_Status (Z_Status));
       end if;
 
       return Finalize_Staged_Archive
@@ -3662,9 +3579,6 @@ package body Archive.Writes.Execution is
          Archive.Archives.Formats.BZip2_Format, Destination_Path, Cancelled);
    exception
       when others =>
-         if Ada.Streams.Stream_IO.Is_Open (Output) then
-            Ada.Streams.Stream_IO.Close (Output);
-         end if;
          if Ada.Directories.Exists (Temp) then
             begin
                Ada.Directories.Delete_File (Temp);
