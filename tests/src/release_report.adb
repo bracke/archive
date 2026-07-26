@@ -864,6 +864,53 @@ procedure Release_Report is
            | "split-zip-signature"
            | "iso-signature";
       end Known_Format_Input;
+
+      function Known_Platform (Value : String) return Boolean is
+      begin
+         return Value in "POSIX" | "Windows" | "MacOS";
+      end Known_Platform;
+
+      function Known_Path_Safety (Value : String) return Boolean is
+      begin
+         return Value in
+           "Safe_Path"
+           | "Empty_Path"
+           | "Parent_Traversal"
+           | "Absolute_Path"
+           | "Windows_Drive_Path"
+           | "Alternate_Data_Stream"
+           | "Reserved_Name"
+           | "Too_Long";
+      end Known_Path_Safety;
+
+      function Known_Path_Decision (Value : String) return Boolean is
+      begin
+         return Value in
+           "Path_Accepted"
+           | "Path_Blocked_Empty"
+           | "Path_Blocked_Unsafe";
+      end Known_Path_Decision;
+
+      function Known_Boolean_Text (Value : String) return Boolean is
+      begin
+         return Value in "true" | "false";
+      end Known_Boolean_Text;
+
+      procedure Reject_Unknown
+        (Field       : String;
+         Value       : String;
+         Known       : Boolean;
+         Line_Number : Natural)
+      is
+      begin
+         if Value /= "" and then not Known then
+            Invalid := Invalid + 1;
+            Put_Line
+              (Standard_Error,
+               Manifest & ":" & Line_Number'Image
+               & ": unknown corpus " & Field & " " & Value);
+         end if;
+      end Reject_Unknown;
    begin
       if not Ada.Directories.Exists (Manifest) then
          Missing := Missing + 1;
@@ -893,6 +940,15 @@ procedure Release_Report is
                   Require_Field (Line, "safety", Line_No);
                   Require_Field (Line, "decision", Line_No);
                   Require_Field (Line, "platform", Line_No);
+                  Reject_Unknown
+                    ("safety", Field_Value (Line, "safety"),
+                     Known_Path_Safety (Field_Value (Line, "safety")), Line_No);
+                  Reject_Unknown
+                    ("decision", Field_Value (Line, "decision"),
+                     Known_Path_Decision (Field_Value (Line, "decision")), Line_No);
+                  Reject_Unknown
+                    ("platform", Field_Value (Line, "platform"),
+                     Known_Platform (Field_Value (Line, "platform")), Line_No);
                   if Field_Value (Line, "decision") = "Path_Blocked_Unsafe" then
                      Has_Path_Attack := True;
                   end if;
@@ -900,11 +956,20 @@ procedure Release_Report is
                   Require_Field (Line, "input", Line_No);
                   Require_Field (Line, "expected", Line_No);
                   Require_Field (Line, "platform", Line_No);
+                  Reject_Unknown
+                    ("platform", Field_Value (Line, "platform"),
+                     Known_Platform (Field_Value (Line, "platform")), Line_No);
                elsif Kind = "platform-collision" then
                   Require_Field (Line, "left", Line_No);
                   Require_Field (Line, "right", Line_No);
                   Require_Field (Line, "platform", Line_No);
                   Require_Field (Line, "collision", Line_No);
+                  Reject_Unknown
+                    ("platform", Field_Value (Line, "platform"),
+                     Known_Platform (Field_Value (Line, "platform")), Line_No);
+                  Reject_Unknown
+                    ("collision", Field_Value (Line, "collision"),
+                     Known_Boolean_Text (Field_Value (Line, "collision")), Line_No);
                   Has_Platform_Collision := True;
                elsif Kind = "format" then
                   Require_Field (Line, "input", Line_No);

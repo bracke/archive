@@ -76,6 +76,9 @@ registered malformed-input IDs. Unknown archive corpus inputs fail the Ada relea
 
 Format corpus `input` values must be registered structural probe IDs. Unknown format corpus inputs fail the Ada release checks.
 
+Path corpus platform, safety, decision, and collision values must use registered
+stable IDs. Unknown path corpus classification values fail the Ada release checks.
+
 `payload` is used when the format can publish an index but the malformed stream
 must fail when payload bytes are read.
 
