@@ -402,6 +402,8 @@ package body Archive.Archives.Readers.Gzip is
            Read_File_Slice (Path, 0, Natural'Min (Size_N, Max_Header_Probe));
          Trailer      : constant File_Slice_Result :=
            Read_File_Slice (Path, Size_N - 8, 8);
+         Header_Bytes : constant Zlib.Byte_Array := Slice_Bytes (Header_Probe);
+         Trailer_Bytes : constant Zlib.Byte_Array := Slice_Bytes (Trailer);
       begin
          if Header_Probe.Status /= Archive.Archives.Errors.Ok then
             return (Status => Header_Probe.Status, Item => <>, Header => <>);
@@ -410,7 +412,7 @@ package body Archive.Archives.Readers.Gzip is
          end if;
 
          declare
-            Header : constant Parsed_Header := Parse_Header (Slice_Bytes (Header_Probe));
+            Header : constant Parsed_Header := Parse_Header (Header_Bytes);
             Result : Gzip_Index_Result;
             Name   : constant String :=
               Logical_Name
@@ -429,10 +431,10 @@ package body Archive.Archives.Readers.Gzip is
             Result.Item.Encryption := Archive.Archives.Entries.Not_Encrypted;
             Result.Item.Integrity := Archive.Archives.Entries.Not_Checked;
             Result.Item.Safety := Archive.Archives.Paths.Normalize (Name).Safety;
-            Result.Item.CRC32 := (Present => True, Value => U32 (Slice_Bytes (Trailer), 0));
+            Result.Item.CRC32 := (Present => True, Value => U32 (Trailer_Bytes, 0));
             Result.Item.Uncompressed :=
               (Present => True,
-               Value => Archive.Types.Uncompressed_Size (U32 (Slice_Bytes (Trailer), 4)));
+               Value => Archive.Types.Uncompressed_Size (U32 (Trailer_Bytes, 4)));
             Result.Item.Compressed :=
               (Present => True,
                Value => Archive.Types.Uncompressed_Size (Size_N));
