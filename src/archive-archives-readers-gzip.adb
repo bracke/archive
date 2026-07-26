@@ -340,41 +340,6 @@ package body Archive.Archives.Readers.Gzip is
       end if;
    end Logical_Name;
 
-   function Index_Buffer
-     (Bytes       : Zlib.Byte_Array;
-      Source_Name : String := "")
-      return Gzip_Index_Result
-   is
-      Result : Gzip_Index_Result;
-      Header : constant Parsed_Header := Parse_Header (Bytes);
-   begin
-      if Header.Status /= Archive.Archives.Errors.Ok then
-         Result.Status := Header.Status;
-         return Result;
-      end if;
-
-      declare
-         Name : constant String := Logical_Name (Header, Source_Name);
-      begin
-         Result.Item.Original_Path := To_Unbounded_String (Name);
-         Result.Item.Display_Name := To_Unbounded_String (Name);
-         Result.Item.Kind := Archive.Archives.Entries.Regular_File;
-         Result.Item.Method := Archive.Archives.Entries.GZip_Deflate;
-         Result.Item.Encryption := Archive.Archives.Entries.Not_Encrypted;
-         Result.Item.Integrity := Archive.Archives.Entries.Not_Checked;
-         Result.Item.Safety := Archive.Archives.Paths.Normalize (Name).Safety;
-         Result.Item.CRC32 := (Present => True, Value => U32 (Bytes, Bytes'Length - 8));
-         Result.Item.Uncompressed :=
-           (Present => True,
-            Value => Archive.Types.Uncompressed_Size (U32 (Bytes, Bytes'Length - 4)));
-         Result.Item.Compressed :=
-           (Present => True,
-            Value => Archive.Types.Uncompressed_Size (Bytes'Length));
-         Result.Header := Header.Info;
-         return Result;
-      end;
-   end Index_Buffer;
-
    function Index_File
      (Path        : String;
       Source_Name : String := "")
