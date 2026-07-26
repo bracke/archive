@@ -5,6 +5,7 @@ with Archive.Archives.Readers.Ar;
 with Archive.Archives.Readers.BZip2;
 with Archive.Archives.Readers.Cpio;
 with Archive.Archives.Readers.Gzip;
+with Archive.Archives.Readers.Iso;
 with Archive.Archives.Readers.Seven_Zip;
 with Archive.Archives.Readers.Tar;
 with Archive.Archives.Readers.Zip;
@@ -270,6 +271,17 @@ package body Archive.Archives.Readers.Dispatch is
                end if;
                return Result;
             end;
+         elsif Detection.Format = Archive.Archives.Formats.Iso_Format then
+            declare
+               Parsed : constant Archive.Archives.Readers.Iso.Iso_Index_Result :=
+                 Archive.Archives.Readers.Iso.Index_File (Path);
+            begin
+               Result.Status := Parsed.Status;
+               if Parsed.Status = Archive.Archives.Errors.Ok then
+                  Result.Index := Archive.Archives.Index.Build (Parsed.Entries).Index;
+               end if;
+               return Result;
+            end;
          elsif Detection.Format = Archive.Archives.Formats.GZip_Format then
             declare
                Parsed : constant Archive.Archives.Readers.Gzip.Gzip_Index_Result :=
@@ -487,6 +499,24 @@ package body Archive.Archives.Readers.Dispatch is
 
                Payload : constant Archive.Archives.Readers.Cpio.Stream_Result :=
                  Archive.Archives.Readers.Cpio.Stream_Payload_File
+                   (Path, Item, Forward'Access);
+            begin
+               return (Status => Payload.Status,
+                       Integrity => Payload.Integrity,
+                       Bytes_Written => Payload.Bytes_Written);
+            end;
+
+         when Archive.Archives.Formats.Iso_Format =>
+            declare
+               procedure Forward
+                 (Bytes : Zlib.Byte_Array;
+                  Continue : in out Boolean) is
+               begin
+                  Consumer.all (Bytes, Continue);
+               end Forward;
+
+               Payload : constant Archive.Archives.Readers.Iso.Stream_Result :=
+                 Archive.Archives.Readers.Iso.Stream_Payload_File
                    (Path, Item, Forward'Access);
             begin
                return (Status => Payload.Status,

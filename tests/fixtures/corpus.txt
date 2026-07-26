@@ -28,7 +28,7 @@ case id=zstd-signature kind=format input=zstd-signature expected=Zstd_Format sta
 case id=unsupported-rar kind=format input=rar-signature expected=Rar_Format status=Recognized_Unsupported
 case id=unsupported-cab kind=format input=cab-signature expected=Cab_Format status=Recognized_Unsupported
 case id=cpio-newc-signature kind=format input=cpio-newc-signature expected=Cpio_Format status=Detected
-case id=unsupported-iso kind=format input=iso-signature expected=Iso_Format status=Recognized_Unsupported
+case id=supported-iso kind=format input=iso-signature expected=Iso_Format status=Detected
 case id=ar-signature kind=format input=ar-signature expected=Ar_Format status=Detected
 case id=unsupported-split-zip kind=format input=split-zip-signature expected=Split_Zip_Format status=Recognized_Unsupported
 case id=invalid-random kind=format input=random-bytes expected=Unknown_Format status=Invalid

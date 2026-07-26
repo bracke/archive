@@ -23,6 +23,7 @@ with Archive.Archives.Paths;
 with Archive.Archives.Readers.Ar;
 with Archive.Archives.Readers.Cpio;
 with Archive.Archives.Readers.Gzip;
+with Archive.Archives.Readers.Iso;
 with Archive.Archives.Readers.Dispatch;
 with Archive.Archives.Readers.Tar;
 with Archive.Archives.Readers.Zip;
@@ -205,6 +206,7 @@ package body Archive_Suite.Core is
       return Archive.Archives.Readers.Tar.Tar_Index_Result;
    function One_File_Ar return Zlib.Byte_Array;
    function One_File_Cpio return Zlib.Byte_Array;
+   function One_File_Iso return Zlib.Byte_Array;
    function Index_Gzip
      (Bytes       : Zlib.Byte_Array;
       Source_Name : String := "")
@@ -506,6 +508,7 @@ package body Archive_Suite.Core is
          3 => Character'Pos ('a'), 4 => Character'Pos ('r'),
          5 => Character'Pos ('c'), 6 => Character'Pos ('h'),
          7 => Character'Pos ('>'), 8 => 16#0A#];
+      Iso : constant Zlib.Byte_Array := One_File_Iso;
       Split_Zip : constant Zlib.Byte_Array := [1 => 16#50#, 2 => 16#4B#, 3 => 16#07#, 4 => 16#08#];
       Tar_Bytes : constant Zlib.Byte_Array := One_File_Tar;
       R : Archive.Archives.Formats.Detection_Result;
@@ -547,6 +550,10 @@ package body Archive_Suite.Core is
       Assert (R.Status = Archive.Archives.Formats.Detected, "ar signature is detected");
       Assert (R.Format = Archive.Archives.Formats.Ar_Format, "ar format id");
 
+      R := Detect_Bytes (Iso);
+      Assert (R.Status = Archive.Archives.Formats.Detected, "iso signature is detected");
+      Assert (R.Format = Archive.Archives.Formats.Iso_Format, "iso format id");
+
       R := Detect_Bytes (Split_Zip);
       Assert
         (R.Status = Archive.Archives.Formats.Recognized_Unsupported,
@@ -572,6 +579,8 @@ package body Archive_Suite.Core is
            Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Ar_Format);
          Cpio_Caps : constant Archive.Archives.Formats.Format_Capabilities :=
            Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Cpio_Format);
+         Iso_Caps : constant Archive.Archives.Formats.Format_Capabilities :=
+           Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Iso_Format);
          Xz : constant Archive.Archives.Formats.Format_Capabilities :=
            Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Xz_Format);
       begin
@@ -590,6 +599,10 @@ package body Archive_Suite.Core is
                  and then Cpio_Caps.Supports_Symbolic_Links
                  and then not Cpio_Caps.Can_Create,
                  "cpio supports read workflows without advertising write capability");
+         Assert (Iso_Caps.Can_Index and then Iso_Caps.Can_Open_Entry_Streams
+                 and then Iso_Caps.Supports_Random_Access
+                 and then not Iso_Caps.Can_Create,
+                 "iso supports read workflows without advertising write capability");
          Assert (not Xz.Can_Create and then not Xz.Can_Index,
                  "unsupported formats do not advertise write capability");
          Assert
@@ -743,6 +756,63 @@ package body Archive_Suite.Core is
       Put_Text (Bytes, Trailer_Offset + Header_Length, Trailer);
       return Bytes;
    end One_File_Cpio;
+
+   function One_File_Iso return Zlib.Byte_Array is
+      Total       : constant Natural := 24 * 2_048;
+      PVD         : constant Natural := 16 * 2_048;
+      Root_Sector : constant Natural := 20;
+      File_Sector : constant Natural := 21;
+      Bytes       : Zlib.Byte_Array (1 .. Total) := [others => 0];
+
+      procedure Put_Both32 (Offset : Natural; Value : Natural) is
+      begin
+         Put32 (Bytes, Offset, Value);
+         Bytes (Bytes'First + Offset + 4) := Zlib.Byte ((Value / 16_777_216) mod 256);
+         Bytes (Bytes'First + Offset + 5) := Zlib.Byte ((Value / 65_536) mod 256);
+         Bytes (Bytes'First + Offset + 6) := Zlib.Byte ((Value / 256) mod 256);
+         Bytes (Bytes'First + Offset + 7) := Zlib.Byte (Value mod 256);
+      end Put_Both32;
+
+      procedure Put_Both16 (Offset : Natural; Value : Natural) is
+      begin
+         Put16 (Bytes, Offset, Value);
+         Bytes (Bytes'First + Offset + 2) := Zlib.Byte ((Value / 256) mod 256);
+         Bytes (Bytes'First + Offset + 3) := Zlib.Byte (Value mod 256);
+      end Put_Both16;
+
+      procedure Put_Record
+        (Offset : Natural;
+         Name   : String;
+         Extent : Natural;
+         Size   : Natural;
+         Is_Dir : Boolean)
+      is
+         Name_Length : constant Natural := Name'Length;
+         Length      : constant Natural := 33 + Name_Length + (if Name_Length mod 2 = 0 then 1 else 0);
+      begin
+         Bytes (Bytes'First + Offset) := Zlib.Byte (Length);
+         Bytes (Bytes'First + Offset + 1) := 0;
+         Put_Both32 (Offset + 2, Extent);
+         Put_Both32 (Offset + 10, Size);
+         Bytes (Bytes'First + Offset + 25) := (if Is_Dir then 2 else 0);
+         Bytes (Bytes'First + Offset + 26) := 0;
+         Bytes (Bytes'First + Offset + 27) := 0;
+         Put_Both16 (Offset + 28, 1);
+         Bytes (Bytes'First + Offset + 32) := Zlib.Byte (Name_Length);
+         Put_Text (Bytes, Offset + 33, Name);
+      end Put_Record;
+   begin
+      Bytes (Bytes'First + PVD) := 1;
+      Put_Text (Bytes, PVD + 1, "CD001");
+      Bytes (Bytes'First + PVD + 6) := 1;
+      Put_Record (PVD + 156, [1 => Character'Val (0)], Root_Sector, 2_048, True);
+
+      Put_Record (Root_Sector * 2_048, [1 => Character'Val (0)], Root_Sector, 2_048, True);
+      Put_Record (Root_Sector * 2_048 + 34, [1 => Character'Val (1)], Root_Sector, 2_048, True);
+      Put_Record (Root_Sector * 2_048 + 68, "A.TXT;1", File_Sector, 3, False);
+      Put_Text (Bytes, File_Sector * 2_048, "abc");
+      return Bytes;
+   end One_File_Iso;
 
    function One_File_Zip
      (Method    : Natural := 0;
@@ -2575,6 +2645,7 @@ package body Archive_Suite.Core is
       Tar : constant Zlib.Byte_Array := One_File_Tar;
       Ar : constant Zlib.Byte_Array := One_File_Ar;
       Cpio : constant Zlib.Byte_Array := One_File_Cpio;
+      Iso : constant Zlib.Byte_Array := One_File_Iso;
    begin
       Assert (Status = Zlib.Ok, "dispatch gzip fixture builds");
       Assert (Tar_Gz_Status = Zlib.Ok, "dispatch tar.gz fixture builds");
@@ -2682,6 +2753,27 @@ package body Archive_Suite.Core is
             and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('a'))
             and then Bytes_Of (Payload) (3) = Zlib.Byte (Character'Pos ('c')),
             "cpio dispatch streams stored member payload");
+      end;
+
+      declare
+         Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+           Open_Dispatch (Iso, Source_Name => "sample.iso");
+         Item : constant Archive.Archives.Entries.Archive_Entry :=
+           Archive.Archives.Index.Entry_For (Opened.Index, 2);
+         Payload : constant Test_Stream_Result :=
+           Stream_Dispatch_Payload (Iso, "sample.iso", Item);
+      begin
+         Assert (Opened.Status = Archive.Archives.Errors.Ok, "iso dispatch succeeds");
+         Assert (Opened.Format = Archive.Archives.Formats.Iso_Format, "iso dispatch records format");
+         Assert (Archive.Archives.Index.Physical_Count (Opened.Index) = 1,
+                 "iso dispatch publishes physical entry");
+         Assert
+           (Payload.Status = Archive.Archives.Errors.Ok
+            and then Payload.Integrity = Archive.Archives.Entries.Verified
+            and then Payload.Bytes_Written = 3
+            and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('a'))
+            and then Bytes_Of (Payload) (3) = Zlib.Byte (Character'Pos ('c')),
+            "iso dispatch streams stored file extent");
       end;
 
       declare

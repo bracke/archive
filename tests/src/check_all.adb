@@ -850,9 +850,15 @@ procedure Check_All is
       Require_Document_Text
         ("docs/FORMAT_SUPPORT.md", "supported native 7z layouts");
       Require_Document_Text
+        ("docs/FORMAT_SUPPORT.md", "ISO 9660 directory-record indexing");
+      Require_Document_Text
         ("README.md", "supported for native zlib-backed layouts");
       Require_Document_Text
+        ("README.md", "ISO 9660");
+      Require_Document_Text
         ("share/archive.catalog", "native zlib-backed layouts");
+      Require_Document_Text
+        ("share/archive.catalog", "stored directory records and file extents");
       Require_Document_Text
         ("docs/FORMAT_SUPPORT.md", "Save-in-place writes target the currently open archive path");
       Require_Document_Text
@@ -1118,7 +1124,11 @@ procedure Check_All is
       Forbid_Document_Text
         ("README.md", "unsupported ZIP or 7z methods");
       Forbid_Document_Text
+        ("README.md", "CAB, ISO, split ZIP");
+      Forbid_Document_Text
         ("docs/FORMAT_SUPPORT.md", "native zlib-backed subset");
+      Forbid_Document_Text
+        ("docs/FORMAT_SUPPORT.md", "- ISO");
       Forbid_Document_Text
         ("docs/FORMAT_SUPPORT.md", "outside the native subset");
       Forbid_Document_Text
@@ -1127,6 +1137,8 @@ procedure Check_All is
         ("docs/PRODUCT_SCOPE.md", "7z subset");
       Forbid_Document_Text
         ("docs/PRODUCT_SCOPE.md", "unsupported ZIP or 7z compression methods");
+      Forbid_Document_Text
+        ("docs/PRODUCT_SCOPE.md", "CAB," & ASCII.LF & "ISO");
       Forbid_Document_Text
         ("docs/ai-implementation-guide.md", "supported native subset");
       Forbid_Document_Text

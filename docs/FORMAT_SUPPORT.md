@@ -19,6 +19,7 @@ that registry and the AUnit format tests.
 | Zstandard | supported as one logical regular-file archive | supported through `zlib` Zstandard decoding | supported by zlib frame validation and optional content checksum | supported through safe extraction planning/execution | supported by Zstandard writer adapter | `zlib` |
 | AR | supported for stored members, symbol tables, GNU string tables, and BSD long names | supported for stored regular-file members | supported by bounded member header and size validation | supported through safe extraction planning/execution | not supported | archive AR adapter |
 | CPIO newc/crc | supported for stored members and trailer termination | supported for regular-file members | supported by bounded fixed-header, name, size, and alignment validation | supported through safe extraction planning/execution | not supported | archive CPIO adapter |
+| ISO 9660 | supported for primary-volume directory records | supported for stored regular-file extents | supported by bounded descriptor, directory-record, extent, and size validation | supported through safe extraction planning/execution | not supported | archive ISO adapter |
 
 Current covered edge cases include ZIP comments, Unicode path extra fields,
 ZIP64 per-entry size extras within host bounds, data descriptors with and
@@ -32,15 +33,15 @@ truncation, zlib-backed native 7z listing and payload extraction for supported
 native layouts, supported native 7z layouts in documentation and validation,
 and zlib-backed Deflate 7z file-list publication, zlib-backed bzip2 single-file
 decoding and publication, and zlib-backed Zstandard single-file decoding and
-publication, stored Unix AR member indexing and payload streaming, and CPIO newc
-member indexing and payload streaming.
+publication, stored Unix AR member indexing and payload streaming, CPIO newc
+member indexing and payload streaming, and ISO 9660 directory-record indexing
+with stored file-extent streaming.
 
 Recognized but unsupported:
 
 - RAR
 - XZ
 - CAB
-- ISO
 - split ZIP / spanning ZIP
 
 Unsupported ZIP methods, including ZIP PPMd and non-bridge LZMA variants, remain

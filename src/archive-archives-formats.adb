@@ -223,6 +223,24 @@ package body Archive.Archives.Formats is
                Can_Remove_Entries          => False,
                Can_Rename_Entries          => False,
                Requires_Rewrite_For_Update => False);
+         when Iso_Format =>
+            return
+              (Can_Index                   => True,
+               Can_Open_Entry_Streams      => True,
+               Can_Verify_Metadata         => True,
+               Can_Verify_Payload          => True,
+               Supports_Duplicates         => True,
+               Supports_Symbolic_Links     => False,
+               Supports_Hard_Links         => False,
+               Supports_Encryption         => False,
+               Supports_Random_Access      => True,
+               Requires_Temporary_Backing  => False,
+               Can_Create                  => False,
+               Can_Add_Entries             => False,
+               Can_Replace_Entries         => False,
+               Can_Remove_Entries          => False,
+               Can_Rename_Entries          => False,
+               Requires_Rewrite_For_Update => False);
          when others =>
             return (others => False);
       end case;
@@ -334,7 +352,7 @@ package body Archive.Archives.Formats is
         and then B (Bytes, 32_772) = Character'Pos ('0')
         and then B (Bytes, 32_773) = Character'Pos ('1')
       then
-         return (Recognized_Unsupported, Iso_Format);
+         return (Detected, Iso_Format);
       else
          return (Invalid, Unknown_Format);
       end if;
