@@ -42,6 +42,7 @@ case id=archive-seven-zip-encrypted kind=archive input=seven-zip-encrypted sourc
 case id=archive-rar-unsupported kind=archive input=rar-unsupported source=fixture.rar open=Unsupported_Format entries=0
 case id=archive-split-zip-unsupported kind=archive input=split-zip-unsupported source=fixture.z01 open=Unsupported_Format entries=0
 case id=archive-bzip2-basic kind=archive input=bzip2-basic source=fixture.bz2 open=Ok entries=1 payload=Ok
+case id=archive-zstd-basic kind=archive input=zstd-basic source=fixture.zst open=Ok entries=1 payload=Ok
 case id=archive-zip-stored-basic kind=archive input=zip-stored-basic source=fixture.zip open=Ok entries=1
 case id=archive-zip-deflate-basic kind=archive input=zip-deflate-basic source=fixture.zip open=Ok entries=1
 case id=archive-zip-data-descriptor kind=archive input=zip-data-descriptor source=fixture.zip open=Ok entries=1

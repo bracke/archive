@@ -12,6 +12,7 @@ fixture id=seven-zip-encrypted path=generated:seven-zip-encrypted format=7z purp
 fixture id=rar-unsupported path=generated:rar-unsupported format=rar purpose=rar-unsupported-format size=20 crc32=EAEAB33A
 fixture id=split-zip-unsupported path=generated:split-zip-unsupported format=split_zip purpose=split-zip-unsupported-format size=8 crc32=5B7D7655
 fixture id=bzip2-basic path=generated:bzip2-basic format=bzip2 purpose=bzip2-open-index size=38 crc32=ED9E5814
+fixture id=zstd-basic path=generated:zstd-basic format=zstd purpose=zstd-open-index size=19 crc32=F4A2B9CC
 fixture id=zip-stored-basic path=generated:zip-stored-basic format=zip purpose=zip-stored-open-index size=111 crc32=91E2A6FC
 fixture id=zip-deflate-basic path=generated:zip-deflate-basic format=zip purpose=zip-deflate-open-index size=113 crc32=9ABAE3AF
 fixture id=zip-data-descriptor path=generated:zip-data-descriptor format=zip purpose=zip-data-descriptor size=127 crc32=9B0623BB

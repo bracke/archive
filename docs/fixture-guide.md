@@ -27,6 +27,7 @@ seven-zip-encrypted
 rar-unsupported
 split-zip-unsupported
 bzip2-basic
+zstd-basic
 zip-stored-basic
 zip-deflate-basic
 zip-data-descriptor
