@@ -893,7 +893,6 @@ package body Archive.Archives.Readers.Zip is
    is
       use type Archive.Archives.Entries.Compression_Method;
       use type Archive.Archives.Entries.Encryption_State;
-      use type Archive.Archives.Errors.Error_Code;
       use type Archive.Types.CRC32_Value;
       File : Ada.Streams.Stream_IO.File_Type;
       Chunk_Size : constant Natural := 32_768;

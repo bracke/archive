@@ -158,10 +158,10 @@ package body Archive.Archives.Readers.Gzip is
       return "";
    end Safe_Name;
 
-   type Parsed_Header (Name_Length : Natural := 0) is record
+   type Parsed_Header is record
       Status : Archive.Archives.Errors.Error_Code := Archive.Archives.Errors.Ok;
       Info   : Gzip_Header_Info;
-      Name   : String (1 .. Name_Length);
+      Name   : Unbounded_String;
    end record;
 
    function Parse_Header (Bytes : Zlib.Byte_Array) return Parsed_Header is
@@ -181,41 +181,36 @@ package body Archive.Archives.Readers.Gzip is
         or else Octet (Bytes, 1) /= 16#8B#
         or else Octet (Bytes, 2) /= 16#08#
       then
-         return (Name_Length => 0,
-                 Status => Archive.Archives.Errors.Invalid_Format,
+         return (Status => Archive.Archives.Errors.Invalid_Format,
                  Info => <>,
-                 Name => "");
+                 Name => Null_Unbounded_String);
       end if;
 
       FLG := Octet (Bytes, 3);
       if (FLG and Reserved) /= 0 then
-         return (Name_Length => 0,
-                 Status => Archive.Archives.Errors.Invalid_Format,
+         return (Status => Archive.Archives.Errors.Invalid_Format,
                  Info => <>,
-                 Name => "");
+                 Name => Null_Unbounded_String);
       end if;
 
       if (FLG and FEXTRA) /= 0 then
          if not In_Range (Bytes, Pos, 2) then
-            return (Name_Length => 0,
-                    Status => Archive.Archives.Errors.Invalid_Format,
+            return (Status => Archive.Archives.Errors.Invalid_Format,
                     Info => <>,
-                    Name => "");
+                    Name => Null_Unbounded_String);
          end if;
 
          declare
             Len : constant Natural := U16 (Bytes, Pos);
          begin
             if Len > Max_Gzip_Field_Metadata then
-               return (Name_Length => 0,
-                       Status => Archive.Archives.Errors.Limit_Exceeded,
+               return (Status => Archive.Archives.Errors.Limit_Exceeded,
                        Info => <>,
-                       Name => "");
+                       Name => Null_Unbounded_String);
             elsif not In_Range (Bytes, Pos + 2, Len) then
-               return (Name_Length => 0,
-                       Status => Archive.Archives.Errors.Invalid_Format,
+               return (Status => Archive.Archives.Errors.Invalid_Format,
                        Info => <>,
-                       Name => "");
+                       Name => Null_Unbounded_String);
             end if;
             Info.Extra_Length := Len;
             Pos := Pos + 2 + Len;
@@ -231,19 +226,17 @@ package body Archive.Archives.Readers.Gzip is
             begin
                while Pos < Bytes'Length and then Octet (Bytes, Pos) /= 0 loop
                   if Pos - Start >= Max_Gzip_Field_Metadata then
-                     return (Name_Length => 0,
-                             Status => Archive.Archives.Errors.Limit_Exceeded,
+                     return (Status => Archive.Archives.Errors.Limit_Exceeded,
                              Info => <>,
-                             Name => "");
+                             Name => Null_Unbounded_String);
                   end if;
                   Append (Raw_Name, Character'Val (Octet (Bytes, Pos)));
                   Pos := Pos + 1;
                end loop;
                if Pos >= Bytes'Length then
-                  return (Name_Length => 0,
-                          Status => Archive.Archives.Errors.Invalid_Format,
+                  return (Status => Archive.Archives.Errors.Invalid_Format,
                           Info => <>,
-                          Name => "");
+                          Name => Null_Unbounded_String);
                end if;
                Info.Has_Name := True;
                Pos := Pos + 1;
@@ -256,18 +249,16 @@ package body Archive.Archives.Readers.Gzip is
             begin
                while Pos < Bytes'Length and then Octet (Bytes, Pos) /= 0 loop
                   if Pos - Start >= Max_Gzip_Field_Metadata then
-                     return (Name_Length => 0,
-                             Status => Archive.Archives.Errors.Limit_Exceeded,
+                     return (Status => Archive.Archives.Errors.Limit_Exceeded,
                              Info => <>,
-                             Name => "");
+                             Name => Null_Unbounded_String);
                   end if;
                   Pos := Pos + 1;
                end loop;
                if Pos >= Bytes'Length then
-                  return (Name_Length => 0,
-                          Status => Archive.Archives.Errors.Invalid_Format,
+                  return (Status => Archive.Archives.Errors.Invalid_Format,
                           Info => <>,
-                          Name => "");
+                          Name => Null_Unbounded_String);
                end if;
                Info.Has_Comment := True;
                Pos := Pos + 1;
@@ -276,10 +267,9 @@ package body Archive.Archives.Readers.Gzip is
 
          if (FLG and FHCRC) /= 0 then
             if not In_Range (Bytes, Pos, 2) then
-               return (Name_Length => 0,
-                       Status => Archive.Archives.Errors.Invalid_Format,
+               return (Status => Archive.Archives.Errors.Invalid_Format,
                        Info => <>,
-                       Name => "");
+                       Name => Null_Unbounded_String);
             end if;
 
             declare
@@ -295,10 +285,9 @@ package body Archive.Archives.Readers.Gzip is
                Archive.Verification.CRC32.Update (State, Header_Bytes);
                Actual := Archive.Verification.CRC32.Final (State);
                if Natural (Actual mod 65_536) /= Expected then
-                  return (Name_Length => 0,
-                          Status => Archive.Archives.Errors.Invalid_Format,
+                  return (Status => Archive.Archives.Errors.Invalid_Format,
                           Info => <>,
-                          Name => "");
+                          Name => Null_Unbounded_String);
                end if;
             end;
             Info.Has_Header_CRC := True;
@@ -306,20 +295,18 @@ package body Archive.Archives.Readers.Gzip is
          end if;
 
          if Pos > Bytes'Length - 8 then
-            return (Name_Length => 0,
-                    Status => Archive.Archives.Errors.Invalid_Format,
+            return (Status => Archive.Archives.Errors.Invalid_Format,
                     Info => <>,
-                    Name => "");
+                    Name => Null_Unbounded_String);
          end if;
 
          Info.Header_Length := Pos;
          declare
             Safe : constant String := Safe_Name (To_String (Raw_Name));
          begin
-            return (Name_Length => Safe'Length,
-                    Status => Archive.Archives.Errors.Ok,
+            return (Status => Archive.Archives.Errors.Ok,
                     Info => Info,
-                    Name => Safe);
+                    Name => To_Unbounded_String (Safe));
          end;
       end;
    end Parse_Header;
@@ -331,8 +318,8 @@ package body Archive.Archives.Readers.Gzip is
    is
       From_Source : constant String := Safe_Name (Strip_Gz (Source_Name));
    begin
-      if Header.Name /= "" then
-         return Header.Name;
+      if Length (Header.Name) > 0 then
+         return To_String (Header.Name);
       elsif From_Source /= "" then
          return From_Source;
       else
