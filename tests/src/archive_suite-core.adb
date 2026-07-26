@@ -76,6 +76,7 @@ with Tarlib.Errors;
 with Tarlib.Outputs;
 with Tarlib.Writers;
 with Zlib;
+with Zlib.BZip2_Encoder;
 with Zlib.Zstd_Encoder;
 
 package body Archive_Suite.Core is
@@ -485,6 +486,8 @@ package body Archive_Suite.Core is
       Gz  : constant Zlib.Byte_Array := [1 => 16#1F#, 2 => 16#8B#, 3 => 16#08#, 4 => 16#00#];
       Seven : constant Zlib.Byte_Array :=
         [1 => 16#37#, 2 => 16#7A#, 3 => 16#BC#, 4 => 16#AF#, 5 => 16#27#, 6 => 16#1C#];
+      Bz : constant Zlib.Byte_Array :=
+        [1 => Character'Pos ('B'), 2 => Character'Pos ('Z'), 3 => Character'Pos ('h')];
       Zstd : constant Zlib.Byte_Array :=
         [1 => 16#28#, 2 => 16#B5#, 3 => 16#2F#, 4 => 16#FD#];
       Cab : constant Zlib.Byte_Array :=
@@ -516,6 +519,12 @@ package body Archive_Suite.Core is
         (R.Status = Archive.Archives.Formats.Detected,
          "7z signature is detected for the supported zlib-backed subset");
       Assert (R.Format = Archive.Archives.Formats.Seven_Zip_Format, "7z format id");
+
+      R := Detect_Bytes (Bz);
+      Assert
+        (R.Status = Archive.Archives.Formats.Detected,
+         "bzip2 signature is detected for the supported zlib-backed single-file reader");
+      Assert (R.Format = Archive.Archives.Formats.BZip2_Format, "bzip2 format id");
 
       R := Detect_Bytes (Zstd);
       Assert
@@ -549,6 +558,8 @@ package body Archive_Suite.Core is
            Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Zip_Format);
          Gzip : constant Archive.Archives.Formats.Format_Capabilities :=
            Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.GZip_Format);
+         Bzip2 : constant Archive.Archives.Formats.Format_Capabilities :=
+           Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.BZip2_Format);
          Zstd_Caps : constant Archive.Archives.Formats.Format_Capabilities :=
            Archive.Archives.Formats.Capabilities (Archive.Archives.Formats.Zstd_Format);
          Xz : constant Archive.Archives.Formats.Format_Capabilities :=
@@ -558,6 +569,8 @@ package body Archive_Suite.Core is
          Assert (Zip.Can_Create and then Zip.Supports_Random_Access, "zip exposes write capability");
          Assert (Gzip.Can_Create and then not Gzip.Can_Add_Entries,
                  "gzip supports single logical-file creation only");
+         Assert (Bzip2.Can_Create and then not Bzip2.Can_Add_Entries,
+                 "bzip2 supports single logical-file creation only");
          Assert (Zstd_Caps.Can_Create and then not Zstd_Caps.Can_Add_Entries,
                  "zstd supports single logical-file creation only");
          Assert (not Xz.Can_Create and then not Xz.Can_Index,
@@ -2306,6 +2319,9 @@ package body Archive_Suite.Core is
       Seven_Status : Zlib.Status_Code;
       Seven : constant Zlib.Byte_Array :=
         Zlib.Seven_Zip_Stored (Plain, "payload.bin", Seven_Status);
+      Bzip2_Status : Zlib.Status_Code;
+      Bzip2 : constant Zlib.Byte_Array :=
+        Zlib.BZip2_Encoder.Encode (Plain, Status => Bzip2_Status);
       Zstd_Status : Zlib.Status_Code;
       Zstd : constant Zlib.Byte_Array :=
         Zlib.Zstd_Encoder.Encode (Plain, Zstd_Status);
@@ -2314,6 +2330,7 @@ package body Archive_Suite.Core is
       Assert (Status = Zlib.Ok, "dispatch gzip fixture builds");
       Assert (Tar_Gz_Status = Zlib.Ok, "dispatch tar.gz fixture builds");
       Assert (Seven_Status = Zlib.Ok, "dispatch 7z fixture builds");
+      Assert (Bzip2_Status = Zlib.Ok, "dispatch bzip2 fixture builds");
       Assert (Zstd_Status = Zlib.Ok, "dispatch zstd fixture builds");
 
       declare
@@ -2437,6 +2454,28 @@ package body Archive_Suite.Core is
             and then Payload.Bytes_Written = 3
             and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('b')),
             "zstd dispatch payload reads through zlib");
+      end;
+
+      declare
+         Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+           Open_Dispatch (Bzip2, Source_Name => "sample.txt.bz2");
+         Item : constant Archive.Archives.Entries.Archive_Entry :=
+           Archive.Archives.Index.Entry_For (Opened.Index, 2);
+         Payload : constant Test_Stream_Result :=
+           Stream_Dispatch_Payload (Bzip2, "sample.txt.bz2", Item);
+      begin
+         Assert (Opened.Status = Archive.Archives.Errors.Ok,
+                 "bzip2 dispatch succeeds through zlib decoder");
+         Assert (Opened.Format = Archive.Archives.Formats.BZip2_Format,
+                 "bzip2 dispatch records format");
+         Assert (Archive.Archives.Index.Physical_Count (Opened.Index) = 1,
+                 "bzip2 dispatch publishes logical entry");
+         Assert
+           (Payload.Status = Archive.Archives.Errors.Ok
+            and then Payload.Integrity = Archive.Archives.Entries.Verified
+            and then Payload.Bytes_Written = 3
+            and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('b')),
+            "bzip2 dispatch payload reads through zlib");
       end;
    end Test_Reader_Dispatch;
 
@@ -5884,6 +5923,7 @@ package body Archive_Suite.Core is
       Zip_Target : constant String := Root & "/dispatch-stream.zip";
       Tar_Gz_Target : constant String := Root & "/dispatch-stream.tar.gz";
       Seven_Zip_Target : constant String := Root & "/dispatch-stream.7z";
+      Bzip2_Target : constant String := Root & "/dispatch-stream.bz2";
       Zstd_Target : constant String := Root & "/dispatch-stream.zst";
       File : Ada.Streams.Stream_IO.File_Type;
       Host_Data : constant Ada.Streams.Stream_Element_Array :=
@@ -5903,6 +5943,9 @@ package body Archive_Suite.Core is
       end if;
       if Ada.Directories.Exists (Seven_Zip_Target) then
          Ada.Directories.Delete_File (Seven_Zip_Target);
+      end if;
+      if Ada.Directories.Exists (Bzip2_Target) then
+         Ada.Directories.Delete_File (Bzip2_Target);
       end if;
       if Ada.Directories.Exists (Zstd_Target) then
          Ada.Directories.Delete_File (Zstd_Target);
@@ -5957,6 +6000,11 @@ package body Archive_Suite.Core is
              (Archive.Archives.Formats.Seven_Zip_Format,
               Seven_Zip_Target,
               Plan);
+         Bzip2_Published : constant Archive.Writes.Results.Publish_Result :=
+           Archive.Writes.Dispatch.Publish
+             (Archive.Archives.Formats.BZip2_Format,
+              Bzip2_Target,
+              Plan);
          Zstd_Published : constant Archive.Writes.Results.Publish_Result :=
            Archive.Writes.Dispatch.Publish
              (Archive.Archives.Formats.Zstd_Format,
@@ -5969,6 +6017,9 @@ package body Archive_Suite.Core is
              (Tar_Gz_Target, Source_Name => Tar_Gz_Target, Retain_Backing => True);
          Seven_Zip_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
            Archive.Archives.Readers.Dispatch.Open_File (Seven_Zip_Target);
+         Bzip2_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+           Archive.Archives.Readers.Dispatch.Open_File
+             (Bzip2_Target, Source_Name => "dispatch-stream.bz2");
          Zstd_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
            Archive.Archives.Readers.Dispatch.Open_File
              (Zstd_Target, Source_Name => "dispatch-stream.zst");
@@ -5982,6 +6033,9 @@ package body Archive_Suite.Core is
          Assert
            (Seven_Zip_Published.Status = Archive.Writes.Results.Write_Completed,
             "write dispatch publishes 7z archive through zlib");
+         Assert
+           (Bzip2_Published.Status = Archive.Writes.Results.Write_Completed,
+            "write dispatch publishes bzip2 archive through zlib");
          Assert
            (Zstd_Published.Status = Archive.Writes.Results.Write_Completed,
             "write dispatch publishes zstd archive through zlib");
@@ -5998,6 +6052,11 @@ package body Archive_Suite.Core is
             and then Seven_Zip_Opened.Format = Archive.Archives.Formats.Seven_Zip_Format
             and then Archive.Archives.Index.Physical_Count (Seven_Zip_Opened.Index) = 1,
             "write dispatch 7z publication reopens");
+         Assert
+           (Bzip2_Opened.Status = Archive.Archives.Errors.Ok
+            and then Bzip2_Opened.Format = Archive.Archives.Formats.BZip2_Format
+            and then Archive.Archives.Index.Physical_Count (Bzip2_Opened.Index) = 1,
+            "write dispatch bzip2 publication reopens");
          Assert
            (Zstd_Opened.Status = Archive.Archives.Errors.Ok
             and then Zstd_Opened.Format = Archive.Archives.Formats.Zstd_Format

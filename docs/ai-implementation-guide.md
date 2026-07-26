@@ -64,7 +64,7 @@
 
 Do not fake TAR support. Consume `tarlib` public reader and writer APIs for TAR browsing, extraction, creation, and update workflows. Archive mutation must be planned first, validated for path safety and conflicts, and then published atomically enough that cancellation or failure cannot leave model state ahead of filesystem/archive state.
 
-ZIP and gzip mutation must use `zlib` for compression boundaries and archive-owned ZIP structures for container metadata. 7z mutation must use the public `zlib` Seven_Zip APIs for the supported native subset. Unsupported write formats should be reported as unavailable commands, not silently downgraded to extraction-only behavior.
+ZIP, gzip, bzip2, and Zstandard mutation must use `zlib` for compression boundaries and archive-owned ZIP structures for container metadata where applicable. 7z mutation must use the public `zlib` Seven_Zip APIs for the supported native subset. Unsupported write formats should be reported as unavailable commands, not silently downgraded to extraction-only behavior.
 Application-level write dialog completion must call model-owned typed planning operations for add-file, add-directory, remove-selected, and rename-selected. Do not mark pending writes without a write plan except for a newly created empty archive before its first save target exists.
 Use `Archive.Writes.Service` for save-as publication from application commands. It is the boundary that combines model state, format dispatch, staged publish execution, and save lifecycle updates.
 Represent write conflicts in `Archive.Writes.Plans` with stable decisions and

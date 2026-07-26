@@ -133,6 +133,24 @@ package body Archive.Archives.Formats is
                Can_Remove_Entries          => False,
                Can_Rename_Entries          => True,
                Requires_Rewrite_For_Update => True);
+         when BZip2_Format =>
+            return
+              (Can_Index                   => True,
+               Can_Open_Entry_Streams      => True,
+               Can_Verify_Metadata         => False,
+               Can_Verify_Payload          => True,
+               Supports_Duplicates         => False,
+               Supports_Symbolic_Links     => False,
+               Supports_Hard_Links         => False,
+               Supports_Encryption         => False,
+               Supports_Random_Access      => False,
+               Requires_Temporary_Backing  => False,
+               Can_Create                  => True,
+               Can_Add_Entries             => False,
+               Can_Replace_Entries         => False,
+               Can_Remove_Entries          => False,
+               Can_Rename_Entries          => True,
+               Requires_Rewrite_For_Update => True);
          when Seven_Zip_Format =>
             return
               (Can_Index                   => True,
@@ -220,7 +238,7 @@ package body Archive.Archives.Formats is
         and then B (Bytes, 1) = 16#5A#
         and then B (Bytes, 2) = 16#68#
       then
-         return (Recognized_Unsupported, BZip2_Format);
+         return (Detected, BZip2_Format);
       elsif Bytes'Length >= 4
         and then B (Bytes, 0) = Character'Pos ('M')
         and then B (Bytes, 1) = Character'Pos ('S')

@@ -80,6 +80,12 @@ package body Archive.Writes.Dispatch is
                Overwrite => Overwrite,
                Cancelled => Cancelled);
 
+         when Archive.Archives.Formats.BZip2_Format =>
+            return Archive.Writes.Execution.Publish_BZip2
+              (Destination_Path, Plan,
+               Overwrite => Overwrite,
+               Cancelled => Cancelled);
+
          when Archive.Archives.Formats.Seven_Zip_Format =>
             return Archive.Writes.Execution.Publish_Seven_Zip
               (Destination_Path, Plan,

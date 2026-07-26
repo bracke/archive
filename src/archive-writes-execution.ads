@@ -89,6 +89,13 @@ package Archive.Writes.Execution is
       Cancelled        : Boolean := False)
       return Archive.Writes.Results.Publish_Result;
 
+   function Publish_BZip2
+     (Destination_Path : String;
+      Plan             : Archive.Writes.Plans.Write_Plan;
+      Overwrite        : Boolean := False;
+      Cancelled        : Boolean := False)
+      return Archive.Writes.Results.Publish_Result;
+
    function Publish_Seven_Zip
      (Destination_Path : String;
       Plan             : Archive.Writes.Plans.Write_Plan;

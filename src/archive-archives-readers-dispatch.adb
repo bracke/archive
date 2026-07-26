@@ -1,6 +1,7 @@
 with Ada.Directories;
 with Ada.Strings.Unbounded;
 
+with Archive.Archives.Readers.BZip2;
 with Archive.Archives.Readers.Gzip;
 with Archive.Archives.Readers.Seven_Zip;
 with Archive.Archives.Readers.Tar;
@@ -215,6 +216,36 @@ package body Archive.Archives.Readers.Dispatch is
                end if;
                return Result;
             end;
+         elsif Detection.Format = Archive.Archives.Formats.BZip2_Format then
+            declare
+               Size : constant Ada.Directories.File_Size := Ada.Directories.Size (Path);
+               Limit : constant Ada.Directories.File_Size :=
+                 Ada.Directories.File_Size (Max_Bytes);
+            begin
+               if Size > Limit
+                 or else Size > Ada.Directories.File_Size (Natural'Last)
+               then
+                  Result.Status := Archive.Archives.Errors.Limit_Exceeded;
+                  return Result;
+               end if;
+            end;
+
+            declare
+               Parsed : constant Archive.Archives.Readers.BZip2.BZip2_Index_Result :=
+                 Archive.Archives.Readers.BZip2.Index_File
+                   (Path,
+                    Max_Bytes,
+                    Source_Name =>
+                      (if Source_Name'Length > 0 then Source_Name else Path));
+               Entries : Archive.Archives.Entries.Entry_Vectors.Vector;
+            begin
+               Result.Status := Parsed.Status;
+               if Parsed.Status = Archive.Archives.Errors.Ok then
+                  Entries.Append (Parsed.Item);
+                  Result.Index := Archive.Archives.Index.Build (Entries).Index;
+               end if;
+               return Result;
+            end;
          elsif Detection.Format = Archive.Archives.Formats.GZip_Format then
             declare
                Parsed : constant Archive.Archives.Readers.Gzip.Gzip_Index_Result :=
@@ -378,6 +409,24 @@ package body Archive.Archives.Readers.Dispatch is
 
                Payload : constant Archive.Archives.Readers.Zstd.Stream_Result :=
                  Archive.Archives.Readers.Zstd.Stream_Payload_File
+                   (Path, 256 * 1_024 * 1_024, Item, Forward'Access);
+            begin
+               return (Status => Payload.Status,
+                       Integrity => Payload.Integrity,
+                       Bytes_Written => Payload.Bytes_Written);
+            end;
+
+         when Archive.Archives.Formats.BZip2_Format =>
+            declare
+               procedure Forward
+                 (Bytes : Zlib.Byte_Array;
+                  Continue : in out Boolean) is
+               begin
+                  Consumer.all (Bytes, Continue);
+               end Forward;
+
+               Payload : constant Archive.Archives.Readers.BZip2.Stream_Result :=
+                 Archive.Archives.Readers.BZip2.Stream_Payload_File
                    (Path, 256 * 1_024 * 1_024, Item, Forward'Access);
             begin
                return (Status => Payload.Status,

@@ -159,7 +159,7 @@ Recent archive paths are persisted as stable data, not localized display labels,
 and shell snapshots expose the recent count and ordered path list through the
 settings snapshot for menu construction.
 
-Recognized unsupported formats include RAR, XZ, bzip2, CAB, CPIO,
+Recognized unsupported formats include RAR, XZ, CAB, CPIO,
 ISO, AR, split ZIP, multi-volume ZIP, encrypted entries outside the supported
 7z subset, and unsupported ZIP or 7z compression methods.
 

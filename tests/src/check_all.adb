@@ -2197,6 +2197,8 @@ procedure Check_All is
          return Archive.Archives.Formats.Seven_Zip_Format;
       elsif Value = "Zstd_Format" then
          return Archive.Archives.Formats.Zstd_Format;
+      elsif Value = "BZip2_Format" then
+         return Archive.Archives.Formats.BZip2_Format;
       elsif Value = "Rar_Format" then
          return Archive.Archives.Formats.Rar_Format;
       elsif Value = "Zip_Format" then
@@ -2271,6 +2273,8 @@ procedure Check_All is
          return [16#37#, 16#7A#, 16#BC#, 16#AF#, 16#27#, 16#1C#];
       elsif Value = "zstd-signature" then
          return [16#28#, 16#B5#, 16#2F#, 16#FD#];
+      elsif Value = "bzip2-signature" then
+         return [Character'Pos ('B'), Character'Pos ('Z'), Character'Pos ('h')];
       elsif Value = "rar-signature" then
          return [16#52#, 16#61#, 16#72#, 16#21#, 16#1A#, 16#07#, 16#00#];
       elsif Value = "random-bytes" then
