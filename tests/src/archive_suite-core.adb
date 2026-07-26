@@ -891,6 +891,7 @@ package body Archive_Suite.Core is
    function One_File_Zip
      (Method    : Natural := 0;
       Encrypted : Boolean := False;
+      Strong_Encryption : Boolean := False;
       Bad_Local_Name : Boolean := False;
       Bad_CRC : Boolean := False;
       Data_Descriptor : Boolean := False;
@@ -942,7 +943,9 @@ package body Archive_Suite.Core is
          EOCD_Offset : constant Natural := Central_Offset + Central_Size + ZIP64_Locator_Length;
          Total : constant Natural := EOCD_Offset + 22 + Archive_Comment_Length;
          Flags : constant Natural :=
-           (if Encrypted then 1 else 0) + (if Data_Descriptor then 8 else 0);
+           (if Encrypted or else Strong_Encryption then 1 else 0)
+           + (if Strong_Encryption then 16#40# else 0)
+           + (if Data_Descriptor then 8 else 0);
          Bytes : Zlib.Byte_Array (1 .. Total) := [others => 0];
          Local_Size_Value : constant Interfaces.Unsigned_32 :=
            (if Data_Descriptor then 0
@@ -1506,11 +1509,30 @@ package body Archive_Suite.Core is
          Assert
            (Item.Method = Archive.Archives.Entries.PPMd_Compression,
             "zip ppmd method is explicit");
-         Assert (Item.Encryption = Archive.Archives.Entries.Encrypted, "encrypted flag retained");
+         Assert
+           (Item.Encryption = Archive.Archives.Entries.Zip_Traditional_Encryption,
+            "zip traditional encryption flag retained");
          Assert (Payload.Status = Archive.Archives.Errors.Unsupported_Method,
                  "encrypted ppmd zip entry cannot publish payload");
          Assert (Payload.Integrity = Archive.Archives.Entries.Not_Available,
                  "encrypted ppmd zip entry has unavailable integrity");
+      end;
+
+      declare
+         Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
+           Index_Zip (One_File_Zip (Encrypted => True, Strong_Encryption => True));
+         Item : constant Archive.Archives.Entries.Archive_Entry := Parsed.Entries.Element (1);
+         Payload : constant Test_Stream_Result :=
+           Stream_Zip_Payload
+             (One_File_Zip (Encrypted => True, Strong_Encryption => True), Item);
+      begin
+         Assert (Parsed.Status = Archive.Archives.Errors.Ok,
+                 "zip strong encryption entry remains inspectable");
+         Assert
+           (Item.Encryption = Archive.Archives.Entries.Zip_Strong_Encryption,
+            "zip strong encryption flag retained");
+         Assert (Payload.Status = Archive.Archives.Errors.Unsupported_Method,
+                 "zip strong encryption entry cannot publish payload");
       end;
 
       declare

@@ -28,7 +28,12 @@ package Archive.Archives.Entries is
       Unsupported_Compression,
       Unknown_Compression);
 
-   type Encryption_State is (Not_Encrypted, Encrypted, Unknown_Encryption);
+   type Encryption_State is
+     (Not_Encrypted,
+      Zip_Traditional_Encryption,
+      Zip_Strong_Encryption,
+      Encrypted,
+      Unknown_Encryption);
    type Integrity_State is (Not_Checked, Verified, Failed, Not_Available);
    type Path_Safety is
      (Safe_Path,

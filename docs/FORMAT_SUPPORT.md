@@ -26,7 +26,7 @@ that registry and the AUnit format tests.
 Current covered edge cases include ZIP comments, Unicode path extra fields,
 ZIP64 per-entry size extras within host bounds, data descriptors with and
 without signatures, ZIP BZip2, LZMA, and Zstandard payload decoding through zlib,
-encrypted-entry detection, unsupported compression-method reporting,
+ZIP traditional and strong encrypted-entry detection, unsupported compression-method reporting,
 multi-disk rejection, duplicate ZIP names, explicit ZIP directories,
 gzip optional fields, gzip header CRC, unsafe gzip filename fallback, truncated
 gzip payload rejection, TAR duplicate paths, TAR symbolic and hard links, TAR

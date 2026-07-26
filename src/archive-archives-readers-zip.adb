@@ -877,9 +877,11 @@ package body Archive.Archives.Readers.Zip is
                              (Present => True, Value => Archive.Types.Uncompressed_Size (Uncomp_64));
                            Item.Method := Compression_For (Method);
                            Item.Encryption :=
-                             (if (Flags and 1) /= 0
-                              then Archive.Archives.Entries.Encrypted
-                              else Archive.Archives.Entries.Not_Encrypted);
+                             (if (Flags and 1) = 0
+                              then Archive.Archives.Entries.Not_Encrypted
+                              elsif (Flags and 16#40#) /= 0
+                              then Archive.Archives.Entries.Zip_Strong_Encryption
+                              else Archive.Archives.Entries.Zip_Traditional_Encryption);
                            Item.Integrity :=
                              (if CRC = 0 and then Uncomp_64 = 0
                               then Archive.Archives.Entries.Not_Available
@@ -920,7 +922,7 @@ package body Archive.Archives.Readers.Zip is
       File : Ada.Streams.Stream_IO.File_Type;
       Chunk_Size : constant Natural := 32_768;
    begin
-      if Item.Encryption = Archive.Archives.Entries.Encrypted then
+      if Item.Encryption /= Archive.Archives.Entries.Not_Encrypted then
          return (Status => Archive.Archives.Errors.Unsupported_Method,
                  Integrity => Archive.Archives.Entries.Not_Available,
                  Bytes_Written => 0);

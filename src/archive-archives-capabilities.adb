@@ -40,9 +40,9 @@ package body Archive.Archives.Capabilities is
         Supported_Kind
         and then Supported_Method
         and then Safe
-        and then Item.Encryption /= Archive.Archives.Entries.Encrypted;
+        and then Item.Encryption = Archive.Archives.Entries.Not_Encrypted;
       Reason : constant Entry_Unavailable_Reason :=
-        (if Item.Encryption = Archive.Archives.Entries.Encrypted then Encrypted_Entry
+        (if Item.Encryption /= Archive.Archives.Entries.Not_Encrypted then Encrypted_Entry
          elsif not Supported_Method then Unsupported_Method
          elsif not Safe then Unsafe_Path
          elsif not Supported_Kind then Unsupported_Entry_Kind
