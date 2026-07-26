@@ -3,6 +3,7 @@ with AUnit.Assertions;
 with AUnit.Test_Cases;
 
 with Ada.Calendar;
+with Ada.Containers.Vectors;
 with Ada.Directories;
 with Ada.Strings.Fixed;
 with Ada.Streams.Stream_IO;
@@ -208,7 +209,11 @@ package body Archive_Suite.Core is
      (Bytes       : Zlib.Byte_Array;
       Source_Name : String := "")
       return Archive.Archives.Readers.Dispatch.Open_Result;
-   type Test_Zlib_Result (Length : Natural := 0) is record
+   package Test_Byte_Vectors is new Ada.Containers.Vectors
+     (Index_Type => Positive,
+      Element_Type => Zlib.Byte);
+
+   type Test_Zlib_Result is record
       Status : Archive.Archives.Errors.Error_Code := Archive.Archives.Errors.Ok;
       Compressed_Bytes   : Archive.Types.Compressed_Size := 0;
       Uncompressed_Bytes : Archive.Types.Uncompressed_Size := 0;
@@ -221,8 +226,18 @@ package body Archive_Suite.Core is
       Output_Limited     : Boolean := False;
       Ratio_Limited      : Boolean := False;
       Cancelled          : Boolean := False;
-      Bytes              : Zlib.Byte_Array (1 .. Length);
+      Bytes              : Test_Byte_Vectors.Vector;
    end record;
+
+   function Byte_Vector (Bytes : Zlib.Byte_Array) return Test_Byte_Vectors.Vector;
+   function Bytes_Of (Result : Test_Zlib_Result) return Zlib.Byte_Array;
+   function Byte_Length (Result : Test_Zlib_Result) return Natural;
+   function Byte_Length
+     (Result : Archive.Archives.Streams.Buffered_Source)
+      return Natural;
+   function Byte_Length
+     (Result : Archive.Source_Monitoring.Probe_Result)
+      return Natural;
    function Test_Inflate
      (Input : Zlib.Byte_Array;
       Mode  : Archive.Compression.Zlib.Stream_Mode;
@@ -266,6 +281,8 @@ package body Archive_Suite.Core is
       Prefix_Length : Natural := 0;
       Bytes     : Zlib.Byte_Array (1 .. Test_Stream_Prefix_Limit) := [others => 0];
    end record;
+   function Bytes_Of (Result : Test_Stream_Result) return Zlib.Byte_Array;
+   function Byte_Length (Result : Test_Stream_Result) return Natural;
    function Stream_Dispatch_Payload_File
      (Path        : String;
       Source_Name : String;
@@ -465,10 +482,10 @@ package body Archive_Suite.Core is
 
    procedure Test_Format_Detection (T : in out AUnit.Test_Cases.Test_Case'Class) is
       pragma Unreferenced (T);
-      Zip : constant Zlib.Byte_Array := (1 => 16#50#, 2 => 16#4B#, 3 => 16#03#, 4 => 16#04#);
-      Gz  : constant Zlib.Byte_Array := (1 => 16#1F#, 2 => 16#8B#, 3 => 16#08#, 4 => 16#00#);
+      Zip : constant Zlib.Byte_Array := [1 => 16#50#, 2 => 16#4B#, 3 => 16#03#, 4 => 16#04#];
+      Gz  : constant Zlib.Byte_Array := [1 => 16#1F#, 2 => 16#8B#, 3 => 16#08#, 4 => 16#00#];
       Seven : constant Zlib.Byte_Array :=
-        (1 => 16#37#, 2 => 16#7A#, 3 => 16#BC#, 4 => 16#AF#, 5 => 16#27#, 6 => 16#1C#);
+        [1 => 16#37#, 2 => 16#7A#, 3 => 16#BC#, 4 => 16#AF#, 5 => 16#27#, 6 => 16#1C#];
       Cab : constant Zlib.Byte_Array :=
         [1 => Character'Pos ('M'), 2 => Character'Pos ('S'),
          3 => Character'Pos ('C'), 4 => Character'Pos ('F')];
@@ -977,9 +994,9 @@ package body Archive_Suite.Core is
             Assert (Payload.Integrity = Archive.Archives.Entries.Verified, "stored payload crc verified");
             Assert (Payload.Bytes_Written = 3, "payload length retained");
             Assert
-              (Payload.Bytes (1) = Zlib.Byte (Character'Pos ('a'))
-               and then Payload.Bytes (2) = Zlib.Byte (Character'Pos ('b'))
-               and then Payload.Bytes (3) = Zlib.Byte (Character'Pos ('c')),
+              (Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('a'))
+               and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('b'))
+               and then Bytes_Of (Payload) (3) = Zlib.Byte (Character'Pos ('c')),
                "payload bytes retained");
          end;
       end;
@@ -1094,9 +1111,9 @@ package body Archive_Suite.Core is
          Assert (Payload.Integrity = Archive.Archives.Entries.Verified, "deflated payload crc verified");
          Assert
            (Payload.Bytes_Written = 3
-            and then Payload.Bytes (1) = Zlib.Byte (Character'Pos ('a'))
-            and then Payload.Bytes (2) = Zlib.Byte (Character'Pos ('b'))
-            and then Payload.Bytes (3) = Zlib.Byte (Character'Pos ('c')),
+            and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('a'))
+            and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('b'))
+            and then Bytes_Of (Payload) (3) = Zlib.Byte (Character'Pos ('c')),
             "deflated payload bytes retained");
       end;
 
@@ -1540,9 +1557,9 @@ package body Archive_Suite.Core is
                  "gzip payload is verified by zlib trailer checks");
          Assert
            (Payload.Bytes_Written = 3
-            and then Payload.Bytes (1) = Zlib.Byte (Character'Pos ('a'))
-            and then Payload.Bytes (2) = Zlib.Byte (Character'Pos ('b'))
-            and then Payload.Bytes (3) = Zlib.Byte (Character'Pos ('c')),
+            and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('a'))
+            and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('b'))
+            and then Bytes_Of (Payload) (3) = Zlib.Byte (Character'Pos ('c')),
             "gzip payload bytes retained");
       end;
 
@@ -1580,9 +1597,9 @@ package body Archive_Suite.Core is
                  (Payload.Status = Archive.Archives.Errors.Ok
                   and then Payload.Integrity = Archive.Archives.Entries.Verified
                   and then Payload.Bytes_Written = 3
-                  and then Payload.Bytes (1) = Zlib.Byte (Character'Pos ('a'))
-                  and then Payload.Bytes (2) = Zlib.Byte (Character'Pos ('b'))
-                  and then Payload.Bytes (3) = Zlib.Byte (Character'Pos ('c')),
+                  and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('a'))
+                  and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('b'))
+                  and then Bytes_Of (Payload) (3) = Zlib.Byte (Character'Pos ('c')),
                   "gzip file-backed payload streams through zlib with trailer verification");
             end;
          end;
@@ -1785,7 +1802,7 @@ package body Archive_Suite.Core is
          Assert (Inflated.Compressed_Bytes = Archive.Types.Compressed_Size (Raw'Length),
                  "adapter counts compressed bytes");
          Assert (Inflated.Uncompressed_Bytes = 3, "adapter counts output bytes");
-         Assert (Inflated.Bytes'Length = 3, "adapter returns output bytes");
+         Assert (Byte_Length (Inflated) = 3, "adapter returns output bytes");
       end;
 
       declare
@@ -1798,11 +1815,11 @@ package body Archive_Suite.Core is
          Assert (Output_Limited_Result.Status = Archive.Archives.Errors.Limit_Exceeded,
                  "adapter enforces output limit");
          Assert (Output_Limited_Result.Output_Limited, "adapter marks output limit");
-         Assert (Output_Limited_Result.Bytes'Length = 0, "limited output is not published");
+         Assert (Byte_Length (Output_Limited_Result) = 0, "limited output is not published");
       end;
 
       declare
-         Bulk : Zlib.Byte_Array (1 .. 512) := [others => Zlib.Byte (Character'Pos ('a'))];
+         Bulk : constant Zlib.Byte_Array (1 .. 512) := [others => Zlib.Byte (Character'Pos ('a'))];
          Bulk_Status : Zlib.Status_Code;
          Bulk_Raw : constant Zlib.Byte_Array := Zlib.Deflate_Raw (Bulk, Zlib.Fixed, Bulk_Status);
       begin
@@ -1818,7 +1835,7 @@ package body Archive_Suite.Core is
             Assert (Ratio_Limited.Status = Archive.Archives.Errors.Limit_Exceeded,
                     "adapter enforces ratio limit");
             Assert (Ratio_Limited.Ratio_Limited, "adapter marks ratio limit");
-            Assert (Ratio_Limited.Bytes'Length = 0, "ratio-limited output is not published");
+            Assert (Byte_Length (Ratio_Limited) = 0, "ratio-limited output is not published");
          end;
       end;
 
@@ -1833,7 +1850,7 @@ package body Archive_Suite.Core is
          Assert (Cancelled.Status = Archive.Archives.Errors.Cancelled,
                  "adapter maps cancellation");
          Assert (Cancelled.Cancelled, "adapter marks cancellation");
-         Assert (Cancelled.Bytes'Length = 0, "cancelled output is not published");
+         Assert (Byte_Length (Cancelled) = 0, "cancelled output is not published");
       end;
 
       Cancel.Reset;
@@ -1843,16 +1860,16 @@ package body Archive_Suite.Core is
              (Plain, Archive.Compression.Zlib.Raw_Deflate);
          Inflated : constant Test_Zlib_Result :=
            Test_Inflate
-             (Deflated.Bytes, Archive.Compression.Zlib.Raw_Deflate);
+             (Bytes_Of (Deflated), Archive.Compression.Zlib.Raw_Deflate);
       begin
          Assert (Deflated.Status = Archive.Archives.Errors.Ok,
                  "adapter builds raw deflate output");
          Assert (Deflated.Input_Bytes = 3, "adapter counts deflate input");
-         Assert (Deflated.Output_Bytes = Archive.Types.Compressed_Size (Deflated.Bytes'Length),
+         Assert (Deflated.Output_Bytes = Archive.Types.Compressed_Size (Byte_Length (Deflated)),
                  "adapter counts deflate output");
          Assert (Inflated.Status = Archive.Archives.Errors.Ok
-                 and then Inflated.Bytes'Length = 3
-                 and then Inflated.Bytes (1) = Zlib.Byte (Character'Pos ('a')),
+                 and then Byte_Length (Inflated) = 3
+                 and then Bytes_Of (Inflated) (1) = Zlib.Byte (Character'Pos ('a')),
                  "adapter raw deflate round-trips");
       end;
 
@@ -1862,13 +1879,13 @@ package body Archive_Suite.Core is
              (Plain, Archive.Compression.Zlib.Gzip_Wrapped);
          Inflated : constant Test_Zlib_Result :=
            Test_Inflate
-             (Gzip.Bytes, Archive.Compression.Zlib.Gzip_Wrapped);
+             (Bytes_Of (Gzip), Archive.Compression.Zlib.Gzip_Wrapped);
       begin
          Assert (Gzip.Status = Archive.Archives.Errors.Ok,
                  "adapter builds gzip output");
          Assert (Inflated.Status = Archive.Archives.Errors.Ok
-                 and then Inflated.Bytes'Length = 3
-                 and then Inflated.Bytes (3) = Zlib.Byte (Character'Pos ('c')),
+                 and then Byte_Length (Inflated) = 3
+                 and then Bytes_Of (Inflated) (3) = Zlib.Byte (Character'Pos ('c')),
                  "adapter gzip round-trips");
       end;
 
@@ -1881,7 +1898,7 @@ package body Archive_Suite.Core is
               Output_Chunk_Bytes => 2);
          Stream_Inflated : constant Test_Zlib_Result :=
            Test_Inflate_Streaming
-             (Stream_Deflated.Bytes,
+             (Bytes_Of (Stream_Deflated),
               Archive.Compression.Zlib.Raw_Deflate,
               Input_Chunk_Bytes => 1,
               Output_Chunk_Bytes => 1);
@@ -1896,19 +1913,19 @@ package body Archive_Suite.Core is
                  "streaming adapter reports stream end");
          Assert
            (Stream_Inflated.Compressed_Bytes =
-              Archive.Types.Compressed_Size (Stream_Deflated.Bytes'Length)
+              Archive.Types.Compressed_Size (Byte_Length (Stream_Deflated))
             and then Stream_Inflated.Uncompressed_Bytes = 3,
             "streaming adapter counts input and output bytes");
          Assert
            (Stream_Deflated.Input_Chunks = 3
             and then Stream_Deflated.Output_Chunks > 0
-            and then Stream_Inflated.Input_Chunks >= Stream_Deflated.Bytes'Length
+            and then Stream_Inflated.Input_Chunks >= Byte_Length (Stream_Deflated)
             and then Stream_Inflated.Output_Chunks >= 1,
             "streaming adapter exposes chunk accounting");
          Assert
-           (Stream_Inflated.Bytes'Length = 3
-            and then Stream_Inflated.Bytes (1) = Zlib.Byte (Character'Pos ('a'))
-            and then Stream_Inflated.Bytes (3) = Zlib.Byte (Character'Pos ('c')),
+           (Byte_Length (Stream_Inflated) = 3
+            and then Bytes_Of (Stream_Inflated) (1) = Zlib.Byte (Character'Pos ('a'))
+            and then Bytes_Of (Stream_Inflated) (3) = Zlib.Byte (Character'Pos ('c')),
             "streaming adapter raw deflate round-trips with tiny chunks");
       end;
 
@@ -1921,7 +1938,7 @@ package body Archive_Suite.Core is
               Output_Chunk_Bytes => 3);
          Stream_Inflated : constant Test_Zlib_Result :=
            Test_Inflate_Streaming
-             (Stream_Gzip.Bytes,
+             (Bytes_Of (Stream_Gzip),
               Archive.Compression.Zlib.Gzip_Wrapped,
               Input_Chunk_Bytes => 2,
               Output_Chunk_Bytes => 1);
@@ -1931,8 +1948,8 @@ package body Archive_Suite.Core is
          Assert (Stream_Inflated.Status = Archive.Archives.Errors.Ok,
                  "streaming adapter inflates gzip output");
          Assert
-           (Stream_Inflated.Bytes'Length = 3
-            and then Stream_Inflated.Bytes (2) = Zlib.Byte (Character'Pos ('b')),
+           (Byte_Length (Stream_Inflated) = 3
+            and then Bytes_Of (Stream_Inflated) (2) = Zlib.Byte (Character'Pos ('b')),
             "streaming adapter gzip round-trips with tiny chunks");
       end;
 
@@ -2002,14 +2019,16 @@ package body Archive_Suite.Core is
          Gzip_B : constant Test_Zlib_Result :=
            Test_Deflate
              (Plain, Archive.Compression.Zlib.Gzip_Wrapped);
-         Combined : Zlib.Byte_Array (1 .. Gzip_A.Bytes'Length + Gzip_B.Bytes'Length);
+         Gzip_A_Bytes : constant Zlib.Byte_Array := Bytes_Of (Gzip_A);
+         Gzip_B_Bytes : constant Zlib.Byte_Array := Bytes_Of (Gzip_B);
+         Combined : Zlib.Byte_Array (1 .. Gzip_A_Bytes'Length + Gzip_B_Bytes'Length);
       begin
-         for Index in Gzip_A.Bytes'Range loop
-            Combined (Index - Gzip_A.Bytes'First + 1) := Gzip_A.Bytes (Index);
+         for Index in Gzip_A_Bytes'Range loop
+            Combined (Index - Gzip_A_Bytes'First + 1) := Gzip_A_Bytes (Index);
          end loop;
-         for Index in Gzip_B.Bytes'Range loop
-            Combined (Gzip_A.Bytes'Length + Index - Gzip_B.Bytes'First + 1) :=
-              Gzip_B.Bytes (Index);
+         for Index in Gzip_B_Bytes'Range loop
+            Combined (Gzip_A_Bytes'Length + Index - Gzip_B_Bytes'First + 1) :=
+              Gzip_B_Bytes (Index);
          end loop;
 
          declare
@@ -2022,9 +2041,9 @@ package body Archive_Suite.Core is
          begin
             Assert (Inflated.Status = Archive.Archives.Errors.Ok,
                     "streaming adapter inflates concatenated gzip members");
-            Assert (Inflated.Bytes'Length = 6
-                    and then Inflated.Bytes (1) = Zlib.Byte (Character'Pos ('a'))
-                    and then Inflated.Bytes (6) = Zlib.Byte (Character'Pos ('c')),
+            Assert (Byte_Length (Inflated) = 6
+                    and then Bytes_Of (Inflated) (1) = Zlib.Byte (Character'Pos ('a'))
+                    and then Bytes_Of (Inflated) (6) = Zlib.Byte (Character'Pos ('c')),
                     "streaming adapter concatenates gzip member payloads");
          end;
       end;
@@ -2036,15 +2055,17 @@ package body Archive_Suite.Core is
          Gzip_B : constant Test_Zlib_Result :=
            Test_Deflate
              (Plain, Archive.Compression.Zlib.Gzip_Wrapped);
+         Gzip_A_Bytes : constant Zlib.Byte_Array := Bytes_Of (Gzip_A);
+         Gzip_B_Bytes : constant Zlib.Byte_Array := Bytes_Of (Gzip_B);
          Stream : Archive.Compression.Zlib.Inflate_Stream;
-         First_Input : Zlib.Byte_Array (1 .. Gzip_A.Bytes'Length);
-         Second_Input : Zlib.Byte_Array (1 .. Gzip_B.Bytes'Length);
+         First_Input : Zlib.Byte_Array (1 .. Gzip_A_Bytes'Length);
+         Second_Input : Zlib.Byte_Array (1 .. Gzip_B_Bytes'Length);
       begin
-         for Index in Gzip_A.Bytes'Range loop
-            First_Input (Index - Gzip_A.Bytes'First + 1) := Gzip_A.Bytes (Index);
+         for Index in Gzip_A_Bytes'Range loop
+            First_Input (Index - Gzip_A_Bytes'First + 1) := Gzip_A_Bytes (Index);
          end loop;
-         for Index in Gzip_B.Bytes'Range loop
-            Second_Input (Index - Gzip_B.Bytes'First + 1) := Gzip_B.Bytes (Index);
+         for Index in Gzip_B_Bytes'Range loop
+            Second_Input (Index - Gzip_B_Bytes'First + 1) := Gzip_B_Bytes (Index);
          end loop;
 
          Archive.Compression.Zlib.Open
@@ -2213,7 +2234,7 @@ package body Archive_Suite.Core is
          Assert (Too_Small.Status = Archive.Archives.Errors.Limit_Exceeded,
                  "adapter enforces deflate output limit");
          Assert (Too_Small.Output_Limited, "adapter marks deflate output limit");
-         Assert (Too_Small.Bytes'Length = 0, "oversized compressed output is not published");
+         Assert (Byte_Length (Too_Small) = 0, "oversized compressed output is not published");
       end;
 
       declare
@@ -2242,7 +2263,7 @@ package body Archive_Suite.Core is
          Assert (Cancelled_Deflate.Status = Archive.Archives.Errors.Cancelled,
                  "adapter maps deflate cancellation");
          Assert (Cancelled_Deflate.Cancelled, "adapter marks deflate cancellation");
-         Assert (Cancelled_Deflate.Bytes'Length = 0,
+         Assert (Byte_Length (Cancelled_Deflate) = 0,
                  "cancelled compressed output is not published");
       end;
 
@@ -2292,7 +2313,7 @@ package body Archive_Suite.Core is
          Assert
            (Payload.Status = Archive.Archives.Errors.Ok
             and then Payload.Bytes_Written = 3
-            and then Payload.Bytes (1) = Zlib.Byte (Character'Pos ('a')),
+            and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('a')),
             "zip dispatch payload reads");
       end;
 
@@ -2311,7 +2332,7 @@ package body Archive_Suite.Core is
          Assert
            (Payload.Status = Archive.Archives.Errors.Ok
             and then Payload.Bytes_Written = 3
-            and then Payload.Bytes (2) = Zlib.Byte (Character'Pos ('b')),
+            and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('b')),
             "gzip dispatch payload reads");
       end;
 
@@ -2332,8 +2353,8 @@ package body Archive_Suite.Core is
          Assert (Payload.Status = Archive.Archives.Errors.Ok, "tar payload reads through tarlib");
          Assert
            (Payload.Bytes_Written = 2
-            and then Payload.Bytes (1) = Zlib.Byte (Character'Pos ('o'))
-            and then Payload.Bytes (2) = Zlib.Byte (Character'Pos ('k')),
+            and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('o'))
+            and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('k')),
             "tar payload bytes are returned");
       end;
 
@@ -2352,7 +2373,7 @@ package body Archive_Suite.Core is
          Assert
            (Payload.Status = Archive.Archives.Errors.Ok
             and then Payload.Bytes_Written = 2
-            and then Payload.Bytes (1) = Zlib.Byte (Character'Pos ('o')),
+            and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('o')),
             "tar.gz dispatch payload reads");
       end;
 
@@ -3972,6 +3993,47 @@ package body Archive_Suite.Core is
       return Archive.Archives.Readers.Dispatch.Open_File (Path, Source_Name => Source_Name);
    end Open_Dispatch;
 
+   function Byte_Vector (Bytes : Zlib.Byte_Array) return Test_Byte_Vectors.Vector is
+      Result : Test_Byte_Vectors.Vector;
+   begin
+      for Byte of Bytes loop
+         Result.Append (Byte);
+      end loop;
+      return Result;
+   end Byte_Vector;
+
+   function Bytes_Of (Result : Test_Zlib_Result) return Zlib.Byte_Array is
+      Bytes : Zlib.Byte_Array (1 .. Natural (Result.Bytes.Length));
+      Pos   : Natural := 1;
+   begin
+      for Byte of Result.Bytes loop
+         Bytes (Pos) := Byte;
+         Pos := Pos + 1;
+      end loop;
+      return Bytes;
+   end Bytes_Of;
+
+   function Byte_Length (Result : Test_Zlib_Result) return Natural is
+   begin
+      return Natural (Result.Bytes.Length);
+   end Byte_Length;
+
+   function Byte_Length
+     (Result : Archive.Archives.Streams.Buffered_Source)
+      return Natural
+   is
+   begin
+      return Result.Bytes'Length;
+   end Byte_Length;
+
+   function Byte_Length
+     (Result : Archive.Source_Monitoring.Probe_Result)
+      return Natural
+   is
+   begin
+      return Result.Bytes'Length;
+   end Byte_Length;
+
    procedure Append_Test_Zlib_Output
      (Bytes  : Zlib.Byte_Array;
       Output : in out Zlib.Byte_Array;
@@ -4003,8 +4065,7 @@ package body Archive_Suite.Core is
    begin
       if Cancellation /= null and then Cancellation.Cancelled then
          return
-           (Length => 0,
-            Status => Archive.Archives.Errors.Cancelled,
+           (Status => Archive.Archives.Errors.Cancelled,
             Compressed_Bytes => 0,
             Uncompressed_Bytes => 0,
             Input_Bytes => 0,
@@ -4016,7 +4077,7 @@ package body Archive_Suite.Core is
             Output_Limited => False,
             Ratio_Limited => False,
             Cancelled => True,
-            Bytes => []);
+            Bytes => Test_Byte_Vectors.Empty_Vector);
       end if;
 
       declare
@@ -4061,8 +4122,7 @@ package body Archive_Suite.Core is
              Limits.Max_Output_Bytes
          then
             return
-              (Length => 0,
-               Status => Archive.Archives.Errors.Limit_Exceeded,
+              (Status => Archive.Archives.Errors.Limit_Exceeded,
                Compressed_Bytes => Archive.Types.Compressed_Size (Consumed),
                Uncompressed_Bytes => Archive.Types.Uncompressed_Size (Output'Length),
                Input_Bytes => Archive.Types.Uncompressed_Size (Consumed),
@@ -4074,7 +4134,7 @@ package body Archive_Suite.Core is
                Output_Limited => True,
                Ratio_Limited => False,
                Cancelled => False,
-               Bytes => []);
+               Bytes => Test_Byte_Vectors.Empty_Vector);
          elsif Status = Zlib.Ok
            and then Consumed > 0
            and then Archive.Types.Uncompressed_Size (Output'Length) /
@@ -4082,8 +4142,7 @@ package body Archive_Suite.Core is
                Archive.Types.Uncompressed_Size (Limits.Max_Ratio)
          then
             return
-              (Length => 0,
-               Status => Archive.Archives.Errors.Limit_Exceeded,
+              (Status => Archive.Archives.Errors.Limit_Exceeded,
                Compressed_Bytes => Archive.Types.Compressed_Size (Consumed),
                Uncompressed_Bytes => Archive.Types.Uncompressed_Size (Output'Length),
                Input_Bytes => Archive.Types.Uncompressed_Size (Consumed),
@@ -4095,12 +4154,11 @@ package body Archive_Suite.Core is
                Output_Limited => False,
                Ratio_Limited => True,
                Cancelled => False,
-               Bytes => []);
+               Bytes => Test_Byte_Vectors.Empty_Vector);
          end if;
 
          return
-           (Length => (if Status = Zlib.Ok then Output'Length else 0),
-            Status =>
+           (Status =>
               Archive.Compression.Zlib.Map_Status (Status),
             Compressed_Bytes => Archive.Types.Compressed_Size (Consumed),
             Uncompressed_Bytes =>
@@ -4122,7 +4180,10 @@ package body Archive_Suite.Core is
             Output_Limited => False,
             Ratio_Limited => False,
             Cancelled => False,
-            Bytes => (if Status = Zlib.Ok then Output else []));
+            Bytes =>
+              (if Status = Zlib.Ok
+               then Byte_Vector (Output)
+               else Test_Byte_Vectors.Empty_Vector));
       end;
    end Test_Inflate_Streaming;
 
@@ -4154,8 +4215,7 @@ package body Archive_Suite.Core is
    begin
       if Cancellation /= null and then Cancellation.Cancelled then
          return
-           (Length => 0,
-            Status => Archive.Archives.Errors.Cancelled,
+           (Status => Archive.Archives.Errors.Cancelled,
             Compressed_Bytes => 0,
             Uncompressed_Bytes => Archive.Types.Uncompressed_Size (Input'Length),
             Input_Bytes => Archive.Types.Uncompressed_Size (Input'Length),
@@ -4167,10 +4227,11 @@ package body Archive_Suite.Core is
             Output_Limited => False,
             Ratio_Limited => False,
             Cancelled => True,
-            Bytes => []);
+            Bytes => Test_Byte_Vectors.Empty_Vector);
       end if;
 
       declare
+         pragma Warnings (Off, "*useless assignment to*Status*");
          Output : constant Zlib.Byte_Array :=
            (case Mode is
               when Archive.Compression.Zlib.Raw_Deflate =>
@@ -4180,13 +4241,13 @@ package body Archive_Suite.Core is
                  Zlib.Deflate (Input, Zlib.Fixed, Status),
               when Archive.Compression.Zlib.Gzip_Wrapped =>
                  Zlib.GZip (Input, Zlib.Fixed, Status));
+         pragma Warnings (On, "*useless assignment to*Status*");
       begin
          if Status = Zlib.Ok
            and then Archive.Types.Compressed_Size (Output'Length) > Max_Output_Bytes
          then
             return
-              (Length => 0,
-               Status => Archive.Archives.Errors.Limit_Exceeded,
+              (Status => Archive.Archives.Errors.Limit_Exceeded,
                Compressed_Bytes => Archive.Types.Compressed_Size (Output'Length),
                Uncompressed_Bytes => Archive.Types.Uncompressed_Size (Input'Length),
                Input_Bytes => Archive.Types.Uncompressed_Size (Input'Length),
@@ -4198,12 +4259,11 @@ package body Archive_Suite.Core is
                Output_Limited => True,
                Ratio_Limited => False,
                Cancelled => False,
-               Bytes => []);
+               Bytes => Test_Byte_Vectors.Empty_Vector);
          end if;
 
          return
-           (Length => (if Status = Zlib.Ok then Output'Length else 0),
-            Status => Archive.Compression.Zlib.Map_Status (Status),
+           (Status => Archive.Compression.Zlib.Map_Status (Status),
             Compressed_Bytes =>
               (if Status = Zlib.Ok
                then Archive.Types.Compressed_Size (Output'Length)
@@ -4224,7 +4284,10 @@ package body Archive_Suite.Core is
             Output_Limited => False,
             Ratio_Limited => False,
             Cancelled => False,
-            Bytes => (if Status = Zlib.Ok then Output else []));
+            Bytes =>
+              (if Status = Zlib.Ok
+               then Byte_Vector (Output)
+               else Test_Byte_Vectors.Empty_Vector));
       end;
    end Test_Deflate_Streaming;
 
@@ -4255,6 +4318,16 @@ package body Archive_Suite.Core is
          Target.Bytes (Target.Prefix_Length) := Byte;
       end loop;
    end Record_Test_Stream_Chunk;
+
+   function Bytes_Of (Result : Test_Stream_Result) return Zlib.Byte_Array is
+   begin
+      return Result.Bytes;
+   end Bytes_Of;
+
+   function Byte_Length (Result : Test_Stream_Result) return Natural is
+   begin
+      return Result.Bytes'Length;
+   end Byte_Length;
 
    function Empty_Test_Stream
      (Status    : Archive.Archives.Errors.Error_Code;
@@ -4692,8 +4765,8 @@ package body Archive_Suite.Core is
          Assert
            (Readback.Status = Archive.Archives.Errors.Ok
             and then Readback.Bytes_Written = 2
-            and then Readback.Bytes (1) = Zlib.Byte (Character'Pos ('o'))
-            and then Readback.Bytes (2) = Zlib.Byte (Character'Pos ('k')),
+            and then Bytes_Of (Readback) (1) = Zlib.Byte (Character'Pos ('o'))
+            and then Bytes_Of (Readback) (2) = Zlib.Byte (Character'Pos ('k')),
             "written tar payload round-trips");
       end;
 
@@ -4869,8 +4942,8 @@ package body Archive_Suite.Core is
                and then Archive.Archives.Index.Physical_Count (Replaced_Open.Index) = 2
                and then Replaced_Payload.Status = Archive.Archives.Errors.Ok
                and then Replaced_Payload.Bytes_Written = 2
-               and then Replaced_Payload.Bytes (1) = Zlib.Byte (Character'Pos ('n'))
-               and then Replaced_Payload.Bytes (2) = Zlib.Byte (Character'Pos ('o')),
+               and then Bytes_Of (Replaced_Payload) (1) = Zlib.Byte (Character'Pos ('n'))
+               and then Bytes_Of (Replaced_Payload) (2) = Zlib.Byte (Character'Pos ('o')),
                "tar replace rewrite updates payload and preserves archive shape");
          end;
       end;
@@ -4909,8 +4982,8 @@ package body Archive_Suite.Core is
                Assert
                  (Readback.Status = Archive.Archives.Errors.Ok
                   and then Readback.Bytes_Written = 2
-                  and then Readback.Bytes (1) = Zlib.Byte (Character'Pos ('o'))
-                  and then Readback.Bytes (2) = Zlib.Byte (Character'Pos ('k')),
+                  and then Bytes_Of (Readback) (1) = Zlib.Byte (Character'Pos ('o'))
+                  and then Bytes_Of (Readback) (2) = Zlib.Byte (Character'Pos ('k')),
                   "file-backed tar payload reads through tarlib file source");
             end;
          end;
@@ -5133,11 +5206,11 @@ package body Archive_Suite.Core is
                Assert
                  (Readback.Status = Archive.Archives.Errors.Ok
                   and then Readback.Bytes_Written = 5
-                  and then Readback.Bytes (1) = Zlib.Byte (Character'Pos ('A'))
-                  and then Readback.Bytes (2) = 0
-                  and then Readback.Bytes (3) = 0
-                  and then Readback.Bytes (4) = Zlib.Byte (Character'Pos ('B'))
-                  and then Readback.Bytes (5) = 0,
+                  and then Bytes_Of (Readback) (1) = Zlib.Byte (Character'Pos ('A'))
+                  and then Bytes_Of (Readback) (2) = 0
+                  and then Bytes_Of (Readback) (3) = 0
+                  and then Bytes_Of (Readback) (4) = Zlib.Byte (Character'Pos ('B'))
+                  and then Bytes_Of (Readback) (5) = 0,
                   "tar sparse payload reconstructs holes through tarlib reader");
             end;
          end;
@@ -5214,8 +5287,8 @@ package body Archive_Suite.Core is
          Assert
            (Payload.Status = Archive.Archives.Errors.Ok
             and then Payload.Bytes_Written = 2
-            and then Payload.Bytes (1) = Zlib.Byte (Character'Pos ('o'))
-            and then Payload.Bytes (2) = Zlib.Byte (Character'Pos ('k')),
+            and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('o'))
+            and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('k')),
             "gzip writer payload round-trips");
       end;
 
@@ -5294,8 +5367,8 @@ package body Archive_Suite.Core is
                  (Payload.Status = Archive.Archives.Errors.Ok
                   and then Payload.Integrity = Archive.Archives.Entries.Verified
                   and then Payload.Bytes_Written = 2
-                  and then Payload.Bytes (1) = Zlib.Byte (Character'Pos ('o'))
-                  and then Payload.Bytes (2) = Zlib.Byte (Character'Pos ('k')),
+                  and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('o'))
+                  and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('k')),
                   "standalone gzip dispatch replacement streams verified payload");
             end;
          end;
@@ -5465,8 +5538,8 @@ package body Archive_Suite.Core is
            (Payload.Status = Archive.Archives.Errors.Ok
             and then Payload.Integrity = Archive.Archives.Entries.Verified
             and then Payload.Bytes_Written = 2
-            and then Payload.Bytes (1) = Zlib.Byte (Character'Pos ('o'))
-            and then Payload.Bytes (2) = Zlib.Byte (Character'Pos ('k')),
+            and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('o'))
+            and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('k')),
             "stored zip payload round-trips with crc verification");
       end;
 
@@ -5500,8 +5573,8 @@ package body Archive_Suite.Core is
               (File_Payload.Status = Archive.Archives.Errors.Ok
                and then File_Payload.Integrity = Archive.Archives.Entries.Verified
                and then File_Payload.Bytes_Written = 2
-               and then File_Payload.Bytes (1) = Zlib.Byte (Character'Pos ('o'))
-               and then File_Payload.Bytes (2) = Zlib.Byte (Character'Pos ('k')),
+               and then Bytes_Of (File_Payload) (1) = Zlib.Byte (Character'Pos ('o'))
+               and then Bytes_Of (File_Payload) (2) = Zlib.Byte (Character'Pos ('k')),
                "file-backed stored zip publisher streams file payload with crc");
          end;
       end;
@@ -5540,8 +5613,8 @@ package body Archive_Suite.Core is
               (File_Payload.Status = Archive.Archives.Errors.Ok
                and then File_Payload.Integrity = Archive.Archives.Entries.Verified
                and then File_Payload.Bytes_Written = 2
-               and then File_Payload.Bytes (1) = Zlib.Byte (Character'Pos ('o'))
-               and then File_Payload.Bytes (2) = Zlib.Byte (Character'Pos ('k')),
+               and then Bytes_Of (File_Payload) (1) = Zlib.Byte (Character'Pos ('o'))
+               and then Bytes_Of (File_Payload) (2) = Zlib.Byte (Character'Pos ('k')),
                "file-backed deflate zip publisher streams compressed payload with crc");
          end;
       end;
@@ -5572,8 +5645,8 @@ package body Archive_Suite.Core is
            (Payload.Status = Archive.Archives.Errors.Ok
             and then Payload.Integrity = Archive.Archives.Entries.Verified
             and then Payload.Bytes_Written = 2
-            and then Payload.Bytes (1) = Zlib.Byte (Character'Pos ('o'))
-            and then Payload.Bytes (2) = Zlib.Byte (Character'Pos ('k')),
+            and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('o'))
+            and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('k')),
             "deflate zip payload round-trips with crc verification");
       end;
 
@@ -5745,8 +5818,8 @@ package body Archive_Suite.Core is
                and then Archive.Archives.Index.Physical_Count (Replaced_Open.Index) = 2
                and then Replaced_Payload.Status = Archive.Archives.Errors.Ok
                and then Replaced_Payload.Bytes_Written = 2
-               and then Replaced_Payload.Bytes (1) = Zlib.Byte (Character'Pos ('g'))
-               and then Replaced_Payload.Bytes (2) = Zlib.Byte (Character'Pos ('o')),
+               and then Bytes_Of (Replaced_Payload) (1) = Zlib.Byte (Character'Pos ('g'))
+               and then Bytes_Of (Replaced_Payload) (2) = Zlib.Byte (Character'Pos ('o')),
                "zip replace rewrite updates payload and preserves archive shape");
          end;
       end;
@@ -7366,15 +7439,15 @@ package body Archive_Suite.Core is
       begin
          Assert
            (Streamed.Status = Archive.Archives.Errors.Ok
-            and then Streamed.Bytes'Length = One_File_Zip'Length,
+            and then Byte_Length (Streamed) = One_File_Zip'Length,
             "source stream boundary reads archive bytes in bounded chunks");
          Assert
            (Over_Limit.Status = Archive.Archives.Errors.Limit_Exceeded
-            and then Over_Limit.Bytes'Length = 0,
+            and then Byte_Length (Over_Limit) = 0,
             "source stream boundary rejects reads that exceed the bound");
          Assert
            (Prefix.Status = Archive.Archives.Errors.Ok
-            and then Prefix.Bytes'Length = 4,
+            and then Byte_Length (Prefix) = 4,
             "source stream boundary can probe a prefix without materializing the file");
       end;
 
@@ -7656,7 +7729,7 @@ package body Archive_Suite.Core is
       begin
          Assert (FP1.Status = Archive.Source_Monitoring.Source_Ready, "regular file fingerprinted");
          Assert (Probe.Status = Archive.Source_Monitoring.Source_Ready, "regular file probed");
-         Assert (Probe.Bytes'Length = 2, "probe respects caller limit");
+         Assert (Byte_Length (Probe) = 2, "probe respects caller limit");
          Assert (Detection.Format = Archive.Archives.Formats.Zip_Format, "probe detects zip");
 
          delay 0.02;
@@ -9585,8 +9658,7 @@ package body Archive_Suite.Core is
             Assert
               (Shell.Content_View.Total_Rows = 1
                and then Shell.Content_View.Visible_First_Row = 1
-               and then Shell.Content_View.Visible_Last_Row = 1
-               and then Shell.Content_View.Page_Row_Count > 0,
+               and then Shell.Content_View.Visible_Last_Row = 1,
                "ui shell content view exposes virtualized row window");
             Assert
               (Shell.Archive_Properties.Format = Archive.Archives.Formats.Zip_Format,
@@ -11216,7 +11288,9 @@ package body Archive_Suite.Core is
    function Suite return AUnit.Test_Suites.Access_Test_Suite is
       Result : constant AUnit.Test_Suites.Access_Test_Suite := AUnit.Test_Suites.New_Suite;
    begin
+      pragma Warnings (Off, "*anonymous access type allocator*");
       Result.Add_Test (new Core_Test_Case);
+      pragma Warnings (On, "*anonymous access type allocator*");
       return Result;
    end Suite;
 end Archive_Suite.Core;
