@@ -1141,6 +1141,55 @@ procedure Check_All is
       return Archive.Verification.CRC32.Final (State);
    end CRC32_Compute;
 
+   type File_CRC_Result is record
+      Bytes : Natural := 0;
+      CRC   : Archive.Types.CRC32_Value := 0;
+   end record;
+
+   function Compute_File_CRC32 (Path : String) return File_CRC_Result is
+      Chunk_Size : constant Ada.Streams.Stream_Element_Count := 8_192;
+      File       : Ada.Streams.Stream_IO.File_Type;
+      State      : Archive.Verification.CRC32.CRC32_State :=
+        Archive.Verification.CRC32.Initial;
+      Total      : Natural := 0;
+   begin
+      Ada.Streams.Stream_IO.Open (File, Ada.Streams.Stream_IO.In_File, Path);
+      while not Ada.Streams.Stream_IO.End_Of_File (File) loop
+         declare
+            Raw  : Ada.Streams.Stream_Element_Array (1 .. Chunk_Size);
+            Last : Ada.Streams.Stream_Element_Offset;
+         begin
+            Ada.Streams.Stream_IO.Read (File, Raw, Last);
+            if Last >= Raw'First then
+               declare
+                  Count : constant Natural := Natural (Last - Raw'First + 1);
+                  Chunk : Zlib.Byte_Array (1 .. Count);
+               begin
+                  for Index in Chunk'Range loop
+                     Chunk (Index) :=
+                       Zlib.Byte
+                         (Raw
+                            (Raw'First
+                             + Ada.Streams.Stream_Element_Offset (Index - 1)));
+                  end loop;
+
+                  Archive.Verification.CRC32.Update (State, Chunk);
+                  Total := Total + Count;
+               end;
+            end if;
+         end;
+      end loop;
+      Ada.Streams.Stream_IO.Close (File);
+
+      return (Bytes => Total, CRC => Archive.Verification.CRC32.Final (State));
+   exception
+      when others =>
+         if Ada.Streams.Stream_IO.Is_Open (File) then
+            Ada.Streams.Stream_IO.Close (File);
+         end if;
+         raise;
+   end Compute_File_CRC32;
+
    function Fixture_Path
      (Name  : String;
       Bytes : Zlib.Byte_Array)
@@ -1793,10 +1842,6 @@ procedure Check_All is
       Generated : constant Boolean := Has_Prefix (Path, "generated:");
       Full     : constant String := Root & "/" & Path;
       Expected_Size : Natural;
-      Bytes    : constant Zlib.Byte_Array :=
-        (if Generated then Generated_Fixture (Id) else Read_Bytes (Full));
-      Actual_CRC : constant String :=
-        To_Hex8 (CRC32_Compute (Bytes));
    begin
       if Id = "" or else Path = "" or else Format = ""
         or else Purpose = "" or else Size_Text = "" or else CRC_Text = ""
@@ -1817,20 +1862,42 @@ procedure Check_All is
       end if;
 
       Expected_Size := Natural'Value (Size_Text);
-      if Bytes'Length /= Expected_Size then
-         Fail
-           (Full & ": fixture size mismatch, expected "
-            & Size_Text & " got" & Bytes'Length'Image);
-      end if;
-
-      if CRC_Text'Length /= 8 or else Actual_CRC /= CRC_Text then
-         Fail
-           (Full & ": fixture CRC32 mismatch, expected "
-            & CRC_Text & " got " & Actual_CRC);
-      end if;
-
       if Generated then
-         Validate_Generated_Fixture (Id, Format, Bytes);
+         declare
+            Bytes      : constant Zlib.Byte_Array := Generated_Fixture (Id);
+            Actual_CRC : constant String := To_Hex8 (CRC32_Compute (Bytes));
+         begin
+            if Bytes'Length /= Expected_Size then
+               Fail
+                 (Full & ": fixture size mismatch, expected "
+                  & Size_Text & " got" & Bytes'Length'Image);
+            end if;
+
+            if CRC_Text'Length /= 8 or else Actual_CRC /= CRC_Text then
+               Fail
+                 (Full & ": fixture CRC32 mismatch, expected "
+                  & CRC_Text & " got " & Actual_CRC);
+            end if;
+
+            Validate_Generated_Fixture (Id, Format, Bytes);
+         end;
+      else
+         declare
+            Hashed     : constant File_CRC_Result := Compute_File_CRC32 (Full);
+            Actual_CRC : constant String := To_Hex8 (Hashed.CRC);
+         begin
+            if Hashed.Bytes /= Expected_Size then
+               Fail
+                 (Full & ": fixture size mismatch, expected "
+                  & Size_Text & " got" & Hashed.Bytes'Image);
+            end if;
+
+            if CRC_Text'Length /= 8 or else Actual_CRC /= CRC_Text then
+               Fail
+                 (Full & ": fixture CRC32 mismatch, expected "
+                  & CRC_Text & " got " & Actual_CRC);
+            end if;
+         end;
       end if;
    exception
       when Constraint_Error =>
