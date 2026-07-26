@@ -542,12 +542,18 @@ procedure Release_Report is
             return (True, 111, "FFF9E6F2");
          elsif Id = "zip-bad-local-signature" then
             return (True, 111, "075C7652");
+         elsif Id = "zip-truncated-central" then
+            return (True, 99, "14DE128C");
          elsif Id = "zip-multi-disk" then
             return (True, 111, "D0D8818C");
          elsif Id = "gzip-bad-header-crc" then
             return (True, 25, "DCD39199");
+         elsif Id = "gzip-truncated" then
+            return (True, 20, "9F7020DB");
          elsif Id = "gzip-bad-trailer" then
             return (True, 23, "941F1893");
+         elsif Id = "tar-truncated" then
+            return (True, 648, "057EB66E");
          else
             return (Known => False, Size => 0, CRC => "00000000");
          end if;
@@ -840,8 +846,7 @@ procedure Release_Report is
 
       function Known_Archive_Input (Value : String) return Boolean is
       begin
-         return Registered_Fixture_Id (Value)
-           or else Value in "zip-truncated-central" | "gzip-truncated" | "tar-truncated";
+         return Registered_Fixture_Id (Value);
       end Known_Archive_Input;
    begin
       if not Ada.Directories.Exists (Manifest) then

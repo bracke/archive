@@ -23,6 +23,9 @@ fixture id=zip-zip64-missing-extra path=generated:zip-zip64-missing-extra format
 fixture id=zip-zip64-too-large path=generated:zip-zip64-too-large format=zip purpose=zip64-overflow-boundary size=151 crc32=6D402500
 fixture id=zip-local-size-mismatch path=generated:zip-local-size-mismatch format=zip purpose=zip-local-central-size-mismatch size=111 crc32=FFF9E6F2
 fixture id=zip-bad-local-signature path=generated:zip-bad-local-signature format=zip purpose=zip-bad-local-signature size=111 crc32=075C7652
+fixture id=zip-truncated-central path=generated:zip-truncated-central format=zip purpose=zip-truncated-central-directory size=99 crc32=14DE128C
 fixture id=zip-multi-disk path=generated:zip-multi-disk format=zip purpose=zip-multi-disk-unsupported size=111 crc32=D0D8818C
 fixture id=gzip-bad-header-crc path=generated:gzip-bad-header-crc format=gzip purpose=gzip-header-crc-failure size=25 crc32=DCD39199
+fixture id=gzip-truncated path=generated:gzip-truncated format=gzip purpose=gzip-truncated-payload size=20 crc32=9F7020DB
 fixture id=gzip-bad-trailer path=generated:gzip-bad-trailer format=gzip purpose=gzip-malformed-trailer size=23 crc32=941F1893
+fixture id=tar-truncated path=generated:tar-truncated format=tar purpose=tar-truncated-record size=648 crc32=057EB66E

@@ -1883,6 +1883,21 @@ procedure Check_All is
       return Bytes;
    end Generated_Zip_Multi_Disk;
 
+   function Truncated
+     (Bytes        : Zlib.Byte_Array;
+      Remove_Count : Natural)
+      return Zlib.Byte_Array
+   is
+      New_Length : constant Natural :=
+        (if Bytes'Length > Remove_Count then Bytes'Length - Remove_Count else 0);
+      Result     : Zlib.Byte_Array (1 .. New_Length);
+   begin
+      for Index in Result'Range loop
+         Result (Index) := Bytes (Bytes'First + Index - Result'First);
+      end loop;
+      return Result;
+   end Truncated;
+
    function Generated_Fixture (Id : String) return Zlib.Byte_Array is
    begin
       if Id = "tar-basic" then
@@ -1931,36 +1946,21 @@ procedure Check_All is
          return Generated_Gzip_Bad_Header_CRC;
       elsif Id = "gzip-bad-trailer" then
          return Generated_Gzip_Bad_Trailer;
+      elsif Id = "zip-truncated-central" then
+         return Truncated (Generated_Zip, 12);
+      elsif Id = "gzip-truncated" then
+         return Truncated (Generated_Gzip, 3);
+      elsif Id = "tar-truncated" then
+         return Truncated (Generated_Tar, 1_400);
       else
          Fail ("unknown generated fixture id: " & Id);
          return [];
       end if;
    end Generated_Fixture;
 
-   function Truncated
-     (Bytes        : Zlib.Byte_Array;
-      Remove_Count : Natural)
-      return Zlib.Byte_Array
-   is
-      New_Length : constant Natural :=
-        (if Bytes'Length > Remove_Count then Bytes'Length - Remove_Count else 0);
-      Result     : Zlib.Byte_Array (1 .. New_Length);
-   begin
-      for Index in Result'Range loop
-         Result (Index) := Bytes (Bytes'First + Index - Result'First);
-      end loop;
-      return Result;
-   end Truncated;
-
    function Archive_Input (Value : String) return Zlib.Byte_Array is
    begin
-      if Value = "zip-truncated-central" then
-         return Truncated (Generated_Zip, 12);
-      elsif Value = "gzip-truncated" then
-         return Truncated (Generated_Gzip, 3);
-      elsif Value = "tar-truncated" then
-         return Truncated (Generated_Tar, 1_400);
-      elsif Value = "zip-central-crc-mismatch" then
+      if Value = "zip-central-crc-mismatch" then
          return Generated_Fixture ("zip-central-crc-mismatch");
       elsif Value = "zip-zip64-missing-extra" then
          return Generated_Fixture ("zip-zip64-missing-extra");
@@ -2010,9 +2010,15 @@ procedure Check_All is
         or else Id = "zip-local-size-mismatch"
         or else Id = "zip-bad-local-signature"
         or else Id = "gzip-bad-header-crc"
+        or else Id = "zip-truncated-central"
+        or else Id = "tar-truncated"
       then
          if Opened.Status /= Archive.Archives.Errors.Invalid_Format then
             Fail ("generated malformed fixture " & Id & " should be rejected as invalid");
+         end if;
+      elsif Id = "gzip-truncated" then
+         if Opened.Status /= Archive.Archives.Errors.Ok then
+            Fail ("generated truncated gzip should publish bounded metadata");
          end if;
       elsif Id = "zip-multi-disk" then
          if Opened.Status /= Archive.Archives.Errors.Unsupported_Format then

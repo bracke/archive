@@ -38,9 +38,12 @@ zip-zip64-missing-extra
 zip-zip64-too-large
 zip-local-size-mismatch
 zip-bad-local-signature
+zip-truncated-central
 zip-multi-disk
 gzip-bad-header-crc
+gzip-truncated
 gzip-bad-trailer
+tar-truncated
 ```
 
 `tests/fixtures/corpus.txt` is the malformed/security corpus manifest. Each
