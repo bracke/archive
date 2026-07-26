@@ -24,6 +24,7 @@ tar-duplicate-path
 ar-basic
 cpio-basic
 iso-basic
+cab-stored-basic
 cab-unsupported-method
 xz-unsupported-check
 xz-basic

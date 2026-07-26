@@ -2180,6 +2180,8 @@ procedure Check_All is
          return Generated_Cpio;
       elsif Id = "iso-basic" then
          return Generated_Iso;
+      elsif Id = "cab-stored-basic" then
+         return Generated_Cab (0);
       elsif Id = "xz-unsupported-check" then
          return Generated_Xz_Unsupported_Check;
       elsif Id = "xz-basic" then
@@ -2440,6 +2442,7 @@ procedure Check_All is
       Has_Ar : Boolean := False;
       Has_Cpio : Boolean := False;
       Has_Iso : Boolean := False;
+      Has_Cab_Stored : Boolean := False;
       Has_Cab_Unsupported : Boolean := False;
       Has_Xz_Unsupported : Boolean := False;
       Has_Xz : Boolean := False;
@@ -2500,6 +2503,8 @@ procedure Check_All is
                      Has_Cpio := True;
                   elsif Id = "iso-basic" then
                      Has_Iso := True;
+                  elsif Id = "cab-stored-basic" then
+                     Has_Cab_Stored := True;
                   elsif Id = "cab-unsupported-method" then
                      Has_Cab_Unsupported := True;
                   elsif Id = "xz-unsupported-check" then
@@ -2576,6 +2581,7 @@ procedure Check_All is
         or else not Has_Ar
         or else not Has_Cpio
         or else not Has_Iso
+        or else not Has_Cab_Stored
         or else not Has_Cab_Unsupported
         or else not Has_Xz_Unsupported
         or else not Has_Xz
