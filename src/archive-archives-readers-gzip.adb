@@ -1,5 +1,4 @@
 with Ada.Characters.Handling;
-with Ada.Containers.Vectors;
 with Ada.Directories;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
@@ -25,33 +24,23 @@ package body Archive.Archives.Readers.Gzip is
    Max_Header_Probe : constant Natural := 16_384;
    Max_Gzip_Field_Metadata : constant Natural := 4_096;
 
-   package Slice_Byte_Vectors is new Ada.Containers.Vectors
-     (Index_Type   => Positive,
-      Element_Type => Zlib.Byte);
-
-   type File_Slice_Result is record
-      Status : Archive.Archives.Errors.Error_Code := Archive.Archives.Errors.Ok;
-      Bytes  : Slice_Byte_Vectors.Vector;
-   end record;
-
-   function Read_File_Slice
+   procedure Read_File_Slice
      (Path   : String;
       Offset : Natural;
-      Count  : Natural)
-      return File_Slice_Result
+      Bytes  : out Zlib.Byte_Array;
+      Status : out Archive.Archives.Errors.Error_Code)
    is
       File : Ada.Streams.Stream_IO.File_Type;
       Last : Ada.Streams.Stream_Element_Offset := 0;
    begin
-      if Count = 0 then
-         return
-           (Status => Archive.Archives.Errors.Ok,
-            Bytes  => Slice_Byte_Vectors.Empty_Vector);
+      Status := Archive.Archives.Errors.Ok;
+      if Bytes'Length = 0 then
+         return;
       end if;
 
       declare
          Raw  : Ada.Streams.Stream_Element_Array
-           (1 .. Ada.Streams.Stream_Element_Offset (Count));
+           (1 .. Ada.Streams.Stream_Element_Offset (Bytes'Length));
       begin
          Ada.Streams.Stream_IO.Open (File, Ada.Streams.Stream_IO.In_File, Path);
          Ada.Streams.Stream_IO.Set_Index
@@ -59,46 +48,33 @@ package body Archive.Archives.Readers.Gzip is
          Ada.Streams.Stream_IO.Read (File, Raw, Last);
          Ada.Streams.Stream_IO.Close (File);
 
-         if Last < Raw'First or else Natural (Last - Raw'First + 1) /= Count then
-            return
-              (Status => Archive.Archives.Errors.Read_Failed,
-               Bytes  => []);
+         if Last < Raw'First
+           or else Natural (Last - Raw'First + 1) /= Bytes'Length
+         then
+            Status := Archive.Archives.Errors.Read_Failed;
+            return;
          end if;
 
-         return Result : File_Slice_Result do
-            Result.Status := Archive.Archives.Errors.Ok;
-            for Index in 1 .. Count loop
-               Result.Bytes.Append
-                 (Zlib.Byte
-                    (Raw (Raw'First + Ada.Streams.Stream_Element_Offset (Index - 1))));
-            end loop;
-         end return;
+         for Index in Bytes'Range loop
+            Bytes (Index) :=
+              Zlib.Byte
+                (Raw
+                   (Raw'First
+                    + Ada.Streams.Stream_Element_Offset (Index - Bytes'First)));
+         end loop;
       end;
    exception
       when Storage_Error =>
          if Ada.Streams.Stream_IO.Is_Open (File) then
             Ada.Streams.Stream_IO.Close (File);
          end if;
-         return
-           (Status => Archive.Archives.Errors.Limit_Exceeded,
-            Bytes  => Slice_Byte_Vectors.Empty_Vector);
+         Status := Archive.Archives.Errors.Limit_Exceeded;
       when others =>
          if Ada.Streams.Stream_IO.Is_Open (File) then
             Ada.Streams.Stream_IO.Close (File);
          end if;
-         return
-           (Status => Archive.Archives.Errors.Read_Failed,
-            Bytes  => Slice_Byte_Vectors.Empty_Vector);
+         Status := Archive.Archives.Errors.Read_Failed;
    end Read_File_Slice;
-
-   function Slice_Bytes (Slice : File_Slice_Result) return Zlib.Byte_Array is
-      Result : Zlib.Byte_Array (1 .. Natural (Slice.Bytes.Length));
-   begin
-      for Index in Result'Range loop
-         Result (Index) := Slice.Bytes.Element (Index);
-      end loop;
-      return Result;
-   end Slice_Bytes;
 
    function In_Range
      (Bytes  : Zlib.Byte_Array;
@@ -350,17 +326,18 @@ package body Archive.Archives.Readers.Gzip is
       Size_N := Natural (Size);
 
       declare
-         Header_Probe : constant File_Slice_Result :=
-           Read_File_Slice (Path, 0, Natural'Min (Size_N, Max_Header_Probe));
-         Trailer      : constant File_Slice_Result :=
-           Read_File_Slice (Path, Size_N - 8, 8);
-         Header_Bytes : constant Zlib.Byte_Array := Slice_Bytes (Header_Probe);
-         Trailer_Bytes : constant Zlib.Byte_Array := Slice_Bytes (Trailer);
+         Header_Bytes  : Zlib.Byte_Array
+           (1 .. Natural'Min (Size_N, Max_Header_Probe));
+         Trailer_Bytes : Zlib.Byte_Array (1 .. 8);
+         Header_Status : Archive.Archives.Errors.Error_Code;
+         Trailer_Status : Archive.Archives.Errors.Error_Code;
       begin
-         if Header_Probe.Status /= Archive.Archives.Errors.Ok then
-            return (Status => Header_Probe.Status, Item => <>, Header => <>);
-         elsif Trailer.Status /= Archive.Archives.Errors.Ok then
-            return (Status => Trailer.Status, Item => <>, Header => <>);
+         Read_File_Slice (Path, 0, Header_Bytes, Header_Status);
+         Read_File_Slice (Path, Size_N - 8, Trailer_Bytes, Trailer_Status);
+         if Header_Status /= Archive.Archives.Errors.Ok then
+            return (Status => Header_Status, Item => <>, Header => <>);
+         elsif Trailer_Status /= Archive.Archives.Errors.Ok then
+            return (Status => Trailer_Status, Item => <>, Header => <>);
          end if;
 
          declare

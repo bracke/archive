@@ -1,4 +1,3 @@
-with Ada.Containers.Vectors;
 with Ada.Directories;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
@@ -32,33 +31,23 @@ package body Archive.Archives.Readers.Zip is
        (Archive.Resource_Limits.Hard_Ceiling
           (Archive.Resource_Limits.Metadata_Bytes_Per_Entry));
 
-   package Slice_Byte_Vectors is new Ada.Containers.Vectors
-     (Index_Type   => Positive,
-      Element_Type => Zlib.Byte);
-
-   type File_Slice_Result is record
-      Status : Archive.Archives.Errors.Error_Code := Archive.Archives.Errors.Ok;
-      Bytes  : Slice_Byte_Vectors.Vector;
-   end record;
-
-   function Read_File_Slice
+   procedure Read_File_Slice
      (Path   : String;
       Offset : Natural;
-      Count  : Natural)
-      return File_Slice_Result
+      Bytes  : out Zlib.Byte_Array;
+      Status : out Archive.Archives.Errors.Error_Code)
    is
       File : Ada.Streams.Stream_IO.File_Type;
       Last : Ada.Streams.Stream_Element_Offset := 0;
    begin
-      if Count = 0 then
-         return
-           (Status => Archive.Archives.Errors.Ok,
-            Bytes  => Slice_Byte_Vectors.Empty_Vector);
+      Status := Archive.Archives.Errors.Ok;
+      if Bytes'Length = 0 then
+         return;
       end if;
 
       declare
          Raw  : Ada.Streams.Stream_Element_Array
-           (1 .. Ada.Streams.Stream_Element_Offset (Count));
+           (1 .. Ada.Streams.Stream_Element_Offset (Bytes'Length));
       begin
          Ada.Streams.Stream_IO.Open (File, Ada.Streams.Stream_IO.In_File, Path);
          Ada.Streams.Stream_IO.Set_Index
@@ -66,46 +55,33 @@ package body Archive.Archives.Readers.Zip is
          Ada.Streams.Stream_IO.Read (File, Raw, Last);
          Ada.Streams.Stream_IO.Close (File);
 
-         if Last < Raw'First or else Natural (Last - Raw'First + 1) /= Count then
-            return
-              (Status => Archive.Archives.Errors.Read_Failed,
-               Bytes  => []);
+         if Last < Raw'First
+           or else Natural (Last - Raw'First + 1) /= Bytes'Length
+         then
+            Status := Archive.Archives.Errors.Read_Failed;
+            return;
          end if;
 
-         return Result : File_Slice_Result do
-            Result.Status := Archive.Archives.Errors.Ok;
-            for Index in 1 .. Count loop
-               Result.Bytes.Append
-                 (Zlib.Byte
-                    (Raw (Raw'First + Ada.Streams.Stream_Element_Offset (Index - 1))));
-            end loop;
-         end return;
+         for Index in Bytes'Range loop
+            Bytes (Index) :=
+              Zlib.Byte
+                (Raw
+                   (Raw'First
+                    + Ada.Streams.Stream_Element_Offset (Index - Bytes'First)));
+         end loop;
       end;
    exception
       when Storage_Error =>
          if Ada.Streams.Stream_IO.Is_Open (File) then
             Ada.Streams.Stream_IO.Close (File);
          end if;
-         return
-           (Status => Archive.Archives.Errors.Limit_Exceeded,
-            Bytes  => Slice_Byte_Vectors.Empty_Vector);
+         Status := Archive.Archives.Errors.Limit_Exceeded;
       when others =>
          if Ada.Streams.Stream_IO.Is_Open (File) then
             Ada.Streams.Stream_IO.Close (File);
          end if;
-         return
-           (Status => Archive.Archives.Errors.Read_Failed,
-            Bytes  => Slice_Byte_Vectors.Empty_Vector);
+         Status := Archive.Archives.Errors.Read_Failed;
    end Read_File_Slice;
-
-   function Slice_Bytes (Slice : File_Slice_Result) return Zlib.Byte_Array is
-      Result : Zlib.Byte_Array (1 .. Natural (Slice.Bytes.Length));
-   begin
-      for Index in Result'Range loop
-         Result (Index) := Slice.Bytes.Element (Index);
-      end loop;
-      return Result;
-   end Slice_Bytes;
 
    function In_Range
      (Bytes  : Zlib.Byte_Array;
@@ -520,15 +496,15 @@ package body Archive.Archives.Readers.Zip is
 
       declare
          Tail_Offset : constant Natural := Size_N - Tail_Size;
-         Tail        : constant File_Slice_Result :=
-           Read_File_Slice (Path, Tail_Offset, Tail_Size);
-         Tail_Bytes  : constant Zlib.Byte_Array := Slice_Bytes (Tail);
+         Tail_Bytes  : Zlib.Byte_Array (1 .. Tail_Size);
+         Tail_Status : Archive.Archives.Errors.Error_Code;
          EOCD_Rel    : Natural;
          EOCD_Abs    : Natural;
       begin
-         if Tail.Status /= Archive.Archives.Errors.Ok then
+         Read_File_Slice (Path, Tail_Offset, Tail_Bytes, Tail_Status);
+         if Tail_Status /= Archive.Archives.Errors.Ok then
             return
-              (Status  => Tail.Status,
+              (Status  => Tail_Status,
                Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
          end if;
 
@@ -543,11 +519,11 @@ package body Archive.Archives.Readers.Zip is
 
          if EOCD_Abs >= 20 then
             declare
-               Locator : constant File_Slice_Result :=
-                 Read_File_Slice (Path, EOCD_Abs - 20, 4);
-               Locator_Bytes : constant Zlib.Byte_Array := Slice_Bytes (Locator);
+               Locator_Bytes  : Zlib.Byte_Array (1 .. 4);
+               Locator_Status : Archive.Archives.Errors.Error_Code;
             begin
-               if Locator.Status = Archive.Archives.Errors.Ok
+               Read_File_Slice (Path, EOCD_Abs - 20, Locator_Bytes, Locator_Status);
+               if Locator_Status = Archive.Archives.Errors.Ok
                  and then Signature (Locator_Bytes, 0) = 16#0706_4B50#
                then
                   return
@@ -593,7 +569,6 @@ package body Archive.Archives.Readers.Zip is
                Entries_Total   : constant Natural := Natural (Entries_Total_Raw);
                Directory_Size  : constant Natural := Natural (Directory_Size_Raw);
                Directory_Off   : constant Natural := Natural (Directory_Off_Raw);
-               Directory       : File_Slice_Result;
             begin
                if Entries_On_Disk /= Entries_Total then
                   return
@@ -609,17 +584,19 @@ package body Archive.Archives.Readers.Zip is
                      Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
                end if;
 
-               Directory := Read_File_Slice (Path, Directory_Off, Directory_Size);
-               if Directory.Status /= Archive.Archives.Errors.Ok then
-                  return
-                    (Status  => Directory.Status,
-                     Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
-               end if;
-
                declare
-                  Directory_Bytes : constant Zlib.Byte_Array := Slice_Bytes (Directory);
+                  Directory_Bytes  : Zlib.Byte_Array (1 .. Directory_Size);
+                  Directory_Status : Archive.Archives.Errors.Error_Code;
                   Cursor          : Natural := 0;
                begin
+                  Read_File_Slice
+                    (Path, Directory_Off, Directory_Bytes, Directory_Status);
+                  if Directory_Status /= Archive.Archives.Errors.Ok then
+                     return
+                       (Status  => Directory_Status,
+                        Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
+                  end if;
+
                   for Ordinal in 0 .. Entries_Total - 1 loop
                      if not In_Range (Directory_Bytes, Cursor, 46)
                        or else Signature (Directory_Bytes, Cursor) /= 16#0201_4B50#
@@ -710,14 +687,15 @@ package body Archive.Archives.Readers.Zip is
                            declare
                               Comp_Size : constant Natural := Natural (Comp_Size_64);
                               Local_Off : constant Natural := Natural (Local_Off_64);
-                              Local_Header : constant File_Slice_Result :=
-                                Read_File_Slice (Path, Local_Off, 30);
-                              Local_Header_Bytes : constant Zlib.Byte_Array :=
-                                Slice_Bytes (Local_Header);
+                              Local_Header_Bytes : Zlib.Byte_Array (1 .. 30);
+                              Local_Header_Status :
+                                Archive.Archives.Errors.Error_Code;
                            begin
-                              if Local_Header.Status /= Archive.Archives.Errors.Ok then
+                              Read_File_Slice
+                                (Path, Local_Off, Local_Header_Bytes, Local_Header_Status);
+                              if Local_Header_Status /= Archive.Archives.Errors.Ok then
                                  return
-                                   (Status  => Local_Header.Status,
+                                   (Status  => Local_Header_Status,
                                     Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
                               elsif Signature (Local_Header_Bytes, 0) /= 16#0403_4B50#
                                 or else U16 (Local_Header_Bytes, 6) /= Flags
@@ -747,17 +725,24 @@ package body Archive.Archives.Readers.Zip is
                                  end if;
 
                                  declare
-                                    Local_Name_Extra : constant File_Slice_Result :=
-                                      Read_File_Slice
-                                        (Path,
-                                         Local_Off + 30,
-                                         Local_Name_Len + Local_Extra_Len);
-                                    Local_Name_Extra_Bytes : constant Zlib.Byte_Array :=
-                                      Slice_Bytes (Local_Name_Extra);
+                                    Local_Name_Extra_Bytes :
+                                      Zlib.Byte_Array
+                                        (1 .. Local_Name_Len + Local_Extra_Len);
+                                    Local_Name_Extra_Status :
+                                      Archive.Archives.Errors.Error_Code;
                                  begin
-                                    if Local_Name_Extra.Status /= Archive.Archives.Errors.Ok
-                                      or else not Name_Equals
-                                        (Local_Name_Extra_Bytes, 0, Name)
+                                    Read_File_Slice
+                                      (Path,
+                                       Local_Off + 30,
+                                       Local_Name_Extra_Bytes,
+                                       Local_Name_Extra_Status);
+                                    if Local_Name_Extra_Status /= Archive.Archives.Errors.Ok
+                                    then
+                                       return
+                                         (Status  => Local_Name_Extra_Status,
+                                          Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
+                                    elsif not Name_Equals
+                                      (Local_Name_Extra_Bytes, 0, Name)
                                     then
                                        return
                                          (Status  => Archive.Archives.Errors.Invalid_Format,
@@ -812,17 +797,23 @@ package body Archive.Archives.Readers.Zip is
                                              Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
                                        elsif Uses_Data_Descriptor then
                                           declare
-                                             Descriptor_Bytes : constant File_Slice_Result :=
-                                               Read_File_Slice
-                                                 (Path,
-                                                  Descriptor_Start,
-                                                  Natural'Min (24, Directory_Off - Descriptor_Start));
-                                             Descriptor_Array : constant Zlib.Byte_Array :=
-                                               Slice_Bytes (Descriptor_Bytes);
+                                             Descriptor_Array :
+                                               Zlib.Byte_Array
+                                                 (1 .. Natural'Min
+                                                    (24,
+                                                     Directory_Off
+                                                       - Descriptor_Start));
+                                             Descriptor_Status :
+                                               Archive.Archives.Errors.Error_Code;
                                           begin
-                                             if Descriptor_Bytes.Status /= Archive.Archives.Errors.Ok then
+                                             Read_File_Slice
+                                               (Path,
+                                                Descriptor_Start,
+                                                Descriptor_Array,
+                                                Descriptor_Status);
+                                             if Descriptor_Status /= Archive.Archives.Errors.Ok then
                                                 return
-                                                  (Status  => Descriptor_Bytes.Status,
+                                                  (Status  => Descriptor_Status,
                                                    Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
                                              end if;
                                              Descriptor :=

@@ -306,7 +306,9 @@ procedure Check_All is
           (Contains (Content, "Byte_Array_Access")
            or else Contains (Content, "new Zlib.Byte_Array")
            or else Contains (Content, ".Bytes.all")
-           or else Contains (Content, "Index_Buffer"))
+           or else Contains (Content, "Index_Buffer")
+           or else Contains (Content, "File_Slice_Result")
+           or else Contains (Content, "Slice_Bytes"))
       then
          Fail (Path & ": runtime readers must not use buffer-backed indexing compatibility paths");
       end if;
