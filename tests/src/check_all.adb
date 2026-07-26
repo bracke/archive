@@ -291,6 +291,16 @@ procedure Check_All is
          Fail (Path & ": gzip reader must expose bounded optional-header metadata limits");
       end if;
 
+      if (Ends_With (Path, "/archive-archives-readers-gzip.adb")
+          or else Ends_With (Path, "/archive-archives-readers-zip.adb"))
+        and then
+          (Contains (Content, "Byte_Array_Access")
+           or else Contains (Content, "new Zlib.Byte_Array")
+           or else Contains (Content, ".Bytes.all"))
+      then
+         Fail (Path & ": runtime readers must not use heap-backed metadata slice buffers");
+      end if;
+
       if Ends_With (Path, "/archive-archives-opening-tasks.adb")
         and then
           (not Contains (Content, "task body Open_Worker")

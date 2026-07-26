@@ -1,4 +1,5 @@
 with Ada.Characters.Handling;
+with Ada.Containers.Vectors;
 with Ada.Directories;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
@@ -24,11 +25,13 @@ package body Archive.Archives.Readers.Gzip is
    Max_Header_Probe : constant Natural := 16_384;
    Max_Gzip_Field_Metadata : constant Natural := 4_096;
 
-   type Byte_Array_Access is access Zlib.Byte_Array;
+   package Slice_Byte_Vectors is new Ada.Containers.Vectors
+     (Index_Type   => Positive,
+      Element_Type => Zlib.Byte);
 
    type File_Slice_Result is record
       Status : Archive.Archives.Errors.Error_Code := Archive.Archives.Errors.Ok;
-      Bytes  : Byte_Array_Access := null;
+      Bytes  : Slice_Byte_Vectors.Vector;
    end record;
 
    function Read_File_Slice
@@ -38,37 +41,38 @@ package body Archive.Archives.Readers.Gzip is
       return File_Slice_Result
    is
       File : Ada.Streams.Stream_IO.File_Type;
-      Raw  : Ada.Streams.Stream_Element_Array
-        (1 .. Ada.Streams.Stream_Element_Offset (Count));
       Last : Ada.Streams.Stream_Element_Offset := 0;
    begin
       if Count = 0 then
-         return (Status => Archive.Archives.Errors.Ok, Bytes => new Zlib.Byte_Array'(1 .. 0 => 0));
-      end if;
-
-      Ada.Streams.Stream_IO.Open (File, Ada.Streams.Stream_IO.In_File, Path);
-      Ada.Streams.Stream_IO.Set_Index
-        (File, Ada.Streams.Stream_IO.Count (Offset + 1));
-      Ada.Streams.Stream_IO.Read (File, Raw, Last);
-      Ada.Streams.Stream_IO.Close (File);
-
-      if Last < Raw'First or else Natural (Last - Raw'First + 1) /= Count then
          return
-           (Status => Archive.Archives.Errors.Read_Failed,
-            Bytes  => null);
+           (Status => Archive.Archives.Errors.Ok,
+            Bytes  => Slice_Byte_Vectors.Empty_Vector);
       end if;
 
       declare
-         Bytes : constant Byte_Array_Access := new Zlib.Byte_Array (1 .. Count);
+         Raw  : Ada.Streams.Stream_Element_Array
+           (1 .. Ada.Streams.Stream_Element_Offset (Count));
       begin
-         for Index in Bytes.all'Range loop
-            Bytes.all (Index) :=
-              Zlib.Byte
-                (Raw (Raw'First + Ada.Streams.Stream_Element_Offset (Index - 1)));
-         end loop;
-         return
-           (Status => Archive.Archives.Errors.Ok,
-            Bytes  => Bytes);
+         Ada.Streams.Stream_IO.Open (File, Ada.Streams.Stream_IO.In_File, Path);
+         Ada.Streams.Stream_IO.Set_Index
+           (File, Ada.Streams.Stream_IO.Count (Offset + 1));
+         Ada.Streams.Stream_IO.Read (File, Raw, Last);
+         Ada.Streams.Stream_IO.Close (File);
+
+         if Last < Raw'First or else Natural (Last - Raw'First + 1) /= Count then
+            return
+              (Status => Archive.Archives.Errors.Read_Failed,
+               Bytes  => []);
+         end if;
+
+         return Result : File_Slice_Result do
+            Result.Status := Archive.Archives.Errors.Ok;
+            for Index in 1 .. Count loop
+               Result.Bytes.Append
+                 (Zlib.Byte
+                    (Raw (Raw'First + Ada.Streams.Stream_Element_Offset (Index - 1))));
+            end loop;
+         end return;
       end;
    exception
       when Storage_Error =>
@@ -77,15 +81,24 @@ package body Archive.Archives.Readers.Gzip is
          end if;
          return
            (Status => Archive.Archives.Errors.Limit_Exceeded,
-            Bytes  => null);
+            Bytes  => Slice_Byte_Vectors.Empty_Vector);
       when others =>
          if Ada.Streams.Stream_IO.Is_Open (File) then
             Ada.Streams.Stream_IO.Close (File);
          end if;
          return
            (Status => Archive.Archives.Errors.Read_Failed,
-            Bytes  => null);
+            Bytes  => Slice_Byte_Vectors.Empty_Vector);
    end Read_File_Slice;
+
+   function Slice_Bytes (Slice : File_Slice_Result) return Zlib.Byte_Array is
+      Result : Zlib.Byte_Array (1 .. Natural (Slice.Bytes.Length));
+   begin
+      for Index in Result'Range loop
+         Result (Index) := Slice.Bytes.Element (Index);
+      end loop;
+      return Result;
+   end Slice_Bytes;
 
    function In_Range
      (Bytes  : Zlib.Byte_Array;
@@ -397,7 +410,7 @@ package body Archive.Archives.Readers.Gzip is
          end if;
 
          declare
-            Header : constant Parsed_Header := Parse_Header (Header_Probe.Bytes.all);
+            Header : constant Parsed_Header := Parse_Header (Slice_Bytes (Header_Probe));
             Result : Gzip_Index_Result;
             Name   : constant String :=
               Logical_Name
@@ -416,10 +429,10 @@ package body Archive.Archives.Readers.Gzip is
             Result.Item.Encryption := Archive.Archives.Entries.Not_Encrypted;
             Result.Item.Integrity := Archive.Archives.Entries.Not_Checked;
             Result.Item.Safety := Archive.Archives.Paths.Normalize (Name).Safety;
-            Result.Item.CRC32 := (Present => True, Value => U32 (Trailer.Bytes.all, 0));
+            Result.Item.CRC32 := (Present => True, Value => U32 (Slice_Bytes (Trailer), 0));
             Result.Item.Uncompressed :=
               (Present => True,
-               Value => Archive.Types.Uncompressed_Size (U32 (Trailer.Bytes.all, 4)));
+               Value => Archive.Types.Uncompressed_Size (U32 (Slice_Bytes (Trailer), 4)));
             Result.Item.Compressed :=
               (Present => True,
                Value => Archive.Types.Uncompressed_Size (Size_N));
