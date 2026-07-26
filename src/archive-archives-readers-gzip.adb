@@ -22,6 +22,7 @@ package body Archive.Archives.Readers.Gzip is
    use type Zlib.Byte;
 
    Max_Header_Probe : constant Natural := 16_384;
+   Max_Gzip_Field_Metadata : constant Natural := 4_096;
 
    type Byte_Array_Access is access Zlib.Byte_Array;
 
@@ -157,7 +158,6 @@ package body Archive.Archives.Readers.Gzip is
       FNAME    : constant Zlib.Byte := 16#08#;
       FCOMMENT : constant Zlib.Byte := 16#10#;
       Reserved : constant Zlib.Byte := 16#E0#;
-      Max_Field_Length : constant Natural := 4_096;
       Pos      : Natural := 10;
       FLG      : Zlib.Byte;
       Info     : Gzip_Header_Info;
@@ -193,7 +193,7 @@ package body Archive.Archives.Readers.Gzip is
          declare
             Len : constant Natural := U16 (Bytes, Pos);
          begin
-            if Len > Max_Field_Length then
+            if Len > Max_Gzip_Field_Metadata then
                return (Name_Length => 0,
                        Status => Archive.Archives.Errors.Limit_Exceeded,
                        Info => <>,
@@ -217,7 +217,7 @@ package body Archive.Archives.Readers.Gzip is
                Start : constant Natural := Pos;
             begin
                while Pos < Bytes'Length and then Octet (Bytes, Pos) /= 0 loop
-                  if Pos - Start >= Max_Field_Length then
+                  if Pos - Start >= Max_Gzip_Field_Metadata then
                      return (Name_Length => 0,
                              Status => Archive.Archives.Errors.Limit_Exceeded,
                              Info => <>,
@@ -242,7 +242,7 @@ package body Archive.Archives.Readers.Gzip is
                Start : constant Natural := Pos;
             begin
                while Pos < Bytes'Length and then Octet (Bytes, Pos) /= 0 loop
-                  if Pos - Start >= Max_Field_Length then
+                  if Pos - Start >= Max_Gzip_Field_Metadata then
                      return (Name_Length => 0,
                              Status => Archive.Archives.Errors.Limit_Exceeded,
                              Info => <>,

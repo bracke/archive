@@ -282,6 +282,15 @@ procedure Check_All is
          Fail (Path & ": source stream boundary must perform bounded chunked reads and prefix probes");
       end if;
 
+      if Ends_With (Path, "/archive-archives-readers-gzip.adb")
+        and then
+          (not Contains (Content, "Max_Gzip_Field_Metadata")
+           or else not Contains (Content, "Max_Header_Probe")
+           or else not Contains (Content, "Archive.Archives.Errors.Limit_Exceeded"))
+      then
+         Fail (Path & ": gzip reader must expose bounded optional-header metadata limits");
+      end if;
+
       if Ends_With (Path, "/archive-archives-opening-tasks.adb")
         and then
           (not Contains (Content, "task body Open_Worker")
