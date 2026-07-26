@@ -79,12 +79,14 @@ Required V1 write workflows:
 | CAB stored | supported | supported by stored-cabinet rewrite publication | supported by stored-cabinet rewrite publication | supported by stored-cabinet rewrite publication | archive CAB adapter |
 | ISO 9660 | supported for flat root files | supported by flat-image rewrite publication | supported by flat-image rewrite publication | supported by flat-image rewrite publication | archive ISO adapter |
 
-Save-in-place targets the currently open archive path. The implementation stages
-and verifies a replacement archive beside the target before publication, so the
-user-facing mutation is in-place while the safety boundary still preserves the
-old archive until validation succeeds. Write commands gather required payloads through
-model-owned dialogs, publish typed write plans, and keep unavailable states as
-stable reason codes.
+Save-in-place targets the currently open archive path. ZIP stored entries support
+true byte-addressed in-place replacement when a single unencrypted regular-file
+payload is replaced by a same-size host file and the ZIP layout has no data
+descriptor or ZIP64 size fields. Other write operations stage and verify a
+replacement archive beside the target before publication, preserving the old
+archive until validation succeeds. Write commands gather required payloads through
+model-owned dialogs, publish typed write plans, and keep unavailable
+states as stable reason codes.
 Per-entry command availability is owned by `Archive.Archives.Capabilities`,
 which reports preview, extract, verify, external-open, link-follow, and write
 actions using stable reason codes rather than localized strings.

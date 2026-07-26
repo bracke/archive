@@ -67,7 +67,7 @@ Do not fake TAR support. Consume `tarlib` public reader and writer APIs for TAR 
 
 ZIP, gzip, bzip2, and Zstandard mutation must use `zlib` for compression boundaries and archive-owned ZIP structures for container metadata where applicable. ZIP BZip2, ZIP LZMA, and ZIP Zstandard payload reads, host-file publication, and source-aware rewrites use the zlib ZIP external-method bridge. Existing ZIP entries are streamed to a bounded temporary payload file before external-method recompression; keep that staging path contained and cleaned up. 7z mutation must use the public `zlib` Seven_Zip APIs for supported native layouts. Unsupported write formats should be reported as unavailable commands, not silently downgraded to extraction-only behavior.
 Application-level write dialog completion must call model-owned typed planning operations for add-file, add-directory, remove-selected, and rename-selected. Do not mark pending writes without a write plan except for a newly created empty archive before its first save target exists.
-Use `Archive.Writes.Service` for save-as publication from application commands. It is the boundary that combines model state, format dispatch, staged publish execution, and save lifecycle updates.
+Use `Archive.Writes.Service` for save-as publication from application commands. It is the boundary that combines model state, format dispatch, in-place ZIP stored same-size replacement where eligible, staged publish execution, and save lifecycle updates.
 Represent write conflicts in `Archive.Writes.Plans` with stable decisions and
 resolution records. Duplicate-target and file-directory conflicts may stay
 prompt-required, or they may carry skip, overwrite, or deterministic-rename

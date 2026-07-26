@@ -54,7 +54,10 @@ with typed unsupported-method or invalid-format results.
 Unsupported CAB folder methods remain visible only as unsupported-method results
 until a compression adapter is explicitly added for that CAB folder method.
 
-Save-in-place writes target the currently open archive path, validate the source
-fingerprint, stage the replacement archive beside the target, verify the staged
-archive, and publish it over the original path only after validation succeeds.
-Save-as publication uses the same staged writer path for a distinct target.
+Save-in-place writes target the currently open archive path and validate the
+source fingerprint. ZIP stored single-entry same-size replacement can patch the
+payload and CRC fields in place when the existing entry is unencrypted, non-ZIP64,
+and has no data descriptor. All other save-in-place operations stage a
+replacement archive beside the target, verify the staged archive, and publish it
+over the original path only after validation succeeds. Save-as publication always
+uses the staged writer path for a distinct target.

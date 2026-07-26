@@ -1,6 +1,9 @@
+with Ada.Containers;
+with Ada.Direct_IO;
 with Ada.Directories;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
+with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded;
 
 with Archive.Archives.Entries;
@@ -11,6 +14,7 @@ with Archive.Compression.Zlib;
 with Archive.Resource_Limits;
 with Archive.Temporary_Resources;
 with Archive.Types;
+with Archive.Verification.CRC32;
 with Archive.Writes.Tar;
 with Archive.Writes.Zip;
 with Tarlib.Errors;
@@ -25,6 +29,8 @@ package body Archive.Writes.Execution is
    use type Archive.Writes.Plans.Write_Action;
    use type Archive.Archives.Entries.Entry_Kind;
    use type Archive.Archives.Entries.Integrity_State;
+   use type Archive.Archives.Entries.Compression_Method;
+   use type Archive.Archives.Entries.Encryption_State;
    use type Archive.Types.Entry_Id;
    use type Archive.Types.Uncompressed_Size;
    use type Ada.Directories.File_Size;
@@ -32,6 +38,8 @@ package body Archive.Writes.Execution is
    use type Zlib.Status_Code;
 
    Chunk_Size : constant Ada.Streams.Stream_Element_Count := 32_768;
+
+   package Byte_IO is new Ada.Direct_IO (Ada.Streams.Stream_Element);
 
    type File_Zip_Sink is limited new Archive.Writes.Zip.Output_Sink with record
       File : Ada.Streams.Stream_IO.File_Type;
@@ -588,7 +596,7 @@ package body Archive.Writes.Execution is
                  or else Change.Request.Action = Archive.Writes.Plans.Add_Directory
                then
                   Add_Path
-                    (To_String (Change.Request.Host_Source),
+                    (Ada.Strings.Unbounded.To_String (Change.Request.Host_Source),
                      To_String (Change.Request.Target_Path));
                end if;
                exit when Z_Status /= Zlib.Ok;
@@ -689,6 +697,363 @@ package body Archive.Writes.Execution is
          return (Status => Archive.Writes.Results.Write_Failed_Staging);
    end Publish_Archive_From_File;
 
+   function Has_Metadata_Flag (Item : Archive.Archives.Entries.Archive_Entry; Token : String)
+      return Boolean
+   is
+   begin
+      return Ada.Strings.Fixed.Index
+        (Ada.Strings.Unbounded.To_String (Item.Format_Metadata), Token) /= 0;
+   end Has_Metadata_Flag;
+
+   procedure Read_At
+     (File   : in out Ada.Streams.Stream_IO.File_Type;
+      Offset : Natural;
+      Data   : out Ada.Streams.Stream_Element_Array;
+      OK     : out Boolean)
+   is
+      Last : Ada.Streams.Stream_Element_Offset := 0;
+   begin
+      OK := False;
+      Ada.Streams.Stream_IO.Set_Index (File, Ada.Streams.Stream_IO.Count (Offset + 1));
+      Ada.Streams.Stream_IO.Read (File, Data, Last);
+      OK := Last >= Data'First
+        and then Natural (Last - Data'First + 1) = Natural (Data'Length);
+   exception
+      when others =>
+         OK := False;
+   end Read_At;
+
+   procedure Write_At
+     (File   : in out Byte_IO.File_Type;
+      Offset : Natural;
+      Data   : Ada.Streams.Stream_Element_Array;
+      OK     : out Boolean)
+   is
+   begin
+      OK := False;
+      Byte_IO.Set_Index (File, Byte_IO.Count (Offset + 1));
+      for Byte of Data loop
+         Byte_IO.Write (File, Byte);
+      end loop;
+      OK := True;
+   exception
+      when others =>
+         OK := False;
+   end Write_At;
+
+   function U16_LE (Data : Ada.Streams.Stream_Element_Array; Offset : Natural) return Natural is
+      First : constant Ada.Streams.Stream_Element_Offset := Data'First;
+   begin
+      return Natural (Data (First + Ada.Streams.Stream_Element_Offset (Offset)))
+        + 256 * Natural (Data (First + Ada.Streams.Stream_Element_Offset (Offset + 1)));
+   end U16_LE;
+
+   function U32_LE
+     (Data   : Ada.Streams.Stream_Element_Array;
+      Offset : Natural)
+      return Long_Long_Integer
+   is
+   begin
+      return Long_Long_Integer (U16_LE (Data, Offset))
+        + 65_536 * Long_Long_Integer (U16_LE (Data, Offset + 2));
+   end U32_LE;
+
+   function Signature_At
+     (Data   : Ada.Streams.Stream_Element_Array;
+      Offset : Natural)
+      return Long_Long_Integer
+   is
+   begin
+      return U32_LE (Data, Offset);
+   end Signature_At;
+
+   function Find_Zip_EOCD
+     (File_Size : Natural;
+      Tail      : Ada.Streams.Stream_Element_Array)
+      return Natural
+   is
+      Min_EOCD : constant Natural := 22;
+      Tail_Len : constant Natural := Natural (Tail'Length);
+   begin
+      if Tail_Len < Min_EOCD then
+         return Natural'Last;
+      end if;
+
+      for Offset in reverse 0 .. Tail_Len - Min_EOCD loop
+         if Signature_At (Tail, Offset) = 16#0605_4B50# then
+            declare
+               Comment_Len : constant Natural := U16_LE (Tail, Offset + 20);
+            begin
+               if Offset + Min_EOCD + Comment_Len = Tail_Len then
+                  return File_Size - Tail_Len + Offset;
+               end if;
+            end;
+         end if;
+      end loop;
+      return Natural'Last;
+   end Find_Zip_EOCD;
+
+   function CRC32_Of_File
+     (Path : String;
+      OK   : out Boolean)
+      return Archive.Types.CRC32_Value
+   is
+      Input : Ada.Streams.Stream_IO.File_Type;
+      Data  : Ada.Streams.Stream_Element_Array (1 .. Chunk_Size);
+      Last  : Ada.Streams.Stream_Element_Offset := 0;
+      State : Archive.Verification.CRC32.CRC32_State := Archive.Verification.CRC32.Initial;
+   begin
+      OK := False;
+      Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Path);
+      loop
+         Ada.Streams.Stream_IO.Read (Input, Data, Last);
+         exit when Last < Data'First;
+         declare
+            Chunk : Zlib.Byte_Array (1 .. Natural (Last - Data'First + 1));
+         begin
+            for Index in Chunk'Range loop
+               Chunk (Index) :=
+                 Zlib.Byte
+                   (Data (Data'First + Ada.Streams.Stream_Element_Offset (Index - 1)));
+            end loop;
+            Archive.Verification.CRC32.Update (State, Chunk);
+         end;
+         exit when Last < Data'Last;
+      end loop;
+      Ada.Streams.Stream_IO.Close (Input);
+      OK := True;
+      return Archive.Verification.CRC32.Final (State);
+   exception
+      when others =>
+         if Ada.Streams.Stream_IO.Is_Open (Input) then
+            Ada.Streams.Stream_IO.Close (Input);
+         end if;
+         OK := False;
+         return 0;
+   end CRC32_Of_File;
+
+   function Locate_Zip_Central_Record
+     (File    : in out Ada.Streams.Stream_IO.File_Type;
+      Ordinal : Archive.Types.Archive_Ordinal;
+      Central_Offset : out Natural;
+      Local_Offset   : out Natural)
+      return Boolean
+   is
+      Size      : constant Natural := Natural (Ada.Streams.Stream_IO.Size (File));
+      Tail_Size : constant Natural := Natural'Min (Size, 22 + 65_535);
+      Tail      : Ada.Streams.Stream_Element_Array
+        (1 .. Ada.Streams.Stream_Element_Offset (Tail_Size));
+      OK        : Boolean := False;
+      EOCD      : Natural := Natural'Last;
+      EOCD_Rel  : Natural := 0;
+      Directory_Off_Raw : Long_Long_Integer := 0;
+      Directory_Off : Natural := 0;
+      Entries       : Natural := 0;
+      Cursor        : Natural := 0;
+      Header        : Ada.Streams.Stream_Element_Array (1 .. 46);
+   begin
+      Central_Offset := 0;
+      Local_Offset := 0;
+      Read_At (File, Size - Tail_Size, Tail, OK);
+      if not OK then
+         return False;
+      end if;
+
+      EOCD := Find_Zip_EOCD (Size, Tail);
+      if EOCD = Natural'Last then
+         return False;
+      end if;
+      EOCD_Rel := EOCD - (Size - Tail_Size);
+      if U16_LE (Tail, EOCD_Rel + 4) /= 0
+        or else U16_LE (Tail, EOCD_Rel + 6) /= 0
+        or else U16_LE (Tail, EOCD_Rel + 8) /= U16_LE (Tail, EOCD_Rel + 10)
+        or else U16_LE (Tail, EOCD_Rel + 8) = 16#FFFF#
+      then
+         return False;
+      end if;
+
+      Entries := U16_LE (Tail, EOCD_Rel + 10);
+      Directory_Off_Raw := U32_LE (Tail, EOCD_Rel + 16);
+      if Directory_Off_Raw < 0
+        or else Directory_Off_Raw > Long_Long_Integer (Natural'Last)
+      then
+         return False;
+      end if;
+      Directory_Off := Natural (Directory_Off_Raw);
+      if Natural (Ordinal) >= Entries then
+         return False;
+      end if;
+
+      for Index in 0 .. Entries - 1 loop
+         Read_At (File, Directory_Off + Cursor, Header, OK);
+         if not OK or else Signature_At (Header, 0) /= 16#0201_4B50# then
+            return False;
+         end if;
+
+         declare
+            Name_Len    : constant Natural := U16_LE (Header, 28);
+            Extra_Len   : constant Natural := U16_LE (Header, 30);
+            Comment_Len : constant Natural := U16_LE (Header, 32);
+         begin
+            if Index = Natural (Ordinal) then
+               Central_Offset := Directory_Off + Cursor;
+               if U32_LE (Header, 42) > Long_Long_Integer (Natural'Last) then
+                  return False;
+               end if;
+               Local_Offset := Natural (U32_LE (Header, 42));
+               return True;
+            end if;
+            Cursor := Cursor + 46 + Name_Len + Extra_Len + Comment_Len;
+         end;
+      end loop;
+      return False;
+   end Locate_Zip_Central_Record;
+
+   function Try_In_Place_Zip_Stored_Replace
+     (Destination_Path : String;
+      Plan             : Archive.Writes.Plans.Write_Plan;
+      Source_Path      : String;
+      Overwrite        : Boolean;
+      Cancelled        : Boolean)
+      return Archive.Writes.Results.Publish_Result
+   is
+      use type Ada.Containers.Count_Type;
+      Root : constant String := Parent_Directory (Destination_Path);
+   begin
+      if Destination_Path /= Source_Path
+        or else not Overwrite
+        or else Cancelled
+        or else Plan.Status /= Archive.Writes.Plans.Write_Plan_Ready
+        or else Plan.Changes.Length /= 1
+        or else not Archive.Temporary_Resources.Under_Root (Root, Destination_Path)
+      then
+         return (Status => Archive.Writes.Results.Write_Blocked_By_Plan);
+      end if;
+
+      declare
+         Change : constant Archive.Writes.Plans.Planned_Change :=
+           Plan.Changes.Element (Plan.Changes.First_Index);
+      begin
+         if Change.Decision /= Archive.Writes.Plans.Entry_Ready
+           or else Change.Request.Action /= Archive.Writes.Plans.Replace_File
+           or else not Archive.Archives.Index.Contains (Plan.Index, Change.Request.Source_Entry)
+           or else Ada.Strings.Unbounded.To_String (Change.Request.Host_Source) = ""
+           or else not Ada.Directories.Exists (Ada.Strings.Unbounded.To_String (Change.Request.Host_Source))
+         then
+            return (Status => Archive.Writes.Results.Write_Blocked_By_Plan);
+         end if;
+
+         declare
+            Item : constant Archive.Archives.Entries.Archive_Entry :=
+              Archive.Archives.Index.Entry_For (Plan.Index, Change.Request.Source_Entry);
+            Host_Path : constant String := Ada.Strings.Unbounded.To_String (Change.Request.Host_Source);
+            Host_Size : constant Ada.Directories.File_Size := Ada.Directories.Size (Host_Path);
+         begin
+            if Item.Kind /= Archive.Archives.Entries.Regular_File
+              or else Item.Method /= Archive.Archives.Entries.Zip_Stored
+              or else Item.Encryption /= Archive.Archives.Entries.Not_Encrypted
+              or else not Item.Data_Offset.Present
+              or else not Item.Compressed.Present
+              or else not Item.Uncompressed.Present
+              or else Item.Compressed.Value /= Item.Uncompressed.Value
+              or else Host_Size /= Ada.Directories.File_Size (Item.Uncompressed.Value)
+              or else Item.Uncompressed.Value > Archive.Types.Uncompressed_Size (Natural'Last)
+              or else not Has_Metadata_Flag (Item, "zip.method=0")
+              or else not Has_Metadata_Flag (Item, "zip.data_descriptor=false")
+              or else not Has_Metadata_Flag (Item, "zip.zip64=false")
+              or else not Has_Metadata_Flag (Item, "zip.encrypted=false")
+            then
+               return (Status => Archive.Writes.Results.Write_Blocked_By_Plan);
+            end if;
+
+            declare
+               CRC_OK : Boolean := False;
+               New_CRC : constant Archive.Types.CRC32_Value := CRC32_Of_File (Host_Path, CRC_OK);
+               Archive_File : Byte_IO.File_Type;
+               Read_File    : Ada.Streams.Stream_IO.File_Type;
+               Host_File    : Ada.Streams.Stream_IO.File_Type;
+               Central_Off  : Natural := 0;
+               Local_Off    : Natural := 0;
+               Local_Header : Ada.Streams.Stream_Element_Array (1 .. 30);
+               OK           : Boolean := False;
+               Data         : Ada.Streams.Stream_Element_Array (1 .. Chunk_Size);
+               Last         : Ada.Streams.Stream_Element_Offset := 0;
+            begin
+               if not CRC_OK then
+                  return (Status => Archive.Writes.Results.Write_Failed_Staging);
+               end if;
+
+               Ada.Streams.Stream_IO.Open
+                 (Read_File, Ada.Streams.Stream_IO.In_File, Destination_Path);
+               if not Locate_Zip_Central_Record
+                 (Read_File, Item.Ordinal, Central_Off, Local_Off)
+               then
+                  Ada.Streams.Stream_IO.Close (Read_File);
+                  return (Status => Archive.Writes.Results.Write_Blocked_By_Plan);
+               end if;
+
+               Read_At (Read_File, Local_Off, Local_Header, OK);
+               if not OK
+                 or else Signature_At (Local_Header, 0) /= 16#0403_4B50#
+                 or else U16_LE (Local_Header, 8) /= 0
+                 or else U32_LE (Local_Header, 18) /= Long_Long_Integer (Item.Compressed.Value)
+                 or else U32_LE (Local_Header, 22) /= Long_Long_Integer (Item.Uncompressed.Value)
+                 or else Local_Off + 30 + U16_LE (Local_Header, 26)
+                   + U16_LE (Local_Header, 28) /= Natural (Item.Data_Offset.Value)
+               then
+                  Ada.Streams.Stream_IO.Close (Read_File);
+                  return (Status => Archive.Writes.Results.Write_Blocked_By_Plan);
+               end if;
+               Ada.Streams.Stream_IO.Close (Read_File);
+
+               Ada.Streams.Stream_IO.Open (Host_File, Ada.Streams.Stream_IO.In_File, Host_Path);
+               Byte_IO.Open (Archive_File, Byte_IO.Inout_File, Destination_Path);
+               Byte_IO.Set_Index
+                 (Archive_File, Byte_IO.Count (Natural (Item.Data_Offset.Value) + 1));
+               loop
+                  Ada.Streams.Stream_IO.Read (Host_File, Data, Last);
+                  exit when Last < Data'First;
+                  for Index in Data'First .. Last loop
+                     Byte_IO.Write (Archive_File, Data (Index));
+                  end loop;
+                  exit when Last < Data'Last;
+               end loop;
+               Ada.Streams.Stream_IO.Close (Host_File);
+
+               declare
+                  Value    : Long_Long_Integer := Long_Long_Integer (New_CRC);
+                  CRC_Data : Ada.Streams.Stream_Element_Array (1 .. 4);
+               begin
+                  for Index in CRC_Data'Range loop
+                     CRC_Data (Index) := Ada.Streams.Stream_Element (Value mod 256);
+                     Value := Value / 256;
+                  end loop;
+                  Write_At (Archive_File, Local_Off + 14, CRC_Data, OK);
+                  if OK then
+                     Write_At (Archive_File, Central_Off + 16, CRC_Data, OK);
+                  end if;
+               end;
+
+               Byte_IO.Close (Archive_File);
+               return
+                 (Status =>
+                    (if OK
+                     then Archive.Writes.Results.Write_Completed
+                     else Archive.Writes.Results.Write_Failed_Publish));
+            exception
+               when others =>
+                  if Ada.Streams.Stream_IO.Is_Open (Host_File) then
+                     Ada.Streams.Stream_IO.Close (Host_File);
+                  end if;
+                  if Byte_IO.Is_Open (Archive_File) then
+                     Byte_IO.Close (Archive_File);
+                  end if;
+                  return (Status => Archive.Writes.Results.Write_Failed_Publish);
+            end;
+         end;
+      end;
+   end Try_In_Place_Zip_Stored_Replace;
+
    function Publish_Zip
      (Destination_Path : String;
       Plan             : Archive.Writes.Plans.Write_Plan;
@@ -709,7 +1074,19 @@ package body Archive.Writes.Execution is
    begin
       if Status /= Archive.Writes.Results.Write_Completed then
          return (Status => Status);
-      elsif Temp = "" then
+      elsif not Deflate and then External_Method = "" and then Source_Path /= "" then
+         declare
+            In_Place : constant Archive.Writes.Results.Publish_Result :=
+              Try_In_Place_Zip_Stored_Replace
+                (Destination_Path, Plan, Source_Path, Overwrite, Cancelled);
+         begin
+            if In_Place.Status = Archive.Writes.Results.Write_Completed then
+               return In_Place;
+            end if;
+         end;
+      end if;
+
+      if Temp = "" then
          return (Status => Archive.Writes.Results.Write_Failed_Staging);
       end if;
 
@@ -1020,12 +1397,12 @@ package body Archive.Writes.Execution is
                elsif Change.Request.Action = Archive.Writes.Plans.Add_File then
                   Append_Add_File
                     (Requests,
-                     To_String (Change.Request.Host_Source),
+                     Ada.Strings.Unbounded.To_String (Change.Request.Host_Source),
                      To_String (Change.Request.Target_Path));
                elsif Change.Request.Action = Archive.Writes.Plans.Add_Directory then
                   Append_Add_Directory
                     (Requests,
-                     To_String (Change.Request.Host_Source),
+                     Ada.Strings.Unbounded.To_String (Change.Request.Host_Source),
                      To_String (Change.Request.Target_Path));
                elsif Change.Request.Action in Archive.Writes.Plans.Replace_File
                  | Archive.Writes.Plans.Remove_Entry
@@ -2043,7 +2420,7 @@ package body Archive.Writes.Execution is
                         when Archive.Writes.Plans.Replace_File =>
                            Write_Host_File
                              (To_String (Change.Request.Target_Path),
-                              To_String (Change.Request.Host_Source));
+                              Ada.Strings.Unbounded.To_String (Change.Request.Host_Source));
                         when others =>
                            Write_Existing (Item, To_String (Name));
                      end case;
@@ -2062,7 +2439,7 @@ package body Archive.Writes.Execution is
             then
                Write_Host_File
                  (To_String (Change.Request.Target_Path),
-                  To_String (Change.Request.Host_Source));
+                  Ada.Strings.Unbounded.To_String (Change.Request.Host_Source));
             elsif Change.Decision = Archive.Writes.Plans.Entry_Ready
               and then Change.Request.Action = Archive.Writes.Plans.Add_Directory
             then
@@ -2354,7 +2731,7 @@ package body Archive.Writes.Execution is
                         when Archive.Writes.Plans.Replace_File =>
                            Write_Host_File
                              (To_String (Change.Request.Target_Path),
-                              To_String (Change.Request.Host_Source));
+                              Ada.Strings.Unbounded.To_String (Change.Request.Host_Source));
                         when others =>
                            Write_Existing (Item, To_String (Name));
                      end case;
@@ -2373,7 +2750,7 @@ package body Archive.Writes.Execution is
             then
                Write_Host_File
                  (To_String (Change.Request.Target_Path),
-                  To_String (Change.Request.Host_Source));
+                  Ada.Strings.Unbounded.To_String (Change.Request.Host_Source));
             elsif Change.Decision = Archive.Writes.Plans.Entry_Ready
               and then Change.Request.Action = Archive.Writes.Plans.Add_Directory
             then
@@ -2630,7 +3007,7 @@ package body Archive.Writes.Execution is
             then
                declare
                   Size : constant Natural :=
-                    Host_Size (To_String (Change.Request.Host_Source), Ok);
+                    Host_Size (Ada.Strings.Unbounded.To_String (Change.Request.Host_Source), Ok);
                begin
                   if not Ok then
                      return Natural'Last;
@@ -2813,7 +3190,7 @@ package body Archive.Writes.Execution is
             declare
                Size_OK : Boolean;
                Size : constant Natural :=
-                 Host_Size (To_String (Change.Request.Host_Source), Size_OK);
+                 Host_Size (Ada.Strings.Unbounded.To_String (Change.Request.Host_Source), Size_OK);
             begin
                if not Size_OK then
                   Failed := Archive.Archives.Errors.Read_Failed;
@@ -2871,7 +3248,7 @@ package body Archive.Writes.Execution is
          if Change.Decision = Archive.Writes.Plans.Entry_Ready
            and then Change.Request.Action = Archive.Writes.Plans.Add_File
          then
-            Write_Host_Payload (To_String (Change.Request.Host_Source));
+            Write_Host_Payload (Ada.Strings.Unbounded.To_String (Change.Request.Host_Source));
          end if;
       end loop;
 
@@ -3163,7 +3540,7 @@ package body Archive.Writes.Execution is
             then
                declare
                   Size : constant Natural :=
-                    Host_Size (To_String (Change.Request.Host_Source), OK);
+                    Host_Size (Ada.Strings.Unbounded.To_String (Change.Request.Host_Source), OK);
                begin
                   if not OK then
                      return Natural'Last;
@@ -3379,7 +3756,7 @@ package body Archive.Writes.Execution is
             then
                declare
                   Size : constant Natural :=
-                    Host_Size (To_String (Change.Request.Host_Source), OK);
+                    Host_Size (Ada.Strings.Unbounded.To_String (Change.Request.Host_Source), OK);
                   Name : constant String :=
                     Root_Name (To_String (Change.Request.Target_Path), OK);
                begin
@@ -3471,9 +3848,9 @@ package body Archive.Writes.Execution is
          then
             declare
                Size : constant Natural :=
-                 Host_Size (To_String (Change.Request.Host_Source), OK);
+                 Host_Size (Ada.Strings.Unbounded.To_String (Change.Request.Host_Source), OK);
             begin
-               Write_Host_Payload (To_String (Change.Request.Host_Source), Size);
+               Write_Host_Payload (Ada.Strings.Unbounded.To_String (Change.Request.Host_Source), Size);
             end;
          end if;
       end loop;

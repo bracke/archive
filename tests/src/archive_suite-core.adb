@@ -8021,6 +8021,7 @@ package body Archive_Suite.Core is
       Root      : constant String := "obj/write-service-test";
       Host_File : constant String := Root & "/input.txt";
       Target    : constant String := Root & "/saved.zip";
+      Stored_Target : constant String := Root & "/stored-in-place.zip";
       Other_Target : constant String := Root & "/saved-copy.zip";
       Config    : constant Archive.UI.Shell_Configuration :=
         (Width => 1024,
@@ -8034,6 +8035,8 @@ package body Archive_Suite.Core is
       Model     : Archive.Model.Application_Model;
       Physical  : Archive.Archives.Entries.Entry_Vectors.Vector;
 
+      use type Ada.Directories.File_Size;
+
       procedure Write_Local (Path : String; Bytes : Zlib.Byte_Array) is
          File : Ada.Streams.Stream_IO.File_Type;
          Data : Ada.Streams.Stream_Element_Array (1 .. Ada.Streams.Stream_Element_Offset (Bytes'Length));
@@ -8045,12 +8048,35 @@ package body Archive_Suite.Core is
          Ada.Streams.Stream_IO.Write (File, Data);
          Ada.Streams.Stream_IO.Close (File);
       end Write_Local;
+
+      function Entry_Id_For
+        (Index : Archive.Archives.Index.Archive_Index;
+         Path  : String)
+         return Archive.Types.Entry_Id
+      is
+      begin
+         for Raw_Id in 1 .. Archive.Archives.Index.Entry_Count (Index) loop
+            declare
+               Id   : constant Archive.Types.Entry_Id := Archive.Types.Entry_Id (Raw_Id);
+               Item : constant Archive.Archives.Entries.Archive_Entry :=
+                 Archive.Archives.Index.Entry_For (Index, Id);
+            begin
+               if To_String (Item.Original_Path) = Path then
+                  return Id;
+               end if;
+            end;
+         end loop;
+         return Archive.Types.No_Entry;
+      end Entry_Id_For;
    begin
       if not Ada.Directories.Exists (Root) then
          Ada.Directories.Create_Path (Root);
       end if;
       if Ada.Directories.Exists (Target) then
          Ada.Directories.Delete_File (Target);
+      end if;
+      if Ada.Directories.Exists (Stored_Target) then
+         Ada.Directories.Delete_File (Stored_Target);
       end if;
       if Ada.Directories.Exists (Other_Target) then
          Ada.Directories.Delete_File (Other_Target);
@@ -8105,6 +8131,81 @@ package body Archive_Suite.Core is
            (Archive.UI.Build_Shell (Model, Config).Write.Last_Status =
               Archive.Writes.Results.Write_Completed,
             "write service exposes successful write status through ui snapshot");
+      end;
+
+      declare
+         In_Place_Model : Archive.Model.Application_Model;
+      begin
+         Archive.Model.Initialize (In_Place_Model);
+         declare
+            Empty_Build : constant Archive.Archives.Index.Build_Result :=
+              Archive.Archives.Index.Build (Physical);
+         begin
+            Archive.Model.Publish_Archive_Index
+              (In_Place_Model, Stored_Target, Empty_Build.Index,
+               Archive.Archives.Formats.Zip_Format);
+         end;
+
+         Archive.Model.Plan_Add_File
+           (In_Place_Model, Host_File, "docs/readme.txt");
+         declare
+            Created : constant Archive.Writes.Service.Save_Result :=
+              Archive.Writes.Service.Save_As
+                (In_Place_Model,
+                 Stored_Target,
+                 Method => Archive.Writes.Dispatch.Zip_Stored_Method);
+         begin
+            Assert (Created.Status = Archive.Writes.Service.Save_Completed,
+                    "write service creates stored zip for in-place replacement");
+         end;
+
+         Write_Local
+           (Host_File,
+            [1 => Zlib.Byte (Character'Pos ('n')),
+             2 => Zlib.Byte (Character'Pos ('o'))]);
+         declare
+            Id : constant Archive.Types.Entry_Id :=
+              Entry_Id_For
+                (Archive.Model.Published_Index (In_Place_Model),
+                 "docs/readme.txt");
+            Size_Before : constant Ada.Directories.File_Size :=
+              Ada.Directories.Size (Stored_Target);
+         begin
+            Archive.Model.Select_Only (In_Place_Model, Id);
+            Archive.Model.Plan_Selected_Replacement (In_Place_Model, Host_File);
+            declare
+               Result : constant Archive.Writes.Service.Save_Result :=
+                 Archive.Writes.Service.Save
+                   (In_Place_Model,
+                    Method => Archive.Writes.Dispatch.Zip_Stored_Method);
+               Size_After : constant Ada.Directories.File_Size :=
+                 Ada.Directories.Size (Stored_Target);
+               Reopened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+                 Archive.Archives.Readers.Dispatch.Open_File (Stored_Target);
+               Replaced_Id : constant Archive.Types.Entry_Id :=
+                 Entry_Id_For (Reopened.Index, "docs/readme.txt");
+               Payload : constant Test_Stream_Result :=
+                 Stream_Dispatch_Payload_File
+                   (Stored_Target,
+                    "stored-in-place.zip",
+                    Archive.Archives.Index.Entry_For (Reopened.Index, Replaced_Id));
+            begin
+               Assert (Result.Status = Archive.Writes.Service.Save_Completed,
+                       "write service performs true in-place stored zip replacement");
+               Assert (Result.Publish_Status = Archive.Writes.Results.Write_Completed,
+                       "in-place stored zip replacement reports successful publish");
+               Assert
+                 (Size_After = Size_Before,
+                  "true in-place stored zip replacement preserves archive byte length");
+               Assert
+                 (Payload.Status = Archive.Archives.Errors.Ok
+                  and then Payload.Integrity = Archive.Archives.Entries.Verified
+                  and then Payload.Bytes_Written = 2
+                  and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('n'))
+                  and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('o')),
+                  "true in-place stored zip replacement updates payload and CRC");
+            end;
+         end;
       end;
 
       Archive.Model.Plan_Add_File (Model, Host_File, "docs/in-place.txt");
