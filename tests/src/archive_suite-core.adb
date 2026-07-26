@@ -1379,6 +1379,22 @@ package body Archive_Suite.Core is
       end;
 
       declare
+         Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
+           Index_Zip (One_File_Zip (Central_Extra_Length => 65_535));
+      begin
+         Assert (Parsed.Status = Archive.Archives.Errors.Limit_Exceeded,
+                 "oversized central ZIP metadata is rejected before entry projection");
+      end;
+
+      declare
+         Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
+           Index_Zip (One_File_Zip (Local_Extra_Length => 65_535));
+      begin
+         Assert (Parsed.Status = Archive.Archives.Errors.Limit_Exceeded,
+                 "oversized local ZIP metadata is rejected before payload projection");
+      end;
+
+      declare
          Multi_Disk : Zlib.Byte_Array := One_File_Zip;
          Parsed     : Archive.Archives.Readers.Zip.Zip_Index_Result;
       begin
