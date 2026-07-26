@@ -624,8 +624,9 @@ package body Archive_Suite.Core is
                  "cab exposes stored cabinet rewrite capability");
          Assert (Iso_Caps.Can_Index and then Iso_Caps.Can_Open_Entry_Streams
                  and then Iso_Caps.Supports_Random_Access
-                 and then not Iso_Caps.Can_Create,
-                 "iso supports read workflows without advertising write capability");
+                 and then Iso_Caps.Can_Create
+                 and then Iso_Caps.Can_Add_Entries,
+                 "iso exposes flat image rewrite capability");
          Assert
            (Archive.Archives.Formats.Description_Key (Archive.Archives.Formats.Zip_Format) =
             "format.zip.description",
@@ -6503,6 +6504,8 @@ package body Archive_Suite.Core is
       Cpio_Rewrite_Target : constant String := Root & "/dispatch-rewrite.cpio";
       Cab_Target : constant String := Root & "/dispatch-stream.cab";
       Cab_Rewrite_Target : constant String := Root & "/dispatch-rewrite.cab";
+      Iso_Target : constant String := Root & "/dispatch-stream.iso";
+      Iso_Rewrite_Target : constant String := Root & "/dispatch-rewrite.iso";
       Second_File : constant String := Root & "/second.txt";
       Replacement_File : constant String := Root & "/replacement.txt";
       File : Ada.Streams.Stream_IO.File_Type;
@@ -6623,6 +6626,12 @@ package body Archive_Suite.Core is
       end if;
       if Ada.Directories.Exists (Cab_Rewrite_Target) then
          Ada.Directories.Delete_File (Cab_Rewrite_Target);
+      end if;
+      if Ada.Directories.Exists (Iso_Target) then
+         Ada.Directories.Delete_File (Iso_Target);
+      end if;
+      if Ada.Directories.Exists (Iso_Rewrite_Target) then
+         Ada.Directories.Delete_File (Iso_Rewrite_Target);
       end if;
 
       Ada.Streams.Stream_IO.Create (File, Ada.Streams.Stream_IO.Out_File, Host_File);
@@ -6899,6 +6908,133 @@ package body Archive_Suite.Core is
             and then Method_For (Cab_Opened.Index, "docs/readme.txt") =
               Archive.Archives.Entries.No_Compression,
             "write dispatch cab publication reopens");
+
+         declare
+            Iso_Create_Requests : Archive.Writes.Plans.Write_Request_Vectors.Vector;
+         begin
+            Iso_Create_Requests.Append
+              (Archive.Writes.Plans.Write_Request'
+                 (Action           => Archive.Writes.Plans.Add_File,
+                  Source_Entry     => Archive.Types.No_Entry,
+                  Host_Source      => To_Unbounded_String (Host_File),
+                  Target_Path      => To_Unbounded_String ("readme.txt"),
+                  Replacement_Path => Null_Unbounded_String));
+
+            declare
+               Empty_Index : constant Archive.Archives.Index.Archive_Index :=
+                 Archive.Archives.Index.Build (Physical).Index;
+               Iso_Create_Plan : constant Archive.Writes.Plans.Write_Plan :=
+                 Archive.Writes.Plans.Build
+                   (Empty_Index, Iso_Create_Requests, Session => 18);
+               Iso_Published : constant Archive.Writes.Results.Publish_Result :=
+                 Archive.Writes.Dispatch.Publish
+                   (Archive.Archives.Formats.Iso_Format,
+                    Iso_Target,
+                    Iso_Create_Plan);
+               Iso_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+                 Archive.Archives.Readers.Dispatch.Open_File (Iso_Target);
+               Iso_Payload : constant Test_Stream_Result :=
+                 (if Iso_Opened.Status = Archive.Archives.Errors.Ok
+                  then Stream_Dispatch_Payload_File
+                    (Iso_Target,
+                     Iso_Target,
+                     Entry_For_Path (Iso_Opened.Index, "readme.txt"))
+                  else Empty_Test_Stream (Archive.Archives.Errors.Invalid_Format));
+            begin
+               Assert (Iso_Create_Plan.Status = Archive.Writes.Plans.Write_Plan_Ready,
+                       "write dispatch iso create plan is ready");
+               Assert (Iso_Published.Status = Archive.Writes.Results.Write_Completed,
+                       "write dispatch publishes iso image");
+               Assert
+                 (Iso_Opened.Status = Archive.Archives.Errors.Ok
+                  and then Iso_Opened.Format = Archive.Archives.Formats.Iso_Format
+                  and then Archive.Archives.Index.Physical_Count (Iso_Opened.Index) = 1,
+                  "write dispatch iso publication reopens");
+               Assert
+                 (Iso_Payload.Status = Archive.Archives.Errors.Ok
+                  and then Iso_Payload.Bytes_Written = 2
+                  and then Bytes_Of (Iso_Payload) (1) =
+                    Zlib.Byte (Character'Pos ('o'))
+                  and then Bytes_Of (Iso_Payload) (2) =
+                    Zlib.Byte (Character'Pos ('k')),
+                  "write dispatch iso payload round-trips");
+
+               declare
+                  Iso_Requests : Archive.Writes.Plans.Write_Request_Vectors.Vector;
+               begin
+                  Iso_Requests.Append
+                    (Archive.Writes.Plans.Write_Request'
+                       (Action           => Archive.Writes.Plans.Rename_Entry,
+                        Source_Entry     =>
+                          Entry_For_Path (Iso_Opened.Index, "readme.txt").Id,
+                        Host_Source      => Null_Unbounded_String,
+                        Target_Path      => To_Unbounded_String ("readme.txt"),
+                        Replacement_Path => To_Unbounded_String ("renamed.txt")));
+                  Iso_Requests.Append
+                    (Archive.Writes.Plans.Write_Request'
+                       (Action           => Archive.Writes.Plans.Add_File,
+                        Source_Entry     => Archive.Types.No_Entry,
+                        Host_Source      => To_Unbounded_String (Second_File),
+                        Target_Path      => To_Unbounded_String ("second.txt"),
+                        Replacement_Path => Null_Unbounded_String));
+
+                  declare
+                     Iso_Plan : constant Archive.Writes.Plans.Write_Plan :=
+                       Archive.Writes.Plans.Build
+                         (Iso_Opened.Index, Iso_Requests, Session => 19);
+                     Iso_Rewritten : constant Archive.Writes.Results.Publish_Result :=
+                       Archive.Writes.Dispatch.Publish
+                         (Archive.Archives.Formats.Iso_Format,
+                          Iso_Rewrite_Target,
+                          Iso_Plan,
+                          Source_Path => Iso_Target,
+                          Overwrite => True);
+                     Iso_Reopened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+                       Archive.Archives.Readers.Dispatch.Open_File (Iso_Rewrite_Target);
+                     Iso_Renamed_Payload : constant Test_Stream_Result :=
+                       (if Iso_Reopened.Status = Archive.Archives.Errors.Ok
+                        then Stream_Dispatch_Payload_File
+                          (Iso_Rewrite_Target,
+                           Iso_Rewrite_Target,
+                           Entry_For_Path (Iso_Reopened.Index, "renamed.txt"))
+                        else Empty_Test_Stream (Archive.Archives.Errors.Invalid_Format));
+                     Iso_Second_Payload : constant Test_Stream_Result :=
+                       (if Iso_Reopened.Status = Archive.Archives.Errors.Ok
+                        then Stream_Dispatch_Payload_File
+                          (Iso_Rewrite_Target,
+                           Iso_Rewrite_Target,
+                           Entry_For_Path (Iso_Reopened.Index, "second.txt"))
+                        else Empty_Test_Stream (Archive.Archives.Errors.Invalid_Format));
+                  begin
+                     Assert (Iso_Plan.Status = Archive.Writes.Plans.Write_Plan_Ready,
+                             "write dispatch iso rewrite plan is ready");
+                     Assert (Iso_Rewritten.Status = Archive.Writes.Results.Write_Completed,
+                             "write dispatch rewrites iso image");
+                     Assert
+                       (Iso_Reopened.Status = Archive.Archives.Errors.Ok
+                        and then Iso_Reopened.Format = Archive.Archives.Formats.Iso_Format
+                        and then Archive.Archives.Index.Physical_Count (Iso_Reopened.Index) = 2,
+                        "write dispatch iso rewrite reopens");
+                     Assert
+                       (Iso_Renamed_Payload.Status = Archive.Archives.Errors.Ok
+                        and then Iso_Renamed_Payload.Bytes_Written = 2
+                        and then Bytes_Of (Iso_Renamed_Payload) (1) =
+                          Zlib.Byte (Character'Pos ('o'))
+                        and then Bytes_Of (Iso_Renamed_Payload) (2) =
+                          Zlib.Byte (Character'Pos ('k')),
+                        "write dispatch iso renamed payload round-trips");
+                     Assert
+                       (Iso_Second_Payload.Status = Archive.Archives.Errors.Ok
+                        and then Iso_Second_Payload.Bytes_Written = 2
+                        and then Bytes_Of (Iso_Second_Payload) (1) =
+                          Zlib.Byte (Character'Pos ('n'))
+                        and then Bytes_Of (Iso_Second_Payload) (2) =
+                          Zlib.Byte (Character'Pos ('o')),
+                        "write dispatch iso added payload round-trips");
+                  end;
+               end;
+            end;
+         end;
 
          declare
             Bzip2_Item : constant Archive.Archives.Entries.Archive_Entry :=

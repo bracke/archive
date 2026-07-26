@@ -2937,6 +2937,606 @@ package body Archive.Writes.Execution is
          return (Status => Archive.Writes.Results.Write_Failed_Staging);
    end Publish_Cab;
 
+   function Publish_Iso
+     (Destination_Path : String;
+      Plan             : Archive.Writes.Plans.Write_Plan;
+      Source_Path      : String := "";
+      Overwrite        : Boolean := False;
+      Cancelled        : Boolean := False)
+      return Archive.Writes.Results.Publish_Result
+   is
+      use Ada.Strings.Unbounded;
+
+      Sector_Size : constant Natural := 2_048;
+      Root_Sector : constant Natural := 18;
+      First_File_Sector : constant Natural := 19;
+      Root : constant String := Parent_Directory (Destination_Path);
+      Temp : constant String := Fresh_Write_Sibling_Path (Root, Destination_Path, "save");
+      Status : constant Archive.Writes.Results.Write_Status :=
+        Preflight (Destination_Path, Plan, Root, Overwrite, Cancelled);
+      Output : Ada.Streams.Stream_IO.File_Type;
+      Failed : Archive.Archives.Errors.Error_Code := Archive.Archives.Errors.Ok;
+
+      function Sector_Count (Size : Natural) return Natural is
+      begin
+         return (Size + Sector_Size - 1) / Sector_Size;
+      end Sector_Count;
+
+      function Root_Name (Name : String; OK : out Boolean) return String is
+      begin
+         OK := Name'Length > 0
+           and then Name'Length <= 64
+           and then (for all C of Name => C /= '/' and then C /= Character'Val (0));
+         return Name;
+      end Root_Name;
+
+      function Host_Size (Path : String; OK : out Boolean) return Natural is
+         Size : Ada.Directories.File_Size;
+      begin
+         OK := False;
+         if Path = "" or else not Ada.Directories.Exists (Path) then
+            return 0;
+         end if;
+         Size := Ada.Directories.Size (Path);
+         if Size > Ada.Directories.File_Size (Natural'Last) then
+            return 0;
+         end if;
+         OK := True;
+         return Natural (Size);
+      exception
+         when others =>
+            OK := False;
+            return 0;
+      end Host_Size;
+
+      function Entry_Size
+        (Item : Archive.Archives.Entries.Archive_Entry;
+         OK   : out Boolean)
+         return Natural
+      is
+      begin
+         OK := Item.Uncompressed.Present
+           and then Item.Uncompressed.Value <=
+             Archive.Types.Uncompressed_Size (Natural'Last);
+         return (if OK then Natural (Item.Uncompressed.Value) else 0);
+      end Entry_Size;
+
+      function Planned_Name
+        (Item     : Archive.Archives.Entries.Archive_Entry;
+         Position : Natural)
+         return String
+      is
+      begin
+         if Position = 0 then
+            return To_String (Item.Original_Path);
+         end if;
+
+         declare
+            Change : constant Archive.Writes.Plans.Planned_Change :=
+              Plan.Changes.Element (Position);
+         begin
+            case Change.Request.Action is
+               when Archive.Writes.Plans.Rename_Entry =>
+                  return To_String (Change.Request.Replacement_Path);
+               when Archive.Writes.Plans.Replace_File =>
+                  return To_String (Change.Request.Target_Path);
+               when others =>
+                  return To_String (Item.Original_Path);
+            end case;
+         end;
+      end Planned_Name;
+
+      function Planned_Count return Natural is
+         Count : Natural := 0;
+         OK : Boolean;
+      begin
+         if Source_Path /= "" then
+            for Raw_Id in 1 .. Archive.Archives.Index.Entry_Count (Plan.Index) loop
+               declare
+                  Id : constant Archive.Types.Entry_Id := Archive.Types.Entry_Id (Raw_Id);
+                  Item : constant Archive.Archives.Entries.Archive_Entry :=
+                    Archive.Archives.Index.Entry_For (Plan.Index, Id);
+                  Position : constant Natural := Source_Change_For (Plan, Id);
+               begin
+                  if Item.Synthetic
+                    or else (Position > 0
+                             and then Plan.Changes.Element (Position).Request.Action =
+                               Archive.Writes.Plans.Remove_Entry)
+                  then
+                     null;
+                  elsif Item.Kind = Archive.Archives.Entries.Regular_File then
+                     declare
+                        Name : constant String := Root_Name (Planned_Name (Item, Position), OK);
+                     begin
+                        if not OK then
+                           return Natural'Last;
+                        end if;
+                        Count := Count + 1;
+                     end;
+                  elsif Item.Kind /= Archive.Archives.Entries.Directory then
+                     return Natural'Last;
+                  end if;
+               end;
+            end loop;
+         end if;
+
+         for Change of Plan.Changes loop
+            if Change.Decision = Archive.Writes.Plans.Entry_Ready then
+               if Change.Request.Action = Archive.Writes.Plans.Add_File then
+                  declare
+                     Name : constant String :=
+                       Root_Name (To_String (Change.Request.Target_Path), OK);
+                  begin
+                     if not OK then
+                        return Natural'Last;
+                     end if;
+                     Count := Count + 1;
+                  end;
+               elsif Change.Request.Action = Archive.Writes.Plans.Add_Directory then
+                  return Natural'Last;
+               end if;
+            end if;
+         end loop;
+         return Count;
+      exception
+         when Constraint_Error =>
+            return Natural'Last;
+      end Planned_Count;
+
+      function Directory_Record_Length (Name_Length : Natural) return Natural is
+         Base : constant Natural := 33 + Name_Length;
+      begin
+         return Base + (if Base mod 2 = 1 then 1 else 0);
+      end Directory_Record_Length;
+
+      function Directory_Size return Natural is
+         Total : Natural := Directory_Record_Length (1) * 2;
+         OK : Boolean;
+      begin
+         if Source_Path /= "" then
+            for Raw_Id in 1 .. Archive.Archives.Index.Entry_Count (Plan.Index) loop
+               declare
+                  Id : constant Archive.Types.Entry_Id := Archive.Types.Entry_Id (Raw_Id);
+                  Item : constant Archive.Archives.Entries.Archive_Entry :=
+                    Archive.Archives.Index.Entry_For (Plan.Index, Id);
+                  Position : constant Natural := Source_Change_For (Plan, Id);
+               begin
+                  if Item.Synthetic
+                    or else Item.Kind /= Archive.Archives.Entries.Regular_File
+                    or else (Position > 0
+                             and then Plan.Changes.Element (Position).Request.Action =
+                               Archive.Writes.Plans.Remove_Entry)
+                  then
+                     null;
+                  else
+                     declare
+                        Name : constant String := Root_Name (Planned_Name (Item, Position), OK);
+                     begin
+                        if not OK then
+                           return Natural'Last;
+                        end if;
+                        Total := Total + Directory_Record_Length (Name'Length);
+                     end;
+                  end if;
+               end;
+            end loop;
+         end if;
+
+         for Change of Plan.Changes loop
+            if Change.Decision = Archive.Writes.Plans.Entry_Ready
+              and then Change.Request.Action = Archive.Writes.Plans.Add_File
+            then
+               declare
+                  Name : constant String :=
+                    Root_Name (To_String (Change.Request.Target_Path), OK);
+               begin
+                  if not OK then
+                     return Natural'Last;
+                  end if;
+                  Total := Total + Directory_Record_Length (Name'Length);
+               end;
+            end if;
+         end loop;
+         return Total;
+      exception
+         when Constraint_Error =>
+            return Natural'Last;
+      end Directory_Size;
+
+      function Payload_Sectors return Natural is
+         Total : Natural := 0;
+         OK : Boolean;
+      begin
+         if Source_Path /= "" then
+            for Raw_Id in 1 .. Archive.Archives.Index.Entry_Count (Plan.Index) loop
+               declare
+                  Id : constant Archive.Types.Entry_Id := Archive.Types.Entry_Id (Raw_Id);
+                  Item : constant Archive.Archives.Entries.Archive_Entry :=
+                    Archive.Archives.Index.Entry_For (Plan.Index, Id);
+                  Position : constant Natural := Source_Change_For (Plan, Id);
+                  Size : Natural := 0;
+               begin
+                  if Item.Synthetic
+                    or else Item.Kind /= Archive.Archives.Entries.Regular_File
+                    or else (Position > 0
+                             and then Plan.Changes.Element (Position).Request.Action =
+                               Archive.Writes.Plans.Remove_Entry)
+                  then
+                     null;
+                  elsif Position > 0
+                    and then Plan.Changes.Element (Position).Request.Action =
+                      Archive.Writes.Plans.Replace_File
+                  then
+                     Size := Host_Size
+                       (To_String
+                          (Plan.Changes.Element (Position).Request.Host_Source),
+                        OK);
+                     if not OK then
+                        return Natural'Last;
+                     end if;
+                     Total := Total + Sector_Count (Size);
+                  else
+                     Size := Entry_Size (Item, OK);
+                     if not OK then
+                        return Natural'Last;
+                     end if;
+                     Total := Total + Sector_Count (Size);
+                  end if;
+               end;
+            end loop;
+         end if;
+
+         for Change of Plan.Changes loop
+            if Change.Decision = Archive.Writes.Plans.Entry_Ready
+              and then Change.Request.Action = Archive.Writes.Plans.Add_File
+            then
+               declare
+                  Size : constant Natural :=
+                    Host_Size (To_String (Change.Request.Host_Source), OK);
+               begin
+                  if not OK then
+                     return Natural'Last;
+                  end if;
+                  Total := Total + Sector_Count (Size);
+               end;
+            end if;
+         end loop;
+         return Total;
+      exception
+         when Constraint_Error =>
+            return Natural'Last;
+      end Payload_Sectors;
+
+      procedure Write_Iso_Text (Text : String) is
+      begin
+         if Failed = Archive.Archives.Errors.Ok then
+            Write_Text (Output, Text, Failed);
+         end if;
+      end Write_Iso_Text;
+
+      procedure Write_Zeroes (Count : Natural) is
+      begin
+         for Index in 1 .. Count loop
+            Write_Iso_Text ([1 => Character'Val (0)]);
+            exit when Failed /= Archive.Archives.Errors.Ok;
+         end loop;
+      end Write_Zeroes;
+
+      function U32_BE_Text (Value : Natural) return String is
+      begin
+         return [1 => Character'Val ((Value / 16_777_216) mod 256),
+                 2 => Character'Val ((Value / 65_536) mod 256),
+                 3 => Character'Val ((Value / 256) mod 256),
+                 4 => Character'Val (Value mod 256)];
+      end U32_BE_Text;
+
+      function U16_BE_Text (Value : Natural) return String is
+      begin
+         return [1 => Character'Val ((Value / 256) mod 256),
+                 2 => Character'Val (Value mod 256)];
+      end U16_BE_Text;
+
+      function Directory_Record
+        (Name   : String;
+         Extent : Natural;
+         Size   : Natural;
+         Is_Dir : Boolean)
+         return String
+      is
+         Length : constant Natural := Directory_Record_Length (Name'Length);
+         Flags : constant Character := Character'Val ((if Is_Dir then 2 else 0));
+         Padding : constant String :=
+           (if (33 + Name'Length) mod 2 = 1 then [1 => Character'Val (0)] else "");
+      begin
+         return Character'Val (Length)
+           & Character'Val (0)
+           & U32_LE_Text (Extent) & U32_BE_Text (Extent)
+           & U32_LE_Text (Size) & U32_BE_Text (Size)
+           & [1 => Character'Val (126),
+              2 => Character'Val (1),
+              3 => Character'Val (1),
+              4 => Character'Val (0),
+              5 => Character'Val (0),
+              6 => Character'Val (0),
+              7 => Character'Val (0)]
+           & Flags
+           & Character'Val (0)
+           & Character'Val (0)
+           & U16_LE_Text (1) & U16_BE_Text (1)
+           & Character'Val (Name'Length)
+           & Name
+           & Padding;
+      end Directory_Record;
+
+      procedure Write_Host_Payload (Path : String; Size : Natural) is
+         Input : Ada.Streams.Stream_IO.File_Type;
+         Data : Ada.Streams.Stream_Element_Array (1 .. Chunk_Size);
+         Last : Ada.Streams.Stream_Element_Offset := 0;
+         Written : Natural := 0;
+      begin
+         Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Path);
+         loop
+            Ada.Streams.Stream_IO.Read (Input, Data, Last);
+            exit when Last < Data'First;
+            Ada.Streams.Stream_IO.Write (Output, Data (Data'First .. Last));
+            Written := Written + Natural (Last - Data'First + 1);
+            exit when Last < Data'Last;
+         end loop;
+         Ada.Streams.Stream_IO.Close (Input);
+         if Written /= Size then
+            Failed := Archive.Archives.Errors.Read_Failed;
+         else
+            Write_Zeroes (Sector_Count (Size) * Sector_Size - Size);
+         end if;
+      exception
+         when others =>
+            if Ada.Streams.Stream_IO.Is_Open (Input) then
+               Ada.Streams.Stream_IO.Close (Input);
+            end if;
+            Failed := Archive.Archives.Errors.Read_Failed;
+      end Write_Host_Payload;
+
+      procedure Write_Existing_Payload
+        (Item : Archive.Archives.Entries.Archive_Entry;
+         Size : Natural)
+      is
+         Written : Natural := 0;
+         Continue_Writing : Boolean := True;
+
+         procedure Emit
+           (Bytes : Zlib.Byte_Array;
+            Continue : in out Boolean)
+         is
+            Local : Archive.Archives.Errors.Error_Code := Archive.Archives.Errors.Ok;
+         begin
+            Write_Zlib_Bytes (Output, Bytes, Local);
+            if Local /= Archive.Archives.Errors.Ok then
+               Failed := Local;
+               Continue_Writing := False;
+            end if;
+            Written := Written + Bytes'Length;
+            Continue := Continue_Writing;
+         end Emit;
+
+         Streamed : constant Archive.Archives.Readers.Dispatch.Stream_Result :=
+           Archive.Archives.Readers.Dispatch.Stream_Payload_File
+             (Source_Path, Source_Path, Item, Emit'Access);
+      begin
+         if Streamed.Status /= Archive.Archives.Errors.Ok then
+            Failed := Streamed.Status;
+         elsif Written /= Size then
+            Failed := Archive.Archives.Errors.Read_Failed;
+         else
+            Write_Zeroes (Sector_Count (Size) * Sector_Size - Size);
+         end if;
+      end Write_Existing_Payload;
+
+      Count : constant Natural := Planned_Count;
+      Root_Dir_Size : constant Natural := Directory_Size;
+      Data_Sectors : constant Natural := Payload_Sectors;
+      Volume_Sectors : constant Natural := First_File_Sector + Data_Sectors;
+      Current_Sector : Natural := First_File_Sector;
+      Root_Dir : Unbounded_String;
+      OK : Boolean;
+
+      procedure Append_File_Record (Name : String; Size : Natural; Extent : Natural) is
+      begin
+         Root_Dir := Root_Dir & Directory_Record (Name, Extent, Size, Is_Dir => False);
+      end Append_File_Record;
+   begin
+      if Status /= Archive.Writes.Results.Write_Completed then
+         return (Status => Status);
+      elsif Temp = "" or else Count = 0 or else Root_Dir_Size = Natural'Last
+        or else Root_Dir_Size > Sector_Size or else Data_Sectors = Natural'Last
+      then
+         return (Status => Archive.Writes.Results.Write_Blocked_By_Plan);
+      end if;
+
+      Root_Dir := To_Unbounded_String
+        (Directory_Record ([1 => Character'Val (0)], Root_Sector, Sector_Size, True)
+         & Directory_Record ([1 => Character'Val (1)], Root_Sector, Sector_Size, True));
+
+      declare
+         Scan_Sector : Natural := First_File_Sector;
+      begin
+         if Source_Path /= "" then
+            for Raw_Id in 1 .. Archive.Archives.Index.Entry_Count (Plan.Index) loop
+               declare
+                  Id : constant Archive.Types.Entry_Id := Archive.Types.Entry_Id (Raw_Id);
+                  Item : constant Archive.Archives.Entries.Archive_Entry :=
+                    Archive.Archives.Index.Entry_For (Plan.Index, Id);
+                  Position : constant Natural := Source_Change_For (Plan, Id);
+                  Size : Natural := 0;
+               begin
+                  if Item.Synthetic
+                    or else Item.Kind /= Archive.Archives.Entries.Regular_File
+                    or else (Position > 0
+                             and then Plan.Changes.Element (Position).Request.Action =
+                               Archive.Writes.Plans.Remove_Entry)
+                  then
+                     null;
+                  else
+                     if Position > 0
+                       and then Plan.Changes.Element (Position).Request.Action =
+                         Archive.Writes.Plans.Replace_File
+                     then
+                        Size := Host_Size
+                          (To_String
+                             (Plan.Changes.Element (Position).Request.Host_Source),
+                           OK);
+                     else
+                        Size := Entry_Size (Item, OK);
+                     end if;
+                     if not OK then
+                        return (Status => Archive.Writes.Results.Write_Blocked_By_Plan);
+                     end if;
+                     Append_File_Record
+                       (Root_Name (Planned_Name (Item, Position), OK),
+                        Size, Scan_Sector);
+                     if not OK then
+                        return (Status => Archive.Writes.Results.Write_Blocked_By_Plan);
+                     end if;
+                     Scan_Sector := Scan_Sector + Sector_Count (Size);
+                  end if;
+               end;
+            end loop;
+         end if;
+
+         for Change of Plan.Changes loop
+            if Change.Decision = Archive.Writes.Plans.Entry_Ready
+              and then Change.Request.Action = Archive.Writes.Plans.Add_File
+            then
+               declare
+                  Size : constant Natural :=
+                    Host_Size (To_String (Change.Request.Host_Source), OK);
+                  Name : constant String :=
+                    Root_Name (To_String (Change.Request.Target_Path), OK);
+               begin
+                  if not OK then
+                     return (Status => Archive.Writes.Results.Write_Blocked_By_Plan);
+                  end if;
+                  Append_File_Record (Name, Size, Scan_Sector);
+                  Scan_Sector := Scan_Sector + Sector_Count (Size);
+               end;
+            end if;
+         end loop;
+      end;
+
+      Ada.Directories.Create_Path (Root);
+      Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Temp);
+      Write_Zeroes (16 * Sector_Size);
+
+      declare
+         PVD : String (1 .. Sector_Size) := [others => Character'Val (0)];
+         Root_Record : constant String :=
+           Directory_Record ([1 => Character'Val (0)], Root_Sector, Sector_Size, True);
+      begin
+         PVD (1) := Character'Val (1);
+         PVD (2 .. 6) := "CD001";
+         PVD (7) := Character'Val (1);
+         PVD (81 .. 112) := "ARCHIVE                         ";
+         PVD (121 .. 124) := U32_LE_Text (Volume_Sectors);
+         PVD (125 .. 128) := U32_BE_Text (Volume_Sectors);
+         PVD (129 .. 132) := U16_LE_Text (1) & U16_BE_Text (1);
+         PVD (133 .. 136) := U16_LE_Text (1) & U16_BE_Text (1);
+         PVD (137 .. 140) := U16_LE_Text (Sector_Size) & U16_BE_Text (Sector_Size);
+         PVD (157 .. 156 + Root_Record'Length) := Root_Record;
+         Write_Iso_Text (PVD);
+      end;
+
+      declare
+         TVD : String (1 .. Sector_Size) := [others => Character'Val (0)];
+      begin
+         TVD (1) := Character'Val (255);
+         TVD (2 .. 6) := "CD001";
+         TVD (7) := Character'Val (1);
+         Write_Iso_Text (TVD);
+      end;
+
+      Write_Iso_Text (To_String (Root_Dir));
+      Write_Zeroes (Sector_Size - Length (Root_Dir));
+
+      if Source_Path /= "" then
+         for Raw_Id in 1 .. Archive.Archives.Index.Entry_Count (Plan.Index) loop
+            declare
+               Id : constant Archive.Types.Entry_Id := Archive.Types.Entry_Id (Raw_Id);
+               Item : constant Archive.Archives.Entries.Archive_Entry :=
+                 Archive.Archives.Index.Entry_For (Plan.Index, Id);
+               Position : constant Natural := Source_Change_For (Plan, Id);
+               Size : Natural := 0;
+            begin
+               exit when Failed /= Archive.Archives.Errors.Ok;
+               if Item.Synthetic
+                 or else Item.Kind /= Archive.Archives.Entries.Regular_File
+                 or else (Position > 0
+                          and then Plan.Changes.Element (Position).Request.Action =
+                            Archive.Writes.Plans.Remove_Entry)
+               then
+                  null;
+               elsif Position > 0
+                 and then Plan.Changes.Element (Position).Request.Action =
+                   Archive.Writes.Plans.Replace_File
+               then
+                  Size := Host_Size
+                    (To_String
+                       (Plan.Changes.Element (Position).Request.Host_Source),
+                     OK);
+                  Write_Host_Payload
+                    (To_String
+                       (Plan.Changes.Element (Position).Request.Host_Source),
+                     Size);
+               else
+                  Size := Entry_Size (Item, OK);
+                  Write_Existing_Payload (Item, Size);
+               end if;
+            end;
+         end loop;
+      end if;
+
+      for Change of Plan.Changes loop
+         exit when Failed /= Archive.Archives.Errors.Ok;
+         if Change.Decision = Archive.Writes.Plans.Entry_Ready
+           and then Change.Request.Action = Archive.Writes.Plans.Add_File
+         then
+            declare
+               Size : constant Natural :=
+                 Host_Size (To_String (Change.Request.Host_Source), OK);
+            begin
+               Write_Host_Payload (To_String (Change.Request.Host_Source), Size);
+            end;
+         end if;
+      end loop;
+
+      if Ada.Streams.Stream_IO.Is_Open (Output) then
+         Ada.Streams.Stream_IO.Close (Output);
+      end if;
+
+      if Failed /= Archive.Archives.Errors.Ok then
+         if Ada.Directories.Exists (Temp) then
+            Ada.Directories.Delete_File (Temp);
+         end if;
+         return (Status => Archive.Writes.Results.Write_Failed_Staging);
+      end if;
+
+      return Finalize_Staged_Archive
+        (Destination_Path, Temp, Root, Overwrite,
+         Archive.Archives.Formats.Iso_Format, Destination_Path, Cancelled);
+   exception
+      when others =>
+         if Ada.Streams.Stream_IO.Is_Open (Output) then
+            Ada.Streams.Stream_IO.Close (Output);
+         end if;
+         if Ada.Directories.Exists (Temp) then
+            begin
+               Ada.Directories.Delete_File (Temp);
+            exception
+               when others =>
+                  null;
+            end;
+         end if;
+         return (Status => Archive.Writes.Results.Write_Failed_Staging);
+   end Publish_Iso;
+
    function Publish_BZip2
      (Destination_Path : String;
       Plan             : Archive.Writes.Plans.Write_Plan;

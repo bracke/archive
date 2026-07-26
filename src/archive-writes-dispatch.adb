@@ -147,6 +147,13 @@ package body Archive.Writes.Dispatch is
                Overwrite => Overwrite,
                Cancelled => Cancelled);
 
+         when Archive.Archives.Formats.Iso_Format =>
+            return Archive.Writes.Execution.Publish_Iso
+              (Destination_Path, Plan,
+               Source_Path => Source_Path,
+               Overwrite => Overwrite,
+               Cancelled => Cancelled);
+
          when others =>
             return (Status => Archive.Writes.Results.Write_Blocked_By_Plan);
       end case;

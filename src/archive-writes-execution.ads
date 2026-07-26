@@ -168,4 +168,12 @@ package Archive.Writes.Execution is
       Overwrite        : Boolean := False;
       Cancelled        : Boolean := False)
       return Archive.Writes.Results.Publish_Result;
+
+   function Publish_Iso
+     (Destination_Path : String;
+      Plan             : Archive.Writes.Plans.Write_Plan;
+      Source_Path      : String := "";
+      Overwrite        : Boolean := False;
+      Cancelled        : Boolean := False)
+      return Archive.Writes.Results.Publish_Result;
 end Archive.Writes.Execution;

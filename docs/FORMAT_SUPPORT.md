@@ -21,7 +21,7 @@ that registry and the AUnit format tests.
 | AR | supported for stored members, symbol tables, GNU string tables, and BSD long names | supported for stored regular-file members | supported by bounded member header and size validation | supported through safe extraction planning/execution | supported by stored-member rewrite publication | archive AR adapter |
 | CPIO newc/crc | supported for stored members and trailer termination | supported for regular-file members | supported by bounded fixed-header, name, size, and alignment validation | supported through safe extraction planning/execution | supported by newc rewrite publication | archive CPIO adapter |
 | CAB stored / MSZIP | supported for one bounded stored or MSZIP folder | supported for stored file payloads and MSZIP raw-DEFLATE payloads through `zlib` | supported by bounded MSCF header, folder, file-record, data-block, and inflate-size validation | supported through safe extraction planning/execution | supported by stored-cabinet rewrite publication | archive CAB adapter + `zlib` |
-| ISO 9660 | supported for primary-volume directory records | supported for stored regular-file extents | supported by bounded descriptor, directory-record, extent, and size validation | supported through safe extraction planning/execution | not supported | archive ISO adapter |
+| ISO 9660 | supported for primary-volume directory records | supported for stored regular-file extents | supported by bounded descriptor, directory-record, extent, and size validation | supported through safe extraction planning/execution | supported by flat-image rewrite publication | archive ISO adapter |
 
 Current covered edge cases include ZIP comments, Unicode path extra fields,
 ZIP64 per-entry size extras within host bounds, data descriptors with and
@@ -35,8 +35,7 @@ truncation, zlib-backed native 7z listing and payload extraction for supported
 native layouts, supported native 7z layouts in documentation and validation,
 and zlib-backed Deflate 7z file-list publication, zlib-backed bzip2 single-file
 decoding and publication, zlib-backed Zstandard single-file decoding and
-publication, zlib-backed XZ one-block LZMA2 decoding and publication, stored Unix AR member indexing, payload streaming, and rewrite publication, CPIO newc member indexing, payload streaming, and rewrite publication, bounded stored and MSZIP CAB folder indexing, payload streaming, and stored-cabinet rewrite publication, and ISO 9660 directory-record indexing with
-stored file-extent streaming.
+publication, zlib-backed XZ one-block LZMA2 decoding and publication, stored Unix AR member indexing, payload streaming, and rewrite publication, CPIO newc member indexing, payload streaming, and rewrite publication, bounded stored and MSZIP CAB folder indexing, payload streaming, and stored-cabinet rewrite publication, and ISO 9660 directory-record indexing, stored file-extent streaming, and flat-image rewrite publication.
 
 Recognized but unsupported:
 

@@ -23,7 +23,7 @@ Current V1 support:
 | AR | supported for stored members | supported | supported | supported | supported by stored-member rewrite publication | archive AR adapter |
 | CPIO newc | supported for stored members | supported | supported | supported | supported by newc rewrite publication | archive CPIO adapter |
 | CAB stored / MSZIP | supported for bounded single-folder archives | supported | supported | supported | supported by stored-cabinet rewrite publication | archive CAB adapter + `zlib` |
-| ISO 9660 | supported for stored directory records and files | supported | supported | supported | not supported | archive ISO adapter |
+| ISO 9660 | supported for stored directory records and files | supported | supported | supported | supported by flat-image rewrite publication | archive ISO adapter |
 
 Recognized but unsupported in V1: RAR, split ZIP, multi-volume ZIP, encrypted entries outside supported 7z layouts, unsupported XZ layouts, unsupported CAB folder methods, ZIP PPMd, and unsupported ZIP methods or 7z layouts.
 

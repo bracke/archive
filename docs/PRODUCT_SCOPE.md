@@ -77,6 +77,7 @@ Required V1 write workflows:
 | AR | supported | supported by stored-member rewrite publication | supported by stored-member rewrite publication | supported by stored-member rewrite publication | archive AR adapter |
 | CPIO newc | supported | supported by newc rewrite publication | supported by newc rewrite publication | supported by newc rewrite publication | archive CPIO adapter |
 | CAB stored | supported | supported by stored-cabinet rewrite publication | supported by stored-cabinet rewrite publication | supported by stored-cabinet rewrite publication | archive CAB adapter |
+| ISO 9660 | supported for flat root files | supported by flat-image rewrite publication | supported by flat-image rewrite publication | supported by flat-image rewrite publication | archive ISO adapter |
 
 Save-in-place targets the currently open archive path. The implementation stages
 and verifies a replacement archive beside the target before publication, so the

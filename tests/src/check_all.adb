@@ -866,6 +866,10 @@ procedure Check_All is
          "bounded stored and MSZIP CAB folder indexing, payload streaming, "
          & "and stored-cabinet rewrite publication");
       Require_Document_Text
+        ("docs/FORMAT_SUPPORT.md",
+         "ISO 9660 directory-record indexing, stored file-extent streaming, "
+         & "and flat-image rewrite publication");
+      Require_Document_Text
         ("README.md", "supported for native zlib-backed layouts");
       Require_Document_Text
         ("README.md", "ISO 9660");
