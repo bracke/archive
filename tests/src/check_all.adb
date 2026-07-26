@@ -862,6 +862,10 @@ procedure Check_All is
       Require_Document_Text
         ("docs/FORMAT_SUPPORT.md", "CPIO newc member indexing, payload streaming, and rewrite publication");
       Require_Document_Text
+        ("docs/FORMAT_SUPPORT.md",
+         "bounded stored and MSZIP CAB folder indexing, payload streaming, "
+         & "and stored-cabinet rewrite publication");
+      Require_Document_Text
         ("README.md", "supported for native zlib-backed layouts");
       Require_Document_Text
         ("README.md", "ISO 9660");
