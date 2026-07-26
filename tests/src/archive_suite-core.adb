@@ -6124,12 +6124,22 @@ package body Archive_Suite.Core is
       Tar_Gz_Target : constant String := Root & "/dispatch-stream.tar.gz";
       Seven_Zip_Target : constant String := Root & "/dispatch-stream.7z";
       Seven_Zip_Rewrite_Target : constant String := Root & "/dispatch-rewrite.7z";
+      Seven_Zip_Two_Source : constant String := Root & "/dispatch-two-source.7z";
+      Seven_Zip_Two_Rewrite : constant String := Root & "/dispatch-two-rewrite.7z";
       Bzip2_Target : constant String := Root & "/dispatch-stream.bz2";
       Zstd_Target : constant String := Root & "/dispatch-stream.zst";
+      Second_File : constant String := Root & "/second.txt";
+      Replacement_File : constant String := Root & "/replacement.txt";
       File : Ada.Streams.Stream_IO.File_Type;
       Host_Data : constant Ada.Streams.Stream_Element_Array :=
         [1 => Ada.Streams.Stream_Element (Character'Pos ('o')),
          2 => Ada.Streams.Stream_Element (Character'Pos ('k'))];
+      Second_Data : constant Ada.Streams.Stream_Element_Array :=
+        [1 => Ada.Streams.Stream_Element (Character'Pos ('n')),
+         2 => Ada.Streams.Stream_Element (Character'Pos ('o'))];
+      Replacement_Data : constant Ada.Streams.Stream_Element_Array :=
+        [1 => Ada.Streams.Stream_Element (Character'Pos ('g')),
+         2 => Ada.Streams.Stream_Element (Character'Pos ('o'))];
       Physical : Archive.Archives.Entries.Entry_Vectors.Vector;
       Requests : Archive.Writes.Plans.Write_Request_Vectors.Vector;
 
@@ -6197,6 +6207,12 @@ package body Archive_Suite.Core is
       if Ada.Directories.Exists (Seven_Zip_Rewrite_Target) then
          Ada.Directories.Delete_File (Seven_Zip_Rewrite_Target);
       end if;
+      if Ada.Directories.Exists (Seven_Zip_Two_Source) then
+         Ada.Directories.Delete_File (Seven_Zip_Two_Source);
+      end if;
+      if Ada.Directories.Exists (Seven_Zip_Two_Rewrite) then
+         Ada.Directories.Delete_File (Seven_Zip_Two_Rewrite);
+      end if;
       if Ada.Directories.Exists (Bzip2_Target) then
          Ada.Directories.Delete_File (Bzip2_Target);
       end if;
@@ -6206,6 +6222,12 @@ package body Archive_Suite.Core is
 
       Ada.Streams.Stream_IO.Create (File, Ada.Streams.Stream_IO.Out_File, Host_File);
       Ada.Streams.Stream_IO.Write (File, Host_Data);
+      Ada.Streams.Stream_IO.Close (File);
+      Ada.Streams.Stream_IO.Create (File, Ada.Streams.Stream_IO.Out_File, Second_File);
+      Ada.Streams.Stream_IO.Write (File, Second_Data);
+      Ada.Streams.Stream_IO.Close (File);
+      Ada.Streams.Stream_IO.Create (File, Ada.Streams.Stream_IO.Out_File, Replacement_File);
+      Ada.Streams.Stream_IO.Write (File, Replacement_Data);
       Ada.Streams.Stream_IO.Close (File);
 
       Requests.Append
@@ -6458,6 +6480,121 @@ package body Archive_Suite.Core is
                   and then Bytes_Of (Renamed_Payload) (2) =
                     Zlib.Byte (Character'Pos ('k')),
                   "write dispatch 7z source rewrite preserves renamed payload");
+            end;
+         end;
+
+         declare
+            Two_Requests : Archive.Writes.Plans.Write_Request_Vectors.Vector;
+            Rewrite_Requests : Archive.Writes.Plans.Write_Request_Vectors.Vector;
+         begin
+            Two_Requests.Append
+              (Archive.Writes.Plans.Write_Request'
+                 (Action           => Archive.Writes.Plans.Add_File,
+                  Source_Entry     => Archive.Types.No_Entry,
+                  Host_Source      => To_Unbounded_String (Host_File),
+                  Target_Path      => To_Unbounded_String ("docs/keep.txt"),
+                  Replacement_Path => Null_Unbounded_String));
+            Two_Requests.Append
+              (Archive.Writes.Plans.Write_Request'
+                 (Action           => Archive.Writes.Plans.Add_File,
+                  Source_Entry     => Archive.Types.No_Entry,
+                  Host_Source      => To_Unbounded_String (Second_File),
+                  Target_Path      => To_Unbounded_String ("docs/drop.txt"),
+                  Replacement_Path => Null_Unbounded_String));
+
+            declare
+               Empty_Index : constant Archive.Archives.Index.Archive_Index :=
+                 Archive.Archives.Index.Build (Physical).Index;
+               Source_Plan : constant Archive.Writes.Plans.Write_Plan :=
+                 Archive.Writes.Plans.Build
+                   (Empty_Index, Two_Requests, Session => 10);
+               Source_Write : constant Archive.Writes.Results.Publish_Result :=
+                 Archive.Writes.Dispatch.Publish
+                   (Archive.Archives.Formats.Seven_Zip_Format,
+                    Seven_Zip_Two_Source,
+                    Source_Plan,
+                    Overwrite => True);
+               Source_Open : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+                 Archive.Archives.Readers.Dispatch.Open_File (Seven_Zip_Two_Source);
+               Keep_Item : constant Archive.Archives.Entries.Archive_Entry :=
+                 (if Source_Open.Status = Archive.Archives.Errors.Ok
+                  then Entry_For_Path (Source_Open.Index, "docs/keep.txt")
+                  else (others => <>));
+               Drop_Item : constant Archive.Archives.Entries.Archive_Entry :=
+                 (if Source_Open.Status = Archive.Archives.Errors.Ok
+                  then Entry_For_Path (Source_Open.Index, "docs/drop.txt")
+                  else (others => <>));
+            begin
+               Assert (Source_Plan.Status = Archive.Writes.Plans.Write_Plan_Ready,
+                       "write dispatch 7z two-entry source plan is ready");
+               Assert (Source_Write.Status = Archive.Writes.Results.Write_Completed,
+                       "write dispatch publishes 7z two-entry source");
+               Assert
+                 (Source_Open.Status = Archive.Archives.Errors.Ok
+                  and then Archive.Archives.Index.Physical_Count (Source_Open.Index) = 2,
+                  "write dispatch 7z two-entry source reopens");
+
+               Rewrite_Requests.Append
+                 (Archive.Writes.Plans.Write_Request'
+                    (Action           => Archive.Writes.Plans.Replace_File,
+                     Source_Entry     => Keep_Item.Id,
+                     Host_Source      => To_Unbounded_String (Replacement_File),
+                     Target_Path      => To_Unbounded_String ("docs/keep.txt"),
+                     Replacement_Path => Null_Unbounded_String));
+               Rewrite_Requests.Append
+                 (Archive.Writes.Plans.Write_Request'
+                    (Action           => Archive.Writes.Plans.Remove_Entry,
+                     Source_Entry     => Drop_Item.Id,
+                     Host_Source      => Null_Unbounded_String,
+                     Target_Path      => Null_Unbounded_String,
+                     Replacement_Path => Null_Unbounded_String));
+
+               declare
+                  Rewrite_Plan : constant Archive.Writes.Plans.Write_Plan :=
+                    Archive.Writes.Plans.Build
+                      (Source_Open.Index, Rewrite_Requests, Session => 11);
+                  Rewritten : constant Archive.Writes.Results.Publish_Result :=
+                    Archive.Writes.Dispatch.Publish
+                      (Archive.Archives.Formats.Seven_Zip_Format,
+                       Seven_Zip_Two_Rewrite,
+                       Rewrite_Plan,
+                       Source_Path => Seven_Zip_Two_Source,
+                       Overwrite => True);
+                  Reopened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+                    Archive.Archives.Readers.Dispatch.Open_File (Seven_Zip_Two_Rewrite);
+                  Kept : constant Archive.Archives.Entries.Archive_Entry :=
+                    (if Reopened.Status = Archive.Archives.Errors.Ok
+                     then Entry_For_Path (Reopened.Index, "docs/keep.txt")
+                     else (others => <>));
+                  Dropped : constant Archive.Archives.Entries.Archive_Entry :=
+                    (if Reopened.Status = Archive.Archives.Errors.Ok
+                     then Entry_For_Path (Reopened.Index, "docs/drop.txt")
+                     else (others => <>));
+                  Kept_Payload : constant Test_Stream_Result :=
+                    (if Reopened.Status = Archive.Archives.Errors.Ok
+                     then Stream_Dispatch_Payload_File
+                       (Seven_Zip_Two_Rewrite, Seven_Zip_Two_Rewrite, Kept)
+                     else Empty_Test_Stream (Archive.Archives.Errors.Invalid_Format));
+               begin
+                  Assert (Rewrite_Plan.Status = Archive.Writes.Plans.Write_Plan_Ready,
+                          "write dispatch 7z replace/remove plan is ready");
+                  Assert (Rewritten.Status = Archive.Writes.Results.Write_Completed,
+                          "write dispatch rewrites 7z source with replace and remove");
+                  Assert
+                    (Reopened.Status = Archive.Archives.Errors.Ok
+                     and then Archive.Archives.Index.Physical_Count (Reopened.Index) = 1
+                     and then Dropped.Id = Archive.Types.No_Entry,
+                     "write dispatch rewritten 7z source removes selected entry");
+                  Assert
+                    (Kept_Payload.Status = Archive.Archives.Errors.Ok
+                     and then Kept_Payload.Integrity = Archive.Archives.Entries.Verified
+                     and then Kept_Payload.Bytes_Written = 2
+                     and then Bytes_Of (Kept_Payload) (1) =
+                       Zlib.Byte (Character'Pos ('g'))
+                     and then Bytes_Of (Kept_Payload) (2) =
+                       Zlib.Byte (Character'Pos ('o')),
+                     "write dispatch rewritten 7z source replaces kept payload");
+               end;
             end;
          end;
       end;
