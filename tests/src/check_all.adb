@@ -27,8 +27,6 @@ with Tarlib.Errors;
 with Tarlib.Outputs;
 with Tarlib.Writers;
 with Zlib;
-with Zlib.BZip2_Encoder;
-with Zlib.Zstd_Encoder;
 
 procedure Check_All is
    use Ada.Strings.Unbounded;
@@ -1310,6 +1308,50 @@ procedure Check_All is
       Ada.Streams.Stream_IO.Close (File);
    end Write_Bytes;
 
+   type Standalone_File_Encoder is access procedure
+     (Input_Path      : String;
+      Output_Path     : String;
+      Max_Input_Bytes : Natural;
+      Status          : out Zlib.Status_Code);
+
+   function Generated_By_File_Encoder
+     (Payload : Zlib.Byte_Array;
+      Stem    : String;
+      Encoder : Standalone_File_Encoder)
+      return Zlib.Byte_Array
+   is
+      Input_Path  : constant String := Tests & "/obj/" & Stem & ".plain";
+      Output_Path : constant String := Tests & "/obj/" & Stem & ".encoded";
+      Status      : Zlib.Status_Code := Zlib.Ok;
+   begin
+      Write_Bytes (Input_Path, Payload);
+      Encoder.all (Input_Path, Output_Path, Payload'Length, Status);
+      if Status /= Zlib.Ok then
+         Fail ("generated " & Stem & " fixture failed");
+      end if;
+
+      declare
+         Result : constant Zlib.Byte_Array := Read_Bytes (Output_Path);
+      begin
+         if Ada.Directories.Exists (Input_Path) then
+            Ada.Directories.Delete_File (Input_Path);
+         end if;
+         if Ada.Directories.Exists (Output_Path) then
+            Ada.Directories.Delete_File (Output_Path);
+         end if;
+         return Result;
+      end;
+   exception
+      when others =>
+         if Ada.Directories.Exists (Input_Path) then
+            Ada.Directories.Delete_File (Input_Path);
+         end if;
+         if Ada.Directories.Exists (Output_Path) then
+            Ada.Directories.Delete_File (Output_Path);
+         end if;
+         raise;
+   end Generated_By_File_Encoder;
+
    function CRC32_Compute (Bytes : Zlib.Byte_Array) return Archive.Types.CRC32_Value is
       State : Archive.Verification.CRC32.CRC32_State := Archive.Verification.CRC32.Initial;
    begin
@@ -1798,35 +1840,24 @@ procedure Check_All is
    end Generated_Xz_Unsupported_Check;
 
    function Generated_Xz return Zlib.Byte_Array is
-      Status : Zlib.Status_Code := Zlib.Ok;
-      Result : constant Zlib.Byte_Array := Zlib.XZ_LZMA2 (Payload_ABC, Status);
    begin
-      if Status /= Zlib.Ok then
-         Fail ("generated xz fixture failed");
-      end if;
-      return Result;
+      return
+        Generated_By_File_Encoder
+          (Payload_ABC, "xz", Zlib.XZ_LZMA2_File'Access);
    end Generated_Xz;
 
    function Generated_BZip2 return Zlib.Byte_Array is
-      Status : Zlib.Status_Code := Zlib.Ok;
-      Result : constant Zlib.Byte_Array :=
-        Zlib.BZip2_Encoder.Encode (Payload_ABC, Status => Status);
    begin
-      if Status /= Zlib.Ok then
-         Fail ("generated bzip2 fixture failed");
-      end if;
-      return Result;
+      return
+        Generated_By_File_Encoder
+          (Payload_ABC, "bzip2", Zlib.BZip2_File'Access);
    end Generated_BZip2;
 
    function Generated_Zstd return Zlib.Byte_Array is
-      Status : Zlib.Status_Code := Zlib.Ok;
-      Result : constant Zlib.Byte_Array :=
-        Zlib.Zstd_Encoder.Encode (Payload_ABC, Status);
    begin
-      if Status /= Zlib.Ok then
-         Fail ("generated zstandard fixture failed");
-      end if;
-      return Result;
+      return
+        Generated_By_File_Encoder
+          (Payload_ABC, "zstd", Zlib.Zstd_File'Access);
    end Generated_Zstd;
 
    function Generated_Seven_Zip return Zlib.Byte_Array is
