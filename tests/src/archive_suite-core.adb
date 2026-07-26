@@ -893,6 +893,34 @@ package body Archive_Suite.Core is
                   Assert (Status = Zlib.Ok, "zip bzip2 fixture payload compression succeeds");
                   return Bzip2;
                end;
+            when 14 =>
+               declare
+                  Input_Path : constant String := "obj/zip-external-lzma-input.bin";
+                  ZIP_Method : Interfaces.Unsigned_16 := 0;
+                  ZIP_CRC : Interfaces.Unsigned_32 := 0;
+                  ZIP_Uncompressed : Interfaces.Unsigned_64 := 0;
+               begin
+                  Ada.Directories.Create_Path ("obj");
+                  Write_Bytes (Input_Path, Payload);
+                  declare
+                     LZMA : constant Zlib.Byte_Array :=
+                       Zlib.Compress_ZIP_External_File
+                         (Input_Path,
+                          "LZMA",
+                          ZIP_Method,
+                          ZIP_CRC,
+                          ZIP_Uncompressed,
+                          Status);
+                  begin
+                     Assert (Status = Zlib.Ok, "zip lzma fixture payload compression succeeds");
+                     Assert (Natural (ZIP_Method) = 14, "zip lzma fixture method id");
+                     Assert (Archive.Types.CRC32_Value (ZIP_CRC) = CRC32_Compute (Payload),
+                             "zip lzma fixture crc");
+                     Assert (ZIP_Uncompressed = Interfaces.Unsigned_64 (Payload'Length),
+                             "zip lzma fixture uncompressed size");
+                     return LZMA;
+                  end;
+               end;
             when 20 | 93 =>
                declare
                   Zstd : constant Zlib.Byte_Array :=
@@ -902,7 +930,7 @@ package body Archive_Suite.Core is
                   return Zstd;
                end;
             when others =>
-               Assert (False, "large zip fixture supports stored, deflate, bzip2, or zstd");
+               Assert (False, "large zip fixture supports stored, deflate, bzip2, lzma, or zstd");
                return Payload;
          end case;
       end Compressed_For_Method;
@@ -1069,6 +1097,8 @@ package body Archive_Suite.Core is
          Deflate_CRC : Archive.Verification.CRC32.CRC32_State := Archive.Verification.CRC32.Initial;
          Bzip2_Bytes : Natural := 0;
          Bzip2_CRC : Archive.Verification.CRC32.CRC32_State := Archive.Verification.CRC32.Initial;
+         LZMA_Bytes : Natural := 0;
+         LZMA_CRC : Archive.Verification.CRC32.CRC32_State := Archive.Verification.CRC32.Initial;
          Zstd_Bytes : Natural := 0;
          Zstd_CRC : Archive.Verification.CRC32.CRC32_State := Archive.Verification.CRC32.Initial;
 
@@ -1101,6 +1131,15 @@ package body Archive_Suite.Core is
             Continue := True;
          end Consume_Bzip2;
 
+         procedure Consume_LZMA
+           (Bytes : Zlib.Byte_Array;
+            Continue : in out Boolean) is
+         begin
+            LZMA_Bytes := LZMA_Bytes + Bytes'Length;
+            Archive.Verification.CRC32.Update (LZMA_CRC, Bytes);
+            Continue := True;
+         end Consume_LZMA;
+
          procedure Consume_Zstd
            (Bytes : Zlib.Byte_Array;
             Continue : in out Boolean) is
@@ -1117,6 +1156,8 @@ package body Archive_Suite.Core is
          Write_Bytes (Path, Stored_Zip_With_Payload (Plain));
          Write_Bytes (Deflate_Path, Stored_Zip_With_Payload (Plain, Method => 8));
          Write_Bytes (Bzip2_Path, Stored_Zip_With_Payload (Plain, Method => 12));
+         Write_Bytes ("obj/zip-stream-lzma-payload.zip",
+                      Stored_Zip_With_Payload (Plain, Method => 14));
          Write_Bytes (Zstd_Path, Stored_Zip_With_Payload (Plain, Method => 20));
 
          declare
@@ -1176,6 +1217,28 @@ package body Archive_Suite.Core is
             Assert
               (Archive.Verification.CRC32.Final (Bzip2_CRC) = CRC32_Compute (Plain),
                "zip bzip2 stream bytes match expected crc");
+         end;
+
+         declare
+            LZMA_Path : constant String := "obj/zip-stream-lzma-payload.zip";
+            Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
+              Index_Zip (Read_All_Bytes (LZMA_Path));
+            Streamed : constant Archive.Archives.Readers.Zip.Stream_Result :=
+              Archive.Archives.Readers.Zip.Stream_Payload_File
+                (LZMA_Path, Parsed.Entries.Element (1), Consume_LZMA'Access);
+         begin
+            Assert (Parsed.Status = Archive.Archives.Errors.Ok, "zip lzma method parses");
+            Assert
+              (Parsed.Entries.Element (1).Method =
+                 Archive.Archives.Entries.LZMA_Compression,
+               "zip lzma method maps to supported compression");
+            Assert (Streamed.Status = Archive.Archives.Errors.Ok, "zip lzma method streams");
+            Assert (Streamed.Integrity = Archive.Archives.Entries.Verified,
+                    "zip lzma method verifies crc");
+            Assert (LZMA_Bytes = Plain'Length, "zip lzma stream byte count matches payload");
+            Assert
+              (Archive.Verification.CRC32.Final (LZMA_CRC) = CRC32_Compute (Plain),
+               "zip lzma stream bytes match expected crc");
          end;
 
          declare

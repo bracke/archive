@@ -11,6 +11,7 @@ that registry and the AUnit format tests.
 | ZIP stored | supported through authoritative central directory plus local-header validation | supported for stored payloads | supported with CRC-32 before payload publication | supported through safe extraction planning/execution | supported by save-in-place and save-as publication through the ZIP adapter | archive ZIP adapter |
 | ZIP DEFLATE | supported through authoritative central directory plus local-header validation | supported through raw-DEFLATE zlib adapter | supported with CRC-32 after inflate before payload publication | supported through safe extraction planning/execution | supported by save-in-place and save-as publication through the ZIP adapter | archive ZIP adapter + `zlib` |
 | ZIP BZip2 | supported through authoritative central directory plus local-header validation | supported through the zlib ZIP external-method bridge | supported with CRC-32 after decode before payload publication | supported through safe extraction planning/execution | not emitted directly; save publication uses the configured ZIP stored/Deflate writer path | archive ZIP adapter + `zlib` |
+| ZIP LZMA | supported for streams emitted by the zlib ZIP external-method bridge | supported through the zlib ZIP external-method bridge | supported with CRC-32 after decode before payload publication | supported through safe extraction planning/execution | not emitted directly; save publication uses the configured ZIP stored/Deflate writer path | archive ZIP adapter + `zlib` |
 | ZIP Zstandard | supported through authoritative central directory plus local-header validation | supported through the zlib ZIP external-method bridge | supported with CRC-32 after decode before payload publication | supported through safe extraction planning/execution | not emitted directly; save publication uses the configured ZIP stored/Deflate writer path | archive ZIP adapter + `zlib` |
 | gzip | supported as one logical regular-file archive | supported through gzip-wrapped zlib adapter | supported by zlib gzip trailer checks; bounded header CRC is validated during indexing | supported through safe extraction planning/execution | supported by gzip writer adapter | `zlib` |
 | 7z | supported for the native zlib-backed subset | supported through `zlib` native 7z extraction | supported through zlib header, size, CRC, and method validation | supported through safe extraction planning/execution | supported by stored file-list publication through `zlib` | `zlib` |
@@ -19,7 +20,7 @@ that registry and the AUnit format tests.
 
 Current covered edge cases include ZIP comments, Unicode path extra fields,
 ZIP64 per-entry size extras within host bounds, data descriptors with and
-without signatures, ZIP BZip2 and Zstandard payload decoding through zlib,
+without signatures, ZIP BZip2, LZMA, and Zstandard payload decoding through zlib,
 encrypted-entry detection, unsupported compression-method reporting,
 multi-disk rejection, duplicate ZIP names, explicit ZIP directories,
 gzip optional fields, gzip header CRC, unsafe gzip filename fallback, truncated
@@ -40,8 +41,8 @@ Recognized but unsupported:
 - AR
 - split ZIP / spanning ZIP
 
-Unsupported ZIP methods, including ZIP PPMd, remain visible as unsupported
-entries where the central directory can be safely parsed. Broader 7z layouts outside the native subset
+Unsupported ZIP methods, including ZIP PPMd and non-bridge LZMA variants, remain
+visible as unsupported entries where the central directory can be safely parsed. Broader 7z layouts outside the native subset
 accepted by `zlib` fail closed with typed unsupported-method or invalid-format
 results.
 

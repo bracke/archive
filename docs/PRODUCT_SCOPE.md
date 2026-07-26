@@ -55,7 +55,7 @@ Required V1 read workflows:
 | TAR.GZ / TGZ | required | required | required | required | `zlib` + `tarlib` |
 | ZIP stored | required | required | required | required | archive ZIP adapter |
 | ZIP DEFLATE | required | required | required | required | archive ZIP adapter + `zlib` |
-| ZIP BZip2 / Zstandard | supported | supported | supported | supported | archive ZIP adapter + `zlib` |
+| ZIP BZip2 / LZMA / Zstandard | supported | supported | supported | supported | archive ZIP adapter + `zlib` |
 | gzip | required | required | required | required | `zlib` |
 
 Required V1 write workflows:
