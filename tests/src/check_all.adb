@@ -1596,6 +1596,23 @@ procedure Check_All is
       return Bytes;
    end Generated_Cab;
 
+   function Generated_Ar return Zlib.Byte_Array is
+      Bytes : Zlib.Byte_Array (1 .. 72) :=
+        [others => Zlib.Byte (Character'Pos (' '))];
+   begin
+      Put_Text (Bytes, 0, "!<arch>" & ASCII.LF);
+      Put_Text (Bytes, 8, "a.txt/");
+      Put_Text (Bytes, 24, "0");
+      Put_Text (Bytes, 36, "0");
+      Put_Text (Bytes, 42, "0");
+      Put_Text (Bytes, 48, "100644");
+      Put_Text (Bytes, 56, "3");
+      Put_Text (Bytes, 66, "`" & ASCII.LF);
+      Put_Text (Bytes, 68, "abc");
+      Bytes (72) := Zlib.Byte (Character'Pos (ASCII.LF));
+      return Bytes;
+   end Generated_Ar;
+
    function Generated_Xz_Unsupported_Check return Zlib.Byte_Array is
       Status : Zlib.Status_Code := Zlib.Ok;
       Result : Zlib.Byte_Array := Zlib.XZ_LZMA2 (Payload_ABC, Status);
@@ -2042,6 +2059,8 @@ procedure Check_All is
          return Generated_Tar_Duplicate_Path;
       elsif Id = "cab-unsupported-method" then
          return Generated_Cab (2);
+      elsif Id = "ar-basic" then
+         return Generated_Ar;
       elsif Id = "xz-unsupported-check" then
          return Generated_Xz_Unsupported_Check;
       elsif Id = "xz-basic" then
@@ -2299,6 +2318,7 @@ procedure Check_All is
       Has_Gzip : Boolean := False;
       Has_Gzip_Empty : Boolean := False;
       Has_Tar_Duplicate : Boolean := False;
+      Has_Ar : Boolean := False;
       Has_Cab_Unsupported : Boolean := False;
       Has_Xz_Unsupported : Boolean := False;
       Has_Xz : Boolean := False;
@@ -2353,6 +2373,8 @@ procedure Check_All is
                      Has_Tar_Gzip := True;
                   elsif Id = "tar-duplicate-path" then
                      Has_Tar_Duplicate := True;
+                  elsif Id = "ar-basic" then
+                     Has_Ar := True;
                   elsif Id = "cab-unsupported-method" then
                      Has_Cab_Unsupported := True;
                   elsif Id = "xz-unsupported-check" then
@@ -2426,6 +2448,7 @@ procedure Check_All is
         or else not Has_Tar or else not Has_Tar_Gzip or else not Has_Zip_Stored
         or else not Has_Zip_Deflate or else not Has_Gzip
         or else not Has_Tar_Duplicate
+        or else not Has_Ar
         or else not Has_Cab_Unsupported
         or else not Has_Xz_Unsupported
         or else not Has_Xz
