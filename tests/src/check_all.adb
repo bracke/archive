@@ -650,6 +650,7 @@ procedure Check_All is
       Require_Catalog_Key (Catalog, "command.unavailable.no_pending_changes");
       Require_Catalog_Key (Catalog, "command.unavailable.not_ready");
       Require_Catalog_Key (Catalog, "command.unavailable.no_recent_archives");
+      Require_Catalog_Key (Catalog, "command.unavailable.unsupported_write_action");
       Require_Catalog_Key (Catalog, "command.unavailable.read_only_archive");
       Require_Catalog_Key (Catalog, "menu.file");
       Require_Catalog_Key (Catalog, "menu.edit");

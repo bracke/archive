@@ -83,8 +83,8 @@ Acceptance:
 
 - Commands are side-effect-free during availability checks.
 - Catalog contains every command name, description, and unavailable reason.
-- AUnit covers command availability for no archive, read-only format, writable
-  format, dirty session, and active operation states.
+- AUnit covers command availability for no archive, unsupported write format,
+  writable format, dirty session, and active operation states.
 
 ## Phase 3: Archive Session And Mutation Model
 
