@@ -13,6 +13,7 @@ that registry and the AUnit format tests.
 | ZIP BZip2 | supported through authoritative central directory plus local-header validation | supported through the zlib ZIP external-method bridge | supported with CRC-32 after decode before payload publication | supported through safe extraction planning/execution | supported for host-file publication and source-aware rewrite through the zlib ZIP external-method bridge | archive ZIP adapter + `zlib` |
 | ZIP LZMA | supported for streams emitted by the zlib ZIP external-method bridge | supported through the zlib ZIP external-method bridge | supported with CRC-32 after decode before payload publication | supported through safe extraction planning/execution | supported for host-file publication and source-aware rewrite through the zlib ZIP external-method bridge | archive ZIP adapter + `zlib` |
 | ZIP Zstandard | supported through authoritative central directory plus local-header validation | supported through the zlib ZIP external-method bridge | supported with CRC-32 after decode before payload publication | supported through safe extraction planning/execution | supported for host-file publication and source-aware rewrite through the zlib ZIP external-method bridge | archive ZIP adapter + `zlib` |
+| ZIP PPMd | supported for default-parameter PPMd streams emitted by the zlib ZIP external-method bridge | supported through the zlib ZIP external-method bridge | supported with CRC-32 after decode before payload publication | supported through safe extraction planning/execution | supported for host-file publication and source-aware rewrite through the zlib ZIP external-method bridge | archive ZIP adapter + `zlib` |
 | gzip | supported as one logical regular-file archive | supported through gzip-wrapped zlib adapter | supported by zlib gzip trailer checks; bounded header CRC is validated during indexing | supported through safe extraction planning/execution | supported by gzip writer adapter | `zlib` |
 | 7z | supported for native zlib-backed layouts, including bounded `.7z.001` first-volume reassembly | supported through `zlib` native 7z extraction, including bounded multi-volume reassembly | supported through zlib header, size, CRC, method, and joined-volume limit validation | supported through safe extraction planning/execution | supported by Deflate file-list publication through `zlib` | `zlib` |
 | bzip2 | supported as one logical regular-file archive | supported through `zlib` bzip2 decoding | supported by bzip2 block and combined CRC validation | supported through safe extraction planning/execution | supported by bzip2 writer adapter | `zlib` |
@@ -25,7 +26,7 @@ that registry and the AUnit format tests.
 
 Current covered edge cases include ZIP comments, Unicode path extra fields,
 ZIP64 per-entry size extras within host bounds, data descriptors with and
-without signatures, ZIP BZip2, LZMA, and Zstandard payload decoding through zlib,
+ without signatures, ZIP BZip2, LZMA, Zstandard, and default-parameter PPMd payload decoding through zlib,
 ZIP traditional and strong encrypted-entry detection, unsupported compression-method reporting,
 multi-disk rejection, duplicate ZIP names, explicit ZIP directories,
 gzip optional fields, gzip header CRC, unsafe gzip filename fallback, truncated
@@ -36,16 +37,16 @@ native layouts, bounded 7z first-volume reassembly for `.7z.001` sources,
 supported native 7z layouts in documentation and validation,
 and zlib-backed Deflate 7z file-list publication, zlib-backed bzip2 single-file
 decoding and publication, zlib-backed Zstandard single-file decoding and
-publication, zlib-backed XZ one-block LZMA2 decoding and publication, stored Unix AR member indexing, payload streaming, and rewrite publication, CPIO newc member indexing, payload streaming, and rewrite publication, bounded stored and MSZIP CAB folder indexing, payload streaming, and stored-cabinet rewrite publication, and ISO 9660 directory-record indexing, stored file-extent streaming, and flat-image rewrite publication.
+publication, zlib-backed XZ one-block LZMA2 decoding and publication, supported ZIP PPMd method 98 bridge decoding and publication, stored Unix AR member indexing, payload streaming, and rewrite publication, CPIO newc member indexing, payload streaming, and rewrite publication, bounded stored and MSZIP CAB folder indexing, payload streaming, and stored-cabinet rewrite publication, and ISO 9660 directory-record indexing, stored file-extent streaming, and flat-image rewrite publication.
 
 Recognized but unsupported:
 
 - RAR
 - split ZIP / spanning ZIP
 
-Unsupported ZIP methods, including structurally recognized ZIP PPMd method 98
-and non-bridge LZMA variants, remain visible as unsupported entries where the
-central directory can be safely parsed.
+Unsupported ZIP methods, including non-bridge PPMd variants and non-bridge
+LZMA variants, remain visible as unsupported entries where the central
+directory can be safely parsed.
 7z layouts outside the supported native layout set accepted by `zlib` fail closed
 with typed unsupported-method or invalid-format results.
 XZ layouts outside the supported one-stream, one-block LZMA2 subset fail closed

@@ -874,7 +874,7 @@ procedure Check_All is
          "ISO 9660 directory-record indexing, stored file-extent streaming, "
          & "and flat-image rewrite publication");
       Require_Document_Text
-        ("docs/FORMAT_SUPPORT.md", "structurally recognized ZIP PPMd method 98");
+        ("docs/FORMAT_SUPPORT.md", "supported ZIP PPMd method 98 bridge decoding and publication");
       Require_Document_Text
         ("docs/FORMAT_SUPPORT.md", "ZIP traditional and strong encrypted-entry detection");
       Require_Document_Text
@@ -3364,13 +3364,24 @@ begin
    Check_Corpus;
    Check_Dependency_Licenses;
    Run ("root build", Root, Alr, [1 => new String'("build")]);
-   Run ("tests build", Tests, Alr, [1 => new String'("build")]);
+   Run ("tests build", Tests, Alr,
+        [1 => new String'("build"),
+         2 => new String'("--"),
+         3 => new String'("-f")]);
    Run ("AUnit tests", Tests, "./bin/archive_tests", []);
    Run ("integration tests", Tests, "./bin/archive_tests", []);
    Run ("headless smoke", Root, "./bin/archive", [1 => new String'("--headless-smoke")]);
    Run ("headless gui", Root, "./bin/archive", [1 => new String'("--headless-gui")]);
-   Run ("root release build", Root, Alr, [1 => new String'("build"), 2 => new String'("--release")]);
-   Run ("tests release build", Tests, Alr, [1 => new String'("build"), 2 => new String'("--release")]);
+   Run ("root release build", Root, Alr,
+        [1 => new String'("build"),
+         2 => new String'("--release"),
+         3 => new String'("--"),
+         4 => new String'("-f")]);
+   Run ("tests release build", Tests, Alr,
+        [1 => new String'("build"),
+         2 => new String'("--release"),
+         3 => new String'("--"),
+         4 => new String'("-f")]);
    Run
      ("GNATprove",
       Root,

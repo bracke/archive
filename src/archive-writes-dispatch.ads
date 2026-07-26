@@ -8,7 +8,8 @@ package Archive.Writes.Dispatch is
       Zip_Deflate_Method,
       Zip_BZip2_Method,
       Zip_LZMA_Method,
-      Zip_Zstd_Method);
+      Zip_Zstd_Method,
+      Zip_PPMd_Method);
 
    function Publish
      (Format           : Archive.Archives.Formats.Format_Id;

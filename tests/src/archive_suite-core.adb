@@ -1286,8 +1286,36 @@ package body Archive_Suite.Core is
                   Assert (Status = Zlib.Ok, "zip zstd fixture payload compression succeeds");
                   return Zstd;
                end;
+            when 98 =>
+               declare
+                  Input_Path : constant String := "obj/zip-external-ppmd-input.bin";
+                  ZIP_Method : Interfaces.Unsigned_16 := 0;
+                  ZIP_CRC : Interfaces.Unsigned_32 := 0;
+                  ZIP_Uncompressed : Interfaces.Unsigned_64 := 0;
+               begin
+                  Ada.Directories.Create_Path ("obj");
+                  Write_Bytes (Input_Path, Payload);
+                  declare
+                     PPMd : constant Zlib.Byte_Array :=
+                       Zlib.Compress_ZIP_External_File
+                         (Input_Path,
+                          "PPMd",
+                          ZIP_Method,
+                          ZIP_CRC,
+                          ZIP_Uncompressed,
+                          Status);
+                  begin
+                     Assert (Status = Zlib.Ok, "zip ppmd fixture payload compression succeeds");
+                     Assert (Natural (ZIP_Method) = 98, "zip ppmd fixture method id");
+                     Assert (Archive.Types.CRC32_Value (ZIP_CRC) = CRC32_Compute (Payload),
+                             "zip ppmd fixture crc");
+                     Assert (ZIP_Uncompressed = Interfaces.Unsigned_64 (Payload'Length),
+                             "zip ppmd fixture uncompressed size");
+                     return PPMd;
+                  end;
+               end;
             when others =>
-               Assert (False, "large zip fixture supports stored, deflate, bzip2, lzma, or zstd");
+               Assert (False, "large zip fixture supports stored, deflate, bzip2, lzma, zstd, or ppmd");
                return Payload;
          end case;
       end Compressed_For_Method;
@@ -1445,6 +1473,7 @@ package body Archive_Suite.Core is
          Deflate_Path : constant String := "obj/zip-stream-deflate-payload.zip";
          Bzip2_Path : constant String := "obj/zip-stream-bzip2-payload.zip";
          Zstd_Path : constant String := "obj/zip-stream-zstd-payload.zip";
+         PPMd_Path : constant String := "obj/zip-stream-ppmd-payload.zip";
          Plain : Zlib.Byte_Array (1 .. 70_000);
          Chunk_Count : Natural := 0;
          Byte_Count  : Natural := 0;
@@ -1458,6 +1487,8 @@ package body Archive_Suite.Core is
          LZMA_CRC : Archive.Verification.CRC32.CRC32_State := Archive.Verification.CRC32.Initial;
          Zstd_Bytes : Natural := 0;
          Zstd_CRC : Archive.Verification.CRC32.CRC32_State := Archive.Verification.CRC32.Initial;
+         PPMd_Bytes : Natural := 0;
+         PPMd_CRC : Archive.Verification.CRC32.CRC32_State := Archive.Verification.CRC32.Initial;
 
          procedure Consume
            (Bytes : Zlib.Byte_Array;
@@ -1505,6 +1536,15 @@ package body Archive_Suite.Core is
             Archive.Verification.CRC32.Update (Zstd_CRC, Bytes);
             Continue := True;
          end Consume_Zstd;
+
+         procedure Consume_PPMd
+           (Bytes : Zlib.Byte_Array;
+            Continue : in out Boolean) is
+         begin
+            PPMd_Bytes := PPMd_Bytes + Bytes'Length;
+            Archive.Verification.CRC32.Update (PPMd_CRC, Bytes);
+            Continue := True;
+         end Consume_PPMd;
       begin
          for Index in Plain'Range loop
             Plain (Index) := Zlib.Byte (Index mod 251);
@@ -1516,6 +1556,7 @@ package body Archive_Suite.Core is
          Write_Bytes ("obj/zip-stream-lzma-payload.zip",
                       Stored_Zip_With_Payload (Plain, Method => 14));
          Write_Bytes (Zstd_Path, Stored_Zip_With_Payload (Plain, Method => 20));
+         Write_Bytes (PPMd_Path, Stored_Zip_With_Payload (Plain, Method => 98));
 
          declare
             Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
@@ -1617,6 +1658,27 @@ package body Archive_Suite.Core is
             Assert
               (Archive.Verification.CRC32.Final (Zstd_CRC) = CRC32_Compute (Plain),
                "zip zstd stream bytes match expected crc");
+         end;
+
+         declare
+            Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
+              Index_Zip (Read_All_Bytes (PPMd_Path));
+            Streamed : constant Archive.Archives.Readers.Zip.Stream_Result :=
+              Archive.Archives.Readers.Zip.Stream_Payload_File
+                (PPMd_Path, Parsed.Entries.Element (1), Consume_PPMd'Access);
+         begin
+            Assert (Parsed.Status = Archive.Archives.Errors.Ok, "zip ppmd method parses");
+            Assert
+              (Parsed.Entries.Element (1).Method =
+                 Archive.Archives.Entries.PPMd_Compression,
+               "zip ppmd method maps to supported compression");
+            Assert (Streamed.Status = Archive.Archives.Errors.Ok, "zip ppmd method streams");
+            Assert (Streamed.Integrity = Archive.Archives.Entries.Verified,
+                    "zip ppmd method verifies crc");
+            Assert (PPMd_Bytes = Plain'Length, "zip ppmd stream byte count matches payload");
+            Assert
+              (Archive.Verification.CRC32.Final (PPMd_CRC) = CRC32_Compute (Plain),
+               "zip ppmd stream bytes match expected crc");
          end;
       end;
 
@@ -6769,6 +6831,7 @@ package body Archive_Suite.Core is
       Zip_Bzip2_Target : constant String := Root & "/dispatch-stream-bzip2.zip";
       Zip_LZMA_Target : constant String := Root & "/dispatch-stream-lzma.zip";
       Zip_Zstd_Target : constant String := Root & "/dispatch-stream-zstd.zip";
+      Zip_PPMd_Target : constant String := Root & "/dispatch-stream-ppmd.zip";
       Tar_Gz_Target : constant String := Root & "/dispatch-stream.tar.gz";
       Seven_Zip_Target : constant String := Root & "/dispatch-stream.7z";
       Seven_Zip_Rewrite_Target : constant String := Root & "/dispatch-rewrite.7z";
@@ -6857,6 +6920,9 @@ package body Archive_Suite.Core is
       end if;
       if Ada.Directories.Exists (Zip_Zstd_Target) then
          Ada.Directories.Delete_File (Zip_Zstd_Target);
+      end if;
+      if Ada.Directories.Exists (Zip_PPMd_Target) then
+         Ada.Directories.Delete_File (Zip_PPMd_Target);
       end if;
       if Ada.Directories.Exists (Tar_Gz_Target) then
          Ada.Directories.Delete_File (Tar_Gz_Target);
@@ -6979,6 +7045,12 @@ package body Archive_Suite.Core is
               Zip_Zstd_Target,
               Plan,
               Method => Archive.Writes.Dispatch.Zip_Zstd_Method);
+         Zip_PPMd_Published : constant Archive.Writes.Results.Publish_Result :=
+           Archive.Writes.Dispatch.Publish
+             (Archive.Archives.Formats.Zip_Format,
+              Zip_PPMd_Target,
+              Plan,
+              Method => Archive.Writes.Dispatch.Zip_PPMd_Method);
          Tar_Gz_Published : constant Archive.Writes.Results.Publish_Result :=
            Archive.Writes.Dispatch.Publish
              (Archive.Archives.Formats.Tar_GZip_Format,
@@ -7027,6 +7099,8 @@ package body Archive_Suite.Core is
            Archive.Archives.Readers.Dispatch.Open_File (Zip_LZMA_Target);
          Zip_Zstd_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
            Archive.Archives.Readers.Dispatch.Open_File (Zip_Zstd_Target);
+         Zip_PPMd_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+           Archive.Archives.Readers.Dispatch.Open_File (Zip_PPMd_Target);
          Tar_Gz_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
            Archive.Archives.Readers.Dispatch.Open_File
              (Tar_Gz_Target, Source_Name => Tar_Gz_Target, Retain_Backing => True);
@@ -7072,6 +7146,9 @@ package body Archive_Suite.Core is
            (Zip_Zstd_Published.Status = Archive.Writes.Results.Write_Completed,
             "write dispatch publishes zip zstd payload through zlib");
          Assert
+           (Zip_PPMd_Published.Status = Archive.Writes.Results.Write_Completed,
+            "write dispatch publishes zip ppmd payload through zlib");
+         Assert
            (Tar_Gz_Published.Status = Archive.Writes.Results.Write_Completed,
             "write dispatch streams tar.gz publication to file");
          Assert
@@ -7114,6 +7191,11 @@ package body Archive_Suite.Core is
             and then Method_For (Zip_Zstd_Opened.Index, "docs/readme.txt") =
               Archive.Archives.Entries.Zstd_Compression,
             "write dispatch zip zstd publication reopens with method 20 or 93");
+         Assert
+           (Zip_PPMd_Opened.Status = Archive.Archives.Errors.Ok
+            and then Method_For (Zip_PPMd_Opened.Index, "docs/readme.txt") =
+              Archive.Archives.Entries.PPMd_Compression,
+            "write dispatch zip ppmd publication reopens with method 98");
          Assert
            (Tar_Gz_Opened.Status = Archive.Archives.Errors.Ok
             and then Tar_Gz_Opened.Format = Archive.Archives.Formats.Tar_GZip_Format,

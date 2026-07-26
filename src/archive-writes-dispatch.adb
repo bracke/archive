@@ -58,8 +58,15 @@ package body Archive.Writes.Dispatch is
                   Source_Name => Source_Name,
                   Overwrite => Overwrite,
                   Cancelled => Cancelled);
-            else
+            elsif Method = Zip_Zstd_Method then
                return Archive.Writes.Execution.Publish_Zip_Zstd
+                 (Destination_Path, Plan,
+                  Source_Path => Source_Path,
+                  Source_Name => Source_Name,
+                  Overwrite => Overwrite,
+                  Cancelled => Cancelled);
+            else
+               return Archive.Writes.Execution.Publish_Zip_PPMd
                  (Destination_Path, Plan,
                   Source_Path => Source_Path,
                   Source_Name => Source_Name,

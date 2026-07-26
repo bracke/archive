@@ -1163,6 +1163,23 @@ package body Archive.Writes.Execution is
          Overwrite => Overwrite, Cancelled => Cancelled);
    end Publish_Zip_Zstd;
 
+   function Publish_Zip_PPMd
+     (Destination_Path : String;
+      Plan             : Archive.Writes.Plans.Write_Plan;
+      Source_Path      : String := "";
+      Source_Name      : String := "";
+      Overwrite        : Boolean := False;
+      Cancelled        : Boolean := False)
+      return Archive.Writes.Results.Publish_Result
+   is
+   begin
+      return Publish_Zip_External
+        (Destination_Path, Plan, "PPMd",
+         Source_Path => Source_Path,
+         Source_Name => Source_Name,
+         Overwrite => Overwrite, Cancelled => Cancelled);
+   end Publish_Zip_PPMd;
+
    function Publish_Tar_Internal
      (Destination_Path : String;
       Plan             : Archive.Writes.Plans.Write_Plan;

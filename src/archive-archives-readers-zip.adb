@@ -931,6 +931,7 @@ package body Archive.Archives.Readers.Zip is
         | Archive.Archives.Entries.BZip2_Compression
         | Archive.Archives.Entries.LZMA_Compression
         | Archive.Archives.Entries.Zstd_Compression
+        | Archive.Archives.Entries.PPMd_Compression
       then
          return (Status => Archive.Archives.Errors.Unsupported_Method,
                  Integrity => Archive.Archives.Entries.Not_Available,

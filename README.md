@@ -25,7 +25,7 @@ Current V1 support:
 | CAB stored / MSZIP | supported for bounded single-folder archives | supported | supported | supported | supported by stored-cabinet rewrite publication | archive CAB adapter + `zlib` |
 | ISO 9660 | supported for stored directory records and files | supported | supported | supported | supported by flat-image rewrite publication | archive ISO adapter |
 
-Recognized but unsupported in V1: RAR, split ZIP, multi-volume ZIP, encrypted entries outside supported 7z layouts, unsupported XZ layouts, unsupported CAB folder methods, ZIP PPMd, and unsupported ZIP methods or 7z layouts.
+Recognized but unsupported in V1: RAR, split ZIP, multi-volume ZIP, encrypted entries outside supported 7z layouts, unsupported XZ layouts, unsupported CAB folder methods, unsupported non-bridge ZIP PPMd variants, and unsupported ZIP methods or 7z layouts.
 
 ## Current Implementation Status
 
