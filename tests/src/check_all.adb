@@ -1866,6 +1866,15 @@ procedure Check_All is
       return Bytes;
    end Generated_Zip_Bad_Local_Signature;
 
+   function Generated_Zip_Multi_Disk return Zlib.Byte_Array is
+      Bytes       : Zlib.Byte_Array := Generated_Zip;
+      EOCD_Offset : constant Natural := Bytes'Length - 22;
+   begin
+      Put16 (Bytes, EOCD_Offset + 4, 1);
+      Put16 (Bytes, EOCD_Offset + 6, 1);
+      return Bytes;
+   end Generated_Zip_Multi_Disk;
+
    function Generated_Fixture (Id : String) return Zlib.Byte_Array is
    begin
       if Id = "tar-basic" then
@@ -1908,6 +1917,8 @@ procedure Check_All is
          return Generated_Zip_Local_Size_Mismatch;
       elsif Id = "zip-bad-local-signature" then
          return Generated_Zip_Bad_Local_Signature;
+      elsif Id = "zip-multi-disk" then
+         return Generated_Zip_Multi_Disk;
       elsif Id = "gzip-bad-header-crc" then
          return Generated_Gzip_Bad_Header_CRC;
       elsif Id = "gzip-bad-trailer" then
@@ -1979,6 +1990,10 @@ procedure Check_All is
       if Id = "zip-bad-crc" then
          if Opened.Status /= Archive.Archives.Errors.Ok then
             Fail ("generated bad-CRC ZIP should remain indexable");
+         end if;
+      elsif Id = "zip-multi-disk" then
+         if Opened.Status /= Archive.Archives.Errors.Unsupported_Format then
+            Fail ("generated multi-disk ZIP should be rejected as unsupported");
          end if;
       elsif Opened.Status /= Archive.Archives.Errors.Ok then
          Fail ("generated fixture " & Id & " does not reopen through dispatch");
@@ -2084,6 +2099,7 @@ procedure Check_All is
       Has_Zip_Bad_CRC : Boolean := False;
       Has_Zip_Unsupported : Boolean := False;
       Has_Zip_Encrypted : Boolean := False;
+      Has_Zip_Multi_Disk : Boolean := False;
       Has_Gzip_Bad_Trailer : Boolean := False;
    begin
       if not Ada.Directories.Exists (Manifest) then
@@ -2135,6 +2151,8 @@ procedure Check_All is
                      Has_Zip_Unsupported := True;
                   elsif Id = "zip-encrypted" then
                      Has_Zip_Encrypted := True;
+                  elsif Id = "zip-multi-disk" then
+                     Has_Zip_Multi_Disk := True;
                   elsif Id = "gzip-bad-trailer" then
                      Has_Gzip_Bad_Trailer := True;
                   end if;
@@ -2158,6 +2176,7 @@ procedure Check_All is
         or else not Has_Gzip_Empty
         or else not Has_Zip_Bad_CRC
         or else not Has_Zip_Unsupported or else not Has_Zip_Encrypted
+        or else not Has_Zip_Multi_Disk
         or else not Has_Gzip_Bad_Trailer
       then
          Fail (Manifest & ": fixture manifest is missing required archive matrix entries");

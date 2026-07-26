@@ -1208,6 +1208,15 @@ package body Archive_Suite.Core is
       end if;
    end One_File_Zip;
 
+   function Multi_Disk_Zip return Zlib.Byte_Array is
+      Bytes       : Zlib.Byte_Array := One_File_Zip;
+      EOCD_Offset : constant Natural := Bytes'Length - 22;
+   begin
+      Put16 (Bytes, EOCD_Offset + 4, 1);
+      Put16 (Bytes, EOCD_Offset + 6, 1);
+      return Bytes;
+   end Multi_Disk_Zip;
+
    function Stored_Zip_With_Payload
      (Payload : Zlib.Byte_Array;
       Method  : Natural := 0)
@@ -1870,6 +1879,15 @@ package body Archive_Suite.Core is
       begin
          Assert (Parsed.Status = Archive.Archives.Errors.Invalid_Format,
                  "zip64 extra values outside host range are rejected before indexing");
+      end;
+
+      declare
+         Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
+           Index_Zip (Multi_Disk_Zip);
+      begin
+         Assert
+           (Parsed.Status = Archive.Archives.Errors.Unsupported_Format,
+            "multi-disk zip EOCD fields are rejected as unsupported");
       end;
 
       declare

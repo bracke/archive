@@ -41,7 +41,8 @@ paths, Windows drive and drive-relative paths, UNC style paths, alternate data
 streams, reserved names, case folding, macOS-style normalization, recognized
 unsupported signatures, invalid random input, TAR, TAR.GZ, ZIP stored, ZIP
 DEFLATE, standalone gzip, unsupported ZIP compression methods, encrypted ZIP
-entries, corrupt ZIP CRCs, corrupt gzip trailers, and malformed archive inputs.
+entries, split and multi-disk ZIP rejection, corrupt ZIP CRCs, corrupt gzip
+trailers, and malformed archive inputs.
 The in-repository corpus is deterministic and network-free; it includes
 local-header mismatch/signature cases, central/local CRC divergence, ZIP data
 descriptors, ZIP64 metadata, ZIP64 overflow rejection, missing ZIP64 extra

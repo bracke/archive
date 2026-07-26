@@ -49,6 +49,7 @@ case id=archive-zip-unicode-path-bad-crc kind=archive input=zip-unicode-path-bad
 case id=archive-zip-unicode-path-bad-version kind=archive input=zip-unicode-path-bad-version source=fixture.zip open=Invalid_Format entries=0
 case id=archive-zip-unsupported-method kind=archive input=zip-unsupported-method source=fixture.zip open=Ok entries=1 payload=Unsupported_Method
 case id=archive-zip-encrypted kind=archive input=zip-encrypted source=fixture.zip open=Ok entries=1 payload=Unsupported_Method
+case id=archive-zip-multi-disk kind=archive input=zip-multi-disk source=fixture.zip open=Unsupported_Format entries=0
 case id=archive-zip-zip64-missing-extra kind=archive input=zip-zip64-missing-extra source=fixture.zip open=Invalid_Format entries=0
 case id=archive-zip-zip64-too-large kind=archive input=zip-zip64-too-large source=fixture.zip open=Invalid_Format entries=0
 case id=archive-zip-local-size-mismatch kind=archive input=zip-local-size-mismatch source=fixture.zip open=Invalid_Format entries=0

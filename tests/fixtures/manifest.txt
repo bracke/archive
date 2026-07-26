@@ -16,4 +16,5 @@ fixture id=gzip-empty path=generated:gzip-empty format=gzip purpose=gzip-empty-p
 fixture id=zip-bad-crc path=generated:zip-bad-crc format=zip purpose=zip-malformed-payload size=111 crc32=BB182EBC
 fixture id=zip-unsupported-method path=generated:zip-unsupported-method format=zip purpose=zip-unsupported-method size=111 crc32=D97324F5
 fixture id=zip-encrypted path=generated:zip-encrypted format=zip purpose=zip-encrypted-entry size=111 crc32=CFBFD41F
+fixture id=zip-multi-disk path=generated:zip-multi-disk format=zip purpose=zip-multi-disk-unsupported size=111 crc32=D0D8818C
 fixture id=gzip-bad-trailer path=generated:gzip-bad-trailer format=gzip purpose=gzip-malformed-trailer size=23 crc32=941F1893
