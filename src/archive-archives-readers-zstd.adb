@@ -1,10 +1,9 @@
 with Ada.Characters.Handling;
 with Ada.Directories;
+with Interfaces;
 with Ada.Strings.Unbounded;
 
 with Archive.Archives.Paths;
-with Archive.Archives.Streams;
-with Zlib.Zstd_Decoder;
 
 package body Archive.Archives.Readers.Zstd is
    use Ada.Strings.Unbounded;
@@ -24,7 +23,7 @@ package body Archive.Archives.Readers.Zstd is
          when Zlib.Ok =>
             return Archive.Archives.Errors.Ok;
          when Zlib.Unsupported_Method | Zlib.Unsupported_Preset_Dictionary =>
-         return Archive.Archives.Errors.Unsupported_Method;
+            return Archive.Archives.Errors.Unsupported_Method;
          when Zlib.Unexpected_End_Of_Input | Zlib.Invalid_Header
             | Zlib.Invalid_Block_Type | Zlib.Invalid_Checksum
             | Zlib.Invalid_Stored_Block | Zlib.Invalid_Huffman_Code
@@ -99,23 +98,24 @@ package body Archive.Archives.Readers.Zstd is
       return "zstd-payload";
    end Logical_Name;
 
-   function Decode_File
+   procedure Count_Decoded_File
      (Path      : String;
       Max_Bytes : Positive;
+      Size      : out Interfaces.Unsigned_64;
       Status    : out Zlib.Status_Code)
-      return Zlib.Byte_Array
    is
-      Source : constant Archive.Archives.Streams.Buffered_Source :=
-        Archive.Archives.Streams.Read_Bounded
-          (Path, Effective_Read_Limit (Path, Max_Bytes));
+      procedure Ignore
+        (Bytes    : Zlib.Byte_Array;
+         Continue : in out Boolean)
+      is
+         pragma Unreferenced (Bytes);
+      begin
+         Continue := True;
+      end Ignore;
    begin
-      if Source.Status /= Archive.Archives.Errors.Ok then
-         Status := Zlib.Input_File_Error;
-         return [];
-      end if;
-
-      return Zlib.Zstd_Decoder.Decode (Source.Bytes, Status);
-   end Decode_File;
+      Zlib.Zstd_File_To_Consumer
+        (Path, Effective_Read_Limit (Path, Max_Bytes), Ignore'Access, Size, Status);
+   end Count_Decoded_File;
 
    function Index_File
      (Path        : String;
@@ -123,12 +123,13 @@ package body Archive.Archives.Readers.Zstd is
       Source_Name : String := "")
       return Zstd_Index_Result
    is
-      Status : Zlib.Status_Code := Zlib.Ok;
-      Payload : constant Zlib.Byte_Array := Decode_File (Path, Max_Bytes, Status);
-      Name : constant String :=
+      Status       : Zlib.Status_Code := Zlib.Ok;
+      Payload_Size : Interfaces.Unsigned_64 := 0;
+      Name         : constant String :=
         Logical_Name ((if Source_Name'Length > 0 then Source_Name else Path));
-      Result : Zstd_Index_Result;
+      Result       : Zstd_Index_Result;
    begin
+      Count_Decoded_File (Path, Max_Bytes, Payload_Size, Status);
       Result.Status := Map_Status (Status);
       if Result.Status /= Archive.Archives.Errors.Ok then
          return Result;
@@ -143,7 +144,7 @@ package body Archive.Archives.Readers.Zstd is
       Result.Item.Safety := Archive.Archives.Paths.Normalize (Name).Safety;
       Result.Item.Uncompressed :=
         (Present => True,
-         Value => Archive.Types.Uncompressed_Size (Payload'Length));
+         Value => Archive.Types.Uncompressed_Size (Payload_Size));
       Result.Item.Compressed :=
         (Present => True,
          Value => Archive.Types.Uncompressed_Size (Ada.Directories.Size (Path)));
@@ -164,10 +165,21 @@ package body Archive.Archives.Readers.Zstd is
          Continue : in out Boolean))
       return Stream_Result
    is
-      Status : Zlib.Status_Code := Zlib.Ok;
-      Payload : constant Zlib.Byte_Array := Decode_File (Path, Max_Bytes, Status);
-      Continue : Boolean := True;
+      Status       : Zlib.Status_Code := Zlib.Ok;
+      Continue     : Boolean := True;
+      Payload_Size : Interfaces.Unsigned_64 := 0;
+
+      procedure Forward
+        (Bytes      : Zlib.Byte_Array;
+         Keep_Going : in out Boolean) is
+      begin
+         if Continue then
+            Consumer.all (Bytes, Continue);
+         end if;
+         Keep_Going := Continue;
+      end Forward;
    begin
+      Count_Decoded_File (Path, Max_Bytes, Payload_Size, Status);
       if Status /= Zlib.Ok then
          return
            (Status        => Map_Status (Status),
@@ -180,7 +192,7 @@ package body Archive.Archives.Readers.Zstd is
             Bytes_Written => 0);
       elsif Item.Uncompressed.Present
         and then Item.Uncompressed.Value /=
-          Archive.Types.Uncompressed_Size (Payload'Length)
+          Archive.Types.Uncompressed_Size (Payload_Size)
       then
          return
            (Status        => Archive.Archives.Errors.Invalid_Format,
@@ -188,13 +200,22 @@ package body Archive.Archives.Readers.Zstd is
             Bytes_Written => 0);
       end if;
 
-      Consumer.all (Payload, Continue);
+      Zlib.Zstd_File_To_Consumer
+        (Path, Effective_Read_Limit (Path, Max_Bytes), Forward'Access,
+         Payload_Size, Status);
+      if Status /= Zlib.Ok then
+         return
+           (Status        => Map_Status (Status),
+            Integrity     => Archive.Archives.Entries.Failed,
+            Bytes_Written => 0);
+      end if;
+
       return
         (Status        =>
            (if Continue then Archive.Archives.Errors.Ok else Archive.Archives.Errors.Cancelled),
          Integrity     =>
            (if Continue then Archive.Archives.Entries.Verified else Archive.Archives.Entries.Not_Checked),
-         Bytes_Written => Archive.Types.Uncompressed_Size (Payload'Length));
+         Bytes_Written => Archive.Types.Uncompressed_Size (Payload_Size));
    exception
       when Storage_Error =>
          return
