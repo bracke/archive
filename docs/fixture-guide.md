@@ -25,6 +25,7 @@ cab-unsupported-method
 xz-unsupported-check
 seven-zip-encrypted
 rar-unsupported
+split-zip-unsupported
 zip-stored-basic
 zip-deflate-basic
 zip-data-descriptor
