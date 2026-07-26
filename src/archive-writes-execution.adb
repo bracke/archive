@@ -99,6 +99,30 @@ package body Archive.Writes.Execution is
          Status := Archive.Archives.Errors.Write_Failed;
    end Write_Zlib_Bytes;
 
+   procedure Write_Text
+     (File   : in out Ada.Streams.Stream_IO.File_Type;
+      Text   : String;
+      Status : out Archive.Archives.Errors.Error_Code)
+   is
+      Data : Ada.Streams.Stream_Element_Array
+        (1 .. Ada.Streams.Stream_Element_Offset (Text'Length));
+   begin
+      Status := Archive.Archives.Errors.Ok;
+      if Text'Length = 0 then
+         return;
+      end if;
+
+      for Index in Text'Range loop
+         Data
+           (Ada.Streams.Stream_Element_Offset (Index - Text'First + 1)) :=
+             Ada.Streams.Stream_Element (Character'Pos (Text (Index)));
+      end loop;
+      Ada.Streams.Stream_IO.Write (File, Data);
+   exception
+      when others =>
+         Status := Archive.Archives.Errors.Write_Failed;
+   end Write_Text;
+
    overriding procedure Write
      (Sink   : in out File_Tar_Gzip_Sink;
       Data   : Ada.Streams.Stream_Element_Array;
@@ -1817,6 +1841,297 @@ package body Archive.Writes.Execution is
          end if;
          return (Status => Archive.Writes.Results.Write_Failed_Staging);
    end Publish_Xz;
+
+   function Publish_Ar
+     (Destination_Path : String;
+      Plan             : Archive.Writes.Plans.Write_Plan;
+      Source_Path      : String := "";
+      Overwrite        : Boolean := False;
+      Cancelled        : Boolean := False)
+      return Archive.Writes.Results.Publish_Result
+   is
+      use Ada.Strings.Unbounded;
+
+      Root : constant String := Parent_Directory (Destination_Path);
+      Temp : constant String := Fresh_Write_Sibling_Path (Root, Destination_Path, "save");
+      Status : constant Archive.Writes.Results.Write_Status :=
+        Preflight (Destination_Path, Plan, Root, Overwrite, Cancelled);
+      Output : Ada.Streams.Stream_IO.File_Type;
+      Failed : Archive.Archives.Errors.Error_Code := Archive.Archives.Errors.Ok;
+
+      function Field (Value : String; Width : Natural) return String is
+      begin
+         if Value'Length >= Width then
+            return Value (Value'First .. Value'First + Width - 1);
+         else
+            return Value & (1 .. Width - Value'Length => ' ');
+         end if;
+      end Field;
+
+      function Short_Name (Name : String) return Boolean is
+      begin
+         return Name'Length > 0
+           and then Name'Length <= 15
+           and then (for all C of Name => C /= '/' and then C /= ASCII.LF);
+      end Short_Name;
+
+      procedure Write_Member_Header
+        (Name         : String;
+         Payload_Size : Natural)
+      is
+         Header_Name : constant String :=
+           (if Short_Name (Name)
+            then Field (Name & "/", 16)
+            else Field ("#1/" & Trimmed_Image (Name'Length), 16));
+         Stored_Size : constant Natural :=
+           Payload_Size + (if Short_Name (Name) then 0 else Name'Length);
+         Header : constant String :=
+           Header_Name
+           & Field ("0", 12)
+           & Field ("0", 6)
+           & Field ("0", 6)
+           & Field ("100644", 8)
+           & Field (Trimmed_Image (Stored_Size), 10)
+           & "`" & ASCII.LF;
+      begin
+         Write_Text (Output, Header, Failed);
+         if Failed = Archive.Archives.Errors.Ok and then not Short_Name (Name) then
+            Write_Text (Output, Name, Failed);
+         end if;
+      end Write_Member_Header;
+
+      procedure Write_Pad_If_Odd (Size : Natural) is
+      begin
+         if Failed = Archive.Archives.Errors.Ok and then Size mod 2 = 1 then
+            Write_Text (Output, ASCII.LF & "", Failed);
+         end if;
+      end Write_Pad_If_Odd;
+
+      procedure Write_Host_File (Name : String; Path : String) is
+         Input : Ada.Streams.Stream_IO.File_Type;
+         Data : Ada.Streams.Stream_Element_Array (1 .. Chunk_Size);
+         Last : Ada.Streams.Stream_Element_Offset := 0;
+         Size : constant Natural := Natural (Ada.Directories.Size (Path));
+         Written : Natural := 0;
+      begin
+         if Size > Natural'Last - Name'Length then
+            Failed := Archive.Archives.Errors.Limit_Exceeded;
+            return;
+         end if;
+
+         Write_Member_Header (Name, Size);
+         if Failed /= Archive.Archives.Errors.Ok then
+            return;
+         end if;
+
+         Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Path);
+         loop
+            Ada.Streams.Stream_IO.Read (Input, Data, Last);
+            exit when Last < Data'First;
+            Ada.Streams.Stream_IO.Write (Output, Data (Data'First .. Last));
+            Written := Written + Natural (Last - Data'First + 1);
+            exit when Last < Data'Last;
+         end loop;
+         Ada.Streams.Stream_IO.Close (Input);
+         if Written /= Size then
+            Failed := Archive.Archives.Errors.Read_Failed;
+            return;
+         end if;
+         Write_Pad_If_Odd (Size + (if Short_Name (Name) then 0 else Name'Length));
+      exception
+         when Storage_Error =>
+            if Ada.Streams.Stream_IO.Is_Open (Input) then
+               Ada.Streams.Stream_IO.Close (Input);
+            end if;
+            Failed := Archive.Archives.Errors.Limit_Exceeded;
+         when others =>
+            if Ada.Streams.Stream_IO.Is_Open (Input) then
+               Ada.Streams.Stream_IO.Close (Input);
+            end if;
+            Failed := Archive.Archives.Errors.Read_Failed;
+      end Write_Host_File;
+
+      procedure Write_Existing
+        (Item : Archive.Archives.Entries.Archive_Entry;
+         Name : String)
+      is
+         Total : Natural := 0;
+         Continue_Writing : Boolean := True;
+
+         procedure Count_Chunk
+           (Bytes : Zlib.Byte_Array;
+            Continue : in out Boolean)
+         is
+         begin
+            Total := Total + Bytes'Length;
+            Continue := Continue_Writing;
+         exception
+            when Constraint_Error =>
+               Continue := False;
+               Continue_Writing := False;
+               Failed := Archive.Archives.Errors.Limit_Exceeded;
+         end Count_Chunk;
+
+         procedure Emit_Chunk
+           (Bytes : Zlib.Byte_Array;
+            Continue : in out Boolean)
+         is
+            Local : Archive.Archives.Errors.Error_Code := Archive.Archives.Errors.Ok;
+         begin
+            Write_Zlib_Bytes (Output, Bytes, Local);
+            if Local /= Archive.Archives.Errors.Ok then
+               Failed := Local;
+               Continue_Writing := False;
+            end if;
+            Continue := Continue_Writing;
+         end Emit_Chunk;
+
+         Counted : Archive.Archives.Readers.Dispatch.Stream_Result;
+         Emitted : Archive.Archives.Readers.Dispatch.Stream_Result;
+      begin
+         if Source_Path = "" then
+            Failed := Archive.Archives.Errors.Unsupported_Method;
+            return;
+         elsif Item.Kind /= Archive.Archives.Entries.Regular_File then
+            return;
+         end if;
+
+         Counted :=
+           Archive.Archives.Readers.Dispatch.Stream_Payload_File
+             (Source_Path, Source_Path, Item, Count_Chunk'Access);
+         if Failed /= Archive.Archives.Errors.Ok then
+            return;
+         elsif Counted.Status /= Archive.Archives.Errors.Ok then
+            Failed := Counted.Status;
+            return;
+         end if;
+
+         Write_Member_Header (Name, Total);
+         if Failed /= Archive.Archives.Errors.Ok then
+            return;
+         end if;
+
+         Continue_Writing := True;
+         Emitted :=
+           Archive.Archives.Readers.Dispatch.Stream_Payload_File
+             (Source_Path, Source_Path, Item, Emit_Chunk'Access);
+         if Failed /= Archive.Archives.Errors.Ok then
+            return;
+         elsif Emitted.Status /= Archive.Archives.Errors.Ok then
+            Failed := Emitted.Status;
+            return;
+         end if;
+         Write_Pad_If_Odd (Total + (if Short_Name (Name) then 0 else Name'Length));
+      end Write_Existing;
+
+      function Source_Change_For_Path
+        (Id : Archive.Types.Entry_Id)
+         return Natural
+      is
+      begin
+         return Source_Change_For (Plan, Id);
+      end Source_Change_For_Path;
+   begin
+      if Status /= Archive.Writes.Results.Write_Completed then
+         return (Status => Status);
+      elsif Temp = "" then
+         return (Status => Archive.Writes.Results.Write_Failed_Staging);
+      end if;
+
+      Ada.Directories.Create_Path (Root);
+      Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Temp);
+      Write_Text (Output, "!<arch>" & ASCII.LF, Failed);
+
+      if Source_Path /= "" and then Failed = Archive.Archives.Errors.Ok then
+         for Raw_Id in 1 .. Archive.Archives.Index.Entry_Count (Plan.Index) loop
+            declare
+               Id : constant Archive.Types.Entry_Id := Archive.Types.Entry_Id (Raw_Id);
+               Item : constant Archive.Archives.Entries.Archive_Entry :=
+                 Archive.Archives.Index.Entry_For (Plan.Index, Id);
+               Position : constant Natural := Source_Change_For_Path (Id);
+               Name : Unbounded_String := Item.Original_Path;
+            begin
+               if Failed /= Archive.Archives.Errors.Ok then
+                  exit;
+               elsif Item.Synthetic then
+                  null;
+               elsif Position > 0 then
+                  declare
+                     Change : constant Archive.Writes.Plans.Planned_Change :=
+                       Plan.Changes.Element (Position);
+                  begin
+                     case Change.Request.Action is
+                        when Archive.Writes.Plans.Remove_Entry =>
+                           null;
+                        when Archive.Writes.Plans.Rename_Entry =>
+                           Name := Change.Request.Replacement_Path;
+                           Write_Existing (Item, To_String (Name));
+                        when Archive.Writes.Plans.Replace_File =>
+                           Write_Host_File
+                             (To_String (Change.Request.Target_Path),
+                              To_String (Change.Request.Host_Source));
+                        when others =>
+                           Write_Existing (Item, To_String (Name));
+                     end case;
+                  end;
+               else
+                  Write_Existing (Item, To_String (Name));
+               end if;
+            end;
+         end loop;
+      end if;
+
+      if Failed = Archive.Archives.Errors.Ok then
+         for Change of Plan.Changes loop
+            if Change.Decision = Archive.Writes.Plans.Entry_Ready
+              and then Change.Request.Action = Archive.Writes.Plans.Add_File
+            then
+               Write_Host_File
+                 (To_String (Change.Request.Target_Path),
+                  To_String (Change.Request.Host_Source));
+            elsif Change.Decision = Archive.Writes.Plans.Entry_Ready
+              and then Change.Request.Action = Archive.Writes.Plans.Add_Directory
+            then
+               Failed := Archive.Archives.Errors.Unsupported_Method;
+            end if;
+            exit when Failed /= Archive.Archives.Errors.Ok;
+         end loop;
+      end if;
+
+      if Ada.Streams.Stream_IO.Is_Open (Output) then
+         Ada.Streams.Stream_IO.Close (Output);
+      end if;
+
+      if Failed /= Archive.Archives.Errors.Ok then
+         if Ada.Directories.Exists (Temp) then
+            Ada.Directories.Delete_File (Temp);
+         end if;
+         return (Status =>
+                   (if Failed = Archive.Archives.Errors.Limit_Exceeded
+                    then Archive.Writes.Results.Write_Failed_Staging
+                    elsif Failed = Archive.Archives.Errors.Unsupported_Method
+                    then Archive.Writes.Results.Write_Blocked_By_Plan
+                    else Archive.Writes.Results.Write_Failed_Staging));
+      end if;
+
+      return Finalize_Staged_Archive
+        (Destination_Path, Temp, Root, Overwrite,
+         Archive.Archives.Formats.Ar_Format, Destination_Path, Cancelled);
+   exception
+      when others =>
+         if Ada.Streams.Stream_IO.Is_Open (Output) then
+            Ada.Streams.Stream_IO.Close (Output);
+         end if;
+         if Ada.Directories.Exists (Temp) then
+            begin
+               Ada.Directories.Delete_File (Temp);
+            exception
+               when others =>
+                  null;
+            end;
+         end if;
+         return (Status => Archive.Writes.Results.Write_Failed_Staging);
+   end Publish_Ar;
 
    function Publish_BZip2
      (Destination_Path : String;
