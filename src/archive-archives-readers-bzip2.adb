@@ -12,6 +12,7 @@ package body Archive.Archives.Readers.BZip2 is
    use type Archive.Archives.Errors.Error_Code;
    use type Archive.Archives.Entries.Entry_Kind;
    use type Archive.Archives.Entries.Path_Safety;
+   use type Archive.Types.Uncompressed_Size;
    use type Zlib.Status_Code;
 
    function Map_Status
@@ -176,6 +177,14 @@ package body Archive.Archives.Readers.BZip2 is
          return
            (Status        => Archive.Archives.Errors.Unsupported_Method,
             Integrity     => Archive.Archives.Entries.Not_Available,
+            Bytes_Written => 0);
+      elsif Item.Uncompressed.Present
+        and then Item.Uncompressed.Value /=
+          Archive.Types.Uncompressed_Size (Payload'Length)
+      then
+         return
+           (Status        => Archive.Archives.Errors.Invalid_Format,
+            Integrity     => Archive.Archives.Entries.Failed,
             Bytes_Written => 0);
       end if;
 

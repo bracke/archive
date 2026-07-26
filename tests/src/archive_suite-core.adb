@@ -3327,6 +3327,22 @@ package body Archive_Suite.Core is
             and then Payload.Bytes_Written = 3
             and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('b')),
             "zstd dispatch payload reads through zlib");
+
+         declare
+            Bad_Item : Archive.Archives.Entries.Archive_Entry := Item;
+         begin
+            Bad_Item.Uncompressed := (Present => True, Value => 2);
+            declare
+               Bad_Payload : constant Test_Stream_Result :=
+                 Stream_Dispatch_Payload (Zstd, "sample.txt.zst", Bad_Item);
+            begin
+               Assert
+                 (Bad_Payload.Status = Archive.Archives.Errors.Invalid_Format
+                  and then Bad_Payload.Integrity = Archive.Archives.Entries.Failed
+                  and then Bad_Payload.Bytes_Written = 0,
+                  "zstd dispatch rejects mismatched entry size");
+            end;
+         end;
       end;
 
       declare
@@ -3349,6 +3365,22 @@ package body Archive_Suite.Core is
             and then Payload.Bytes_Written = 3
             and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('b')),
             "bzip2 dispatch payload reads through zlib");
+
+         declare
+            Bad_Item : Archive.Archives.Entries.Archive_Entry := Item;
+         begin
+            Bad_Item.Uncompressed := (Present => True, Value => 2);
+            declare
+               Bad_Payload : constant Test_Stream_Result :=
+                 Stream_Dispatch_Payload (Bzip2, "sample.txt.bz2", Bad_Item);
+            begin
+               Assert
+                 (Bad_Payload.Status = Archive.Archives.Errors.Invalid_Format
+                  and then Bad_Payload.Integrity = Archive.Archives.Entries.Failed
+                  and then Bad_Payload.Bytes_Written = 0,
+                  "bzip2 dispatch rejects mismatched entry size");
+            end;
+         end;
       end;
 
       declare
@@ -3371,6 +3403,22 @@ package body Archive_Suite.Core is
             and then Payload.Bytes_Written = 3
             and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('b')),
             "xz dispatch payload reads through zlib");
+
+         declare
+            Bad_Item : Archive.Archives.Entries.Archive_Entry := Item;
+         begin
+            Bad_Item.Uncompressed := (Present => True, Value => 2);
+            declare
+               Bad_Payload : constant Test_Stream_Result :=
+                 Stream_Dispatch_Payload (Xz, "sample.txt.xz", Bad_Item);
+            begin
+               Assert
+                 (Bad_Payload.Status = Archive.Archives.Errors.Invalid_Format
+                  and then Bad_Payload.Integrity = Archive.Archives.Entries.Failed
+                  and then Bad_Payload.Bytes_Written = 0,
+                  "xz dispatch rejects mismatched entry size");
+            end;
+         end;
       end;
    end Test_Reader_Dispatch;
 
