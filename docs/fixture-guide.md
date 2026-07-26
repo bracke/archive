@@ -24,6 +24,7 @@ tar-duplicate-path
 cab-unsupported-method
 xz-unsupported-check
 seven-zip-encrypted
+rar-unsupported
 zip-stored-basic
 zip-deflate-basic
 zip-data-descriptor
