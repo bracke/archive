@@ -145,12 +145,12 @@ package body Archive.Archives.Formats is
                Supports_Encryption         => False,
                Supports_Random_Access      => False,
                Requires_Temporary_Backing  => False,
-               Can_Create                  => False,
+               Can_Create                  => True,
                Can_Add_Entries             => False,
                Can_Replace_Entries         => False,
                Can_Remove_Entries          => False,
-               Can_Rename_Entries          => False,
-               Requires_Rewrite_For_Update => False);
+               Can_Rename_Entries          => True,
+               Requires_Rewrite_For_Update => True);
          when BZip2_Format =>
             return
               (Can_Index                   => True,

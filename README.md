@@ -19,7 +19,7 @@ Current V1 support:
 | 7z | supported for native zlib-backed layouts | supported | supported | supported | supported by stored file-list publication | `zlib` |
 | bzip2 | supported as one logical file | supported | supported | supported | supported single-file replacement | `zlib` |
 | Zstandard | supported as one logical file | supported | supported | supported | supported single-file replacement | `zlib` |
-| XZ | supported as one logical file for one-block LZMA2 streams | supported | supported | supported | not supported | `zlib` |
+| XZ | supported as one logical file for one-block LZMA2 streams | supported | supported | supported | supported single-file replacement | `zlib` |
 | AR | supported for stored members | supported | supported | supported | not supported | archive AR adapter |
 | CPIO newc | supported for stored members | supported | supported | supported | not supported | archive CPIO adapter |
 | CAB stored / MSZIP | supported for bounded single-folder archives | supported | supported | supported | not supported | archive CAB adapter + `zlib` |

@@ -856,6 +856,8 @@ procedure Check_All is
       Require_Document_Text
         ("docs/FORMAT_SUPPORT.md", "zlib-backed XZ one-block LZMA2 decoding");
       Require_Document_Text
+        ("docs/FORMAT_SUPPORT.md", "zlib-backed XZ one-block LZMA2 decoding and publication");
+      Require_Document_Text
         ("README.md", "supported for native zlib-backed layouts");
       Require_Document_Text
         ("README.md", "ISO 9660");

@@ -120,6 +120,12 @@ package body Archive.Writes.Dispatch is
                Overwrite => Overwrite,
                Cancelled => Cancelled);
 
+         when Archive.Archives.Formats.Xz_Format =>
+            return Archive.Writes.Execution.Publish_Xz
+              (Destination_Path, Plan,
+               Overwrite => Overwrite,
+               Cancelled => Cancelled);
+
          when others =>
             return (Status => Archive.Writes.Results.Write_Blocked_By_Plan);
       end case;

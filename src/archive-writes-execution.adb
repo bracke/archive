@@ -1708,6 +1708,116 @@ package body Archive.Writes.Execution is
          return (Status => Archive.Writes.Results.Write_Failed_Staging);
    end Publish_Zstd;
 
+   function Publish_Xz
+     (Destination_Path : String;
+      Plan             : Archive.Writes.Plans.Write_Plan;
+      Overwrite        : Boolean := False;
+      Cancelled        : Boolean := False)
+      return Archive.Writes.Results.Publish_Result
+   is
+      Root : constant String := Parent_Directory (Destination_Path);
+      Temp : constant String := Fresh_Write_Sibling_Path (Root, Destination_Path, "save");
+      Status : constant Archive.Writes.Results.Write_Status :=
+        Preflight (Destination_Path, Plan, Root, Overwrite, Cancelled);
+      Source : Ada.Strings.Unbounded.Unbounded_String;
+      Output : Ada.Streams.Stream_IO.File_Type;
+      Write_Status : Archive.Archives.Errors.Error_Code := Archive.Archives.Errors.Ok;
+      Z_Status : Zlib.Status_Code := Zlib.Ok;
+   begin
+      if Status /= Archive.Writes.Results.Write_Completed then
+         return (Status => Status);
+      elsif Temp = "" or else Natural (Plan.Changes.Length) /= 1 then
+         return (Status => Archive.Writes.Results.Write_Blocked_By_Plan);
+      end if;
+
+      declare
+         Change : constant Archive.Writes.Plans.Planned_Change :=
+           Plan.Changes.Element (Plan.Changes.First_Index);
+      begin
+         if Change.Decision /= Archive.Writes.Plans.Entry_Ready
+           or else Change.Request.Action not in Archive.Writes.Plans.Add_File
+             | Archive.Writes.Plans.Replace_File
+           or else Ada.Strings.Unbounded.To_String (Change.Request.Host_Source) = ""
+         then
+            return (Status => Archive.Writes.Results.Write_Blocked_By_Plan);
+         end if;
+
+         Source := Change.Request.Host_Source;
+      end;
+
+      if not Ada.Directories.Exists (Ada.Strings.Unbounded.To_String (Source)) then
+         return (Status => Archive.Writes.Results.Write_Failed_Staging);
+      end if;
+
+      Ada.Directories.Create_Path (Root);
+
+      declare
+         Size : constant Ada.Directories.File_Size :=
+           Ada.Directories.Size (Ada.Strings.Unbounded.To_String (Source));
+         Limit : constant Ada.Directories.File_Size :=
+           Ada.Directories.File_Size
+             (Archive.Resource_Limits.Default_Configured
+                (Archive.Resource_Limits.Preview_Input_Bytes));
+      begin
+         if Size > Limit or else Size > Ada.Directories.File_Size (Natural'Last) then
+            return (Status => Archive.Writes.Results.Write_Failed_Staging);
+         end if;
+      end;
+
+      declare
+         Plain : constant Archive.Archives.Streams.Buffered_Source :=
+           Archive.Archives.Streams.Read_Bounded
+             (Ada.Strings.Unbounded.To_String (Source),
+              Positive'Max
+                (1,
+                 Positive
+                   (Ada.Directories.Size
+                      (Ada.Strings.Unbounded.To_String (Source)))));
+      begin
+         if Plain.Status /= Archive.Archives.Errors.Ok then
+            return (Status => Archive.Writes.Results.Write_Failed_Staging);
+         end if;
+
+         declare
+            Encoded : constant Zlib.Byte_Array :=
+              Zlib.XZ_LZMA2 (Plain.Bytes, Z_Status);
+         begin
+            if Z_Status /= Zlib.Ok then
+               return (Status => Zlib_Write_Status (Z_Status));
+            end if;
+
+            Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Temp);
+            Write_Zlib_Bytes (Output, Encoded, Write_Status);
+            Ada.Streams.Stream_IO.Close (Output);
+         end;
+      end;
+
+      if Write_Status /= Archive.Archives.Errors.Ok then
+         if Ada.Directories.Exists (Temp) then
+            Ada.Directories.Delete_File (Temp);
+         end if;
+         return (Status => Archive.Writes.Results.Write_Failed_Staging);
+      end if;
+
+      return Finalize_Staged_Archive
+        (Destination_Path, Temp, Root, Overwrite,
+         Archive.Archives.Formats.Xz_Format, Destination_Path, Cancelled);
+   exception
+      when others =>
+         if Ada.Streams.Stream_IO.Is_Open (Output) then
+            Ada.Streams.Stream_IO.Close (Output);
+         end if;
+         if Ada.Directories.Exists (Temp) then
+            begin
+               Ada.Directories.Delete_File (Temp);
+            exception
+               when others =>
+                  null;
+            end;
+         end if;
+         return (Status => Archive.Writes.Results.Write_Failed_Staging);
+   end Publish_Xz;
+
    function Publish_BZip2
      (Destination_Path : String;
       Plan             : Archive.Writes.Plans.Write_Plan;

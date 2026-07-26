@@ -57,7 +57,7 @@ Required V1 read workflows:
 | ZIP DEFLATE | required | required | required | required | archive ZIP adapter + `zlib` |
 | ZIP BZip2 / LZMA / Zstandard | supported | supported | supported | supported | archive ZIP adapter + `zlib` |
 | gzip | required | required | required | required | `zlib` |
-| XZ | supported | supported | supported | supported | `zlib` |
+| XZ | supported | supported | supported | supported, including single-file replacement | `zlib` |
 | AR | supported | supported | supported | supported | archive AR adapter |
 | CPIO newc | supported | supported | supported | supported | archive CPIO adapter |
 | CAB stored / MSZIP | supported | supported | supported | supported | archive CAB adapter + `zlib` |
