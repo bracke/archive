@@ -3364,21 +3364,21 @@ package body Archive_Suite.Core is
            Archive.Archives.Capabilities.For_Entry (Item, Archive_Writable => False);
       begin
          Assert (Caps.Can_Preview and then Caps.Can_Extract and then Caps.Can_Verify,
-                 "read-only archive still allows safe read actions");
+                 "non-writable format still allows safe read actions");
          Assert (not Caps.Can_Remove and then not Caps.Can_Rename and then not Caps.Can_Replace,
-                 "read-only archive blocks entry mutation actions");
+                 "non-writable format blocks entry mutation actions");
          Assert (Caps.Reason = Archive.Archives.Capabilities.Unsupported_Write_Action,
-                 "read-only archive reports stable write-unavailable reason");
+                 "non-writable format reports stable write-unavailable reason");
          Assert
            (Caps.Preview_Reason = Archive.Archives.Capabilities.Available
             and then Caps.Remove_Reason = Archive.Archives.Capabilities.Unsupported_Write_Action
             and then Caps.Replace_Reason = Archive.Archives.Capabilities.Unsupported_Write_Action
             and then Caps.Rename_Reason = Archive.Archives.Capabilities.Unsupported_Write_Action,
-            "read-only archive keeps read reasons distinct from write reasons");
+            "non-writable format keeps read reasons distinct from write reasons");
          Assert
            (Archive.Archives.Capabilities.Unavailable_Key (Caps.Reason) =
-              "command.unavailable.read_only_archive",
-            "read-only write reason maps to stable catalog key");
+              "command.unavailable.unsupported_write_action",
+            "unsupported write reason maps to stable catalog key");
       end;
 
       Unsafe.Safety := Archive.Archives.Entries.Parent_Traversal;
@@ -9488,33 +9488,33 @@ package body Archive_Suite.Core is
               (not Archive.Commands.Is_Enabled (Archive.Commands.Add_Files_Command, Read_Only_Model)
                and then Archive.Commands.Unavailable_Key
                  (Archive.Commands.Add_Files_Command, Read_Only_Model) =
-                   "command.unavailable.read_only_archive",
-               "add files is disabled for read-only archive formats");
+                   "command.unavailable.unsupported_write_action",
+               "add files is disabled for unsupported write formats");
             Assert
               (not Archive.Commands.Is_Enabled (Archive.Commands.Save_Archive_As_Command, Read_Only_Model)
                and then Archive.Commands.Unavailable_Key
                  (Archive.Commands.Save_Archive_As_Command, Read_Only_Model) =
-                   "command.unavailable.read_only_archive",
-               "save-as is disabled for read-only archive formats");
+                   "command.unavailable.unsupported_write_action",
+               "save-as is disabled for unsupported write formats");
             Archive.Model.Select_Only (Read_Only_Model, 1);
             Assert
               (not Archive.Commands.Is_Enabled (Archive.Commands.Replace_Selected_Command, Read_Only_Model)
                and then Archive.Commands.Unavailable_Key
                  (Archive.Commands.Replace_Selected_Command, Read_Only_Model) =
-                   "command.unavailable.read_only_archive",
-               "replace is disabled for read-only archive formats");
+                   "command.unavailable.unsupported_write_action",
+               "replace is disabled for unsupported write formats");
             Assert
               (not Archive.Commands.Is_Enabled (Archive.Commands.Remove_Selected_Command, Read_Only_Model)
                and then Archive.Commands.Unavailable_Key
                  (Archive.Commands.Remove_Selected_Command, Read_Only_Model) =
-                   "command.unavailable.read_only_archive",
-               "remove is disabled for read-only archive formats");
+                   "command.unavailable.unsupported_write_action",
+               "remove is disabled for unsupported write formats");
             Assert
               (not Archive.Commands.Is_Enabled (Archive.Commands.Rename_Selected_Command, Read_Only_Model)
                and then Archive.Commands.Unavailable_Key
                  (Archive.Commands.Rename_Selected_Command, Read_Only_Model) =
-                   "command.unavailable.read_only_archive",
-               "rename is disabled for read-only archive formats");
+                   "command.unavailable.unsupported_write_action",
+               "rename is disabled for unsupported write formats");
          end;
       end;
       declare

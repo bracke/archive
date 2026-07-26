@@ -121,7 +121,7 @@ package body Archive.Commands is
             elsif Id in Save_Archive_As_Command | Add_Files_Command | Add_Directory_Command
               and then not Current_Format_Capabilities (Model).Can_Add_Entries
             then
-               return "command.unavailable.read_only_archive";
+               return "command.unavailable.unsupported_write_action";
             else
                return "command.unavailable.not_ready";
             end if;
@@ -158,21 +158,21 @@ package body Archive.Commands is
                         return Archive.Archives.Capabilities.Unavailable_Key (Caps.Preview_Reason);
                      when Replace_Selected_Command =>
                         if not Current_Format_Capabilities (Model).Can_Replace_Entries then
-                           return "command.unavailable.read_only_archive";
+                           return "command.unavailable.unsupported_write_action";
                         end if;
                         return Archive.Archives.Capabilities.Unavailable_Key
                           (Archive.Model.Focused_Entry_Capabilities
                              (Model, Archive_Writable => True).Replace_Reason);
                      when Remove_Selected_Command =>
                         if not Current_Format_Capabilities (Model).Can_Remove_Entries then
-                           return "command.unavailable.read_only_archive";
+                           return "command.unavailable.unsupported_write_action";
                         end if;
                         return Archive.Archives.Capabilities.Unavailable_Key
                           (Archive.Model.Focused_Entry_Capabilities
                              (Model, Archive_Writable => True).Remove_Reason);
                      when Rename_Selected_Command =>
                         if not Current_Format_Capabilities (Model).Can_Rename_Entries then
-                           return "command.unavailable.read_only_archive";
+                           return "command.unavailable.unsupported_write_action";
                         end if;
                         return Archive.Archives.Capabilities.Unavailable_Key
                           (Archive.Model.Focused_Entry_Capabilities

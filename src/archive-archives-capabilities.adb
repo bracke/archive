@@ -13,7 +13,7 @@ package body Archive.Archives.Capabilities is
          when Unsupported_Method => return "unavailable.unsupported_method";
          when Unsafe_Path => return "unavailable.unsafe_path";
          when Unsupported_Entry_Kind => return "unavailable.unsupported_entry_kind";
-         when Unsupported_Write_Action => return "command.unavailable.read_only_archive";
+         when Unsupported_Write_Action => return "command.unavailable.unsupported_write_action";
       end case;
    end Unavailable_Key;
 

@@ -129,6 +129,7 @@ en.command.unavailable.no_filter = Enter a filter before using this command.
 en.command.unavailable.no_pending_changes = Change the archive before saving it.
 en.command.unavailable.not_ready = The current archive state cannot run this command.
 en.command.unavailable.no_recent_archives = No recent archives are available.
+en.command.unavailable.unsupported_write_action = This archive format does not support that write action.
 en.command.unavailable.read_only_archive = This archive format does not support writing.
 en.menu.file = File
 en.menu.edit = Edit
