@@ -44,21 +44,25 @@ package body Archive.Writes.Dispatch is
                      Overwrite => Overwrite,
                      Cancelled => Cancelled);
                end if;
-            elsif Source_Path /= "" then
-               return (Status => Archive.Writes.Results.Write_Blocked_By_Plan);
             elsif Method = Zip_BZip2_Method then
                return Archive.Writes.Execution.Publish_Zip_BZip2
                  (Destination_Path, Plan,
+                  Source_Path => Source_Path,
+                  Source_Name => Source_Name,
                   Overwrite => Overwrite,
                   Cancelled => Cancelled);
             elsif Method = Zip_LZMA_Method then
                return Archive.Writes.Execution.Publish_Zip_LZMA
                  (Destination_Path, Plan,
+                  Source_Path => Source_Path,
+                  Source_Name => Source_Name,
                   Overwrite => Overwrite,
                   Cancelled => Cancelled);
             else
                return Archive.Writes.Execution.Publish_Zip_Zstd
                  (Destination_Path, Plan,
+                  Source_Path => Source_Path,
+                  Source_Name => Source_Name,
                   Overwrite => Overwrite,
                   Cancelled => Cancelled);
             end if;

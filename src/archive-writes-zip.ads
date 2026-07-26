@@ -37,6 +37,8 @@ package Archive.Writes.Zip is
    function Build_External_Stream
      (Plan        : Archive.Writes.Plans.Write_Plan;
       Sink        : in out Output_Sink'Class;
-      Method_Name : String)
+      Method_Name : String;
+      Source_Path : String := "";
+      Source_Name : String := "")
       return Archive.Archives.Errors.Error_Code;
 end Archive.Writes.Zip;

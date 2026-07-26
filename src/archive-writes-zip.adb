@@ -797,12 +797,15 @@ package body Archive.Writes.Zip is
    function Build_External_Stream
      (Plan        : Archive.Writes.Plans.Write_Plan;
       Sink        : in out Output_Sink'Class;
-      Method_Name : String)
+      Method_Name : String;
+      Source_Path : String := "";
+      Source_Name : String := "")
       return Archive.Archives.Errors.Error_Code
    is
    begin
       return Build_Stream
-        (Plan, Sink, Deflate => False, External_Method => Method_Name);
+        (Plan, Sink, Deflate => False, External_Method => Method_Name,
+         Source_Path => Source_Path, Source_Name => Source_Name);
    end Build_External_Stream;
 
 end Archive.Writes.Zip;

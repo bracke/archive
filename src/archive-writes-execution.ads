@@ -46,6 +46,8 @@ package Archive.Writes.Execution is
    function Publish_Zip_BZip2
      (Destination_Path : String;
       Plan             : Archive.Writes.Plans.Write_Plan;
+      Source_Path      : String := "";
+      Source_Name      : String := "";
       Overwrite        : Boolean := False;
       Cancelled        : Boolean := False)
       return Archive.Writes.Results.Publish_Result;
@@ -53,6 +55,8 @@ package Archive.Writes.Execution is
    function Publish_Zip_LZMA
      (Destination_Path : String;
       Plan             : Archive.Writes.Plans.Write_Plan;
+      Source_Path      : String := "";
+      Source_Name      : String := "";
       Overwrite        : Boolean := False;
       Cancelled        : Boolean := False)
       return Archive.Writes.Results.Publish_Result;
@@ -60,6 +64,8 @@ package Archive.Writes.Execution is
    function Publish_Zip_Zstd
      (Destination_Path : String;
       Plan             : Archive.Writes.Plans.Write_Plan;
+      Source_Path      : String := "";
+      Source_Name      : String := "";
       Overwrite        : Boolean := False;
       Cancelled        : Boolean := False)
       return Archive.Writes.Results.Publish_Result;

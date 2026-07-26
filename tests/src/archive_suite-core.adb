@@ -6034,6 +6034,43 @@ package body Archive_Suite.Core is
                "zip rename rewrite preserves payload under replacement path");
          end;
 
+         declare
+            Rename_Plan : constant Archive.Writes.Plans.Write_Plan :=
+              Archive.Writes.Plans.Build (Seed_Open.Index, Requests, Session => 11);
+            Recompressed_Path : constant String := Root & "/renamed-bzip2.zip";
+            Recompressed_Zip : constant Archive.Writes.Results.Publish_Result :=
+              Archive.Writes.Execution.Publish_Zip_BZip2
+                (Recompressed_Path,
+                 Rename_Plan,
+                 Source_Path => Seed_Path,
+                 Source_Name => Seed_Path,
+                 Overwrite => True);
+            Recompressed_Open : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+              Archive.Archives.Readers.Dispatch.Open_File (Recompressed_Path);
+            Recompressed_Id : constant Archive.Types.Entry_Id :=
+              Entry_Id_For (Recompressed_Open.Index, "docs/c.txt");
+            Recompressed_Item : constant Archive.Archives.Entries.Archive_Entry :=
+              Archive.Archives.Index.Entry_For
+                (Recompressed_Open.Index, Recompressed_Id);
+            Recompressed_Payload : constant Test_Stream_Result :=
+              Stream_Dispatch_Payload_File
+                (Recompressed_Path, "renamed-bzip2.zip", Recompressed_Item);
+         begin
+            Assert (Recompressed_Zip.Status = Archive.Writes.Results.Write_Completed,
+                    "zip external writer recompresses renamed source payload");
+            Assert
+              (Recompressed_Open.Status = Archive.Archives.Errors.Ok
+               and then Recompressed_Item.Method =
+                 Archive.Archives.Entries.BZip2_Compression
+               and then Recompressed_Payload.Status = Archive.Archives.Errors.Ok
+               and then Recompressed_Payload.Bytes_Written = 2
+               and then Bytes_Of (Recompressed_Payload) (1) =
+                 Zlib.Byte (Character'Pos ('g'))
+               and then Bytes_Of (Recompressed_Payload) (2) =
+                 Zlib.Byte (Character'Pos ('o')),
+               "zip external rewrite preserves payload under renamed bzip2 entry");
+         end;
+
          Requests.Clear;
          Requests.Append
            (Archive.Writes.Plans.Write_Request'

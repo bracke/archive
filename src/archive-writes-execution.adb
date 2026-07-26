@@ -26,6 +26,7 @@ package body Archive.Writes.Execution is
    use type Archive.Writes.Results.Write_Status;
    use type Archive.Writes.Plans.Write_Action;
    use type Archive.Archives.Entries.Entry_Kind;
+   use type Archive.Archives.Entries.Integrity_State;
    use type Archive.Types.Entry_Id;
    use type Ada.Directories.File_Size;
    use type Ada.Streams.Stream_Element_Offset;
@@ -680,7 +681,7 @@ package body Archive.Writes.Execution is
       Build_Status :=
         (if External_Method /= ""
          then Archive.Writes.Zip.Build_External_Stream
-           (Plan, Sink, External_Method)
+           (Plan, Sink, External_Method, Source_Path, Source_Name)
          elsif Deflate
          then
            (if Source_Path = ""
@@ -790,11 +791,281 @@ package body Archive.Writes.Execution is
      (Destination_Path : String;
       Plan             : Archive.Writes.Plans.Write_Plan;
       Method_Name      : String;
+      Source_Path      : String := "";
+      Source_Name      : String := "";
       Overwrite        : Boolean := False;
       Cancelled        : Boolean := False)
       return Archive.Writes.Results.Publish_Result
    is
+      use Ada.Strings.Unbounded;
+
+      Root : constant String := Parent_Directory (Destination_Path);
+      Stage_Dir : constant String :=
+        Fresh_Write_Sibling_Path (Root, Destination_Path, "zip-external-stage");
+
+      procedure Append_Add_File
+        (Requests    : in out Archive.Writes.Plans.Write_Request_Vectors.Vector;
+         Host_Source : String;
+         Target_Path : String)
+      is
+      begin
+         Requests.Append
+           (Archive.Writes.Plans.Write_Request'
+              (Action           => Archive.Writes.Plans.Add_File,
+               Source_Entry     => Archive.Types.No_Entry,
+               Host_Source      => To_Unbounded_String (Host_Source),
+               Target_Path      => To_Unbounded_String (Target_Path),
+               Replacement_Path => To_Unbounded_String ("")));
+      end Append_Add_File;
+
+      procedure Append_Add_Directory
+        (Requests    : in out Archive.Writes.Plans.Write_Request_Vectors.Vector;
+         Host_Source : String;
+         Target_Path : String)
+      is
+      begin
+         Requests.Append
+           (Archive.Writes.Plans.Write_Request'
+              (Action           => Archive.Writes.Plans.Add_Directory,
+               Source_Entry     => Archive.Types.No_Entry,
+               Host_Source      => To_Unbounded_String (Host_Source),
+               Target_Path      => To_Unbounded_String (Target_Path),
+               Replacement_Path => To_Unbounded_String ("")));
+      end Append_Add_Directory;
+
+      procedure Stage_Existing_File
+        (Item        : Archive.Archives.Entries.Archive_Entry;
+         Slot        : Natural;
+         Target_Path : out Unbounded_String;
+         Status      : out Archive.Archives.Errors.Error_Code)
+      is
+         Output : Ada.Streams.Stream_IO.File_Type;
+         Path   : constant String :=
+           Fresh_Write_Sibling_Path
+             (Stage_Dir, Stage_Dir & "/entry-" & Trimmed_Image (Slot), "payload");
+
+         procedure Consume
+           (Bytes    : Zlib.Byte_Array;
+            Continue : in out Boolean)
+         is
+            Write_Status : Archive.Archives.Errors.Error_Code :=
+              Archive.Archives.Errors.Ok;
+         begin
+            Continue := Status = Archive.Archives.Errors.Ok;
+            if not Continue then
+               return;
+            end if;
+
+            Write_Zlib_Bytes (Output, Bytes, Write_Status);
+            if Write_Status /= Archive.Archives.Errors.Ok then
+               Status := Write_Status;
+               Continue := False;
+            end if;
+         end Consume;
+      begin
+         Status := Archive.Archives.Errors.Ok;
+         Target_Path := Null_Unbounded_String;
+         if Path = "" then
+            Status := Archive.Archives.Errors.Write_Failed;
+            return;
+         end if;
+
+         Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Path);
+         declare
+            Payload : constant Archive.Archives.Readers.Dispatch.Stream_Result :=
+              Archive.Archives.Readers.Dispatch.Stream_Payload_File
+                (Source_Path, Source_Name, Item, Consume'Access);
+         begin
+            if Payload.Status /= Archive.Archives.Errors.Ok then
+               Status := Payload.Status;
+            elsif Payload.Integrity = Archive.Archives.Entries.Failed then
+               Status := Archive.Archives.Errors.Read_Failed;
+            end if;
+         end;
+         Ada.Streams.Stream_IO.Close (Output);
+
+         if Status = Archive.Archives.Errors.Ok then
+            Target_Path := To_Unbounded_String (Path);
+         elsif Ada.Directories.Exists (Path) then
+            Ada.Directories.Delete_File (Path);
+         end if;
+      exception
+         when others =>
+            if Ada.Streams.Stream_IO.Is_Open (Output) then
+               Ada.Streams.Stream_IO.Close (Output);
+            end if;
+            if Path /= "" and then Ada.Directories.Exists (Path) then
+               begin
+                  Ada.Directories.Delete_File (Path);
+               exception
+                  when others =>
+                     null;
+               end;
+            end if;
+            Status := Archive.Archives.Errors.Write_Failed;
+            Target_Path := Null_Unbounded_String;
+      end Stage_Existing_File;
+
+      function Build_Staged_Plan
+        (Status : out Archive.Archives.Errors.Error_Code)
+         return Archive.Writes.Plans.Write_Plan
+      is
+         Empty_Physical : Archive.Archives.Entries.Entry_Vectors.Vector;
+         Empty_Index : constant Archive.Archives.Index.Archive_Index :=
+           Archive.Archives.Index.Build (Empty_Physical).Index;
+         Requests : Archive.Writes.Plans.Write_Request_Vectors.Vector;
+         Slot : Natural := 0;
+
+         procedure Add_Existing
+           (Item : Archive.Archives.Entries.Archive_Entry;
+            Name : String)
+         is
+            Staged : Unbounded_String;
+         begin
+            if Status /= Archive.Archives.Errors.Ok then
+               return;
+            elsif Item.Kind = Archive.Archives.Entries.Directory then
+               Append_Add_Directory (Requests, Stage_Dir, Name);
+            elsif Item.Kind = Archive.Archives.Entries.Regular_File then
+               Slot := Slot + 1;
+               Stage_Existing_File (Item, Slot, Staged, Status);
+               if Status = Archive.Archives.Errors.Ok then
+                  Append_Add_File (Requests, To_String (Staged), Name);
+               end if;
+            else
+               Status := Archive.Archives.Errors.Unsupported_Method;
+            end if;
+         end Add_Existing;
+      begin
+         Status := Archive.Archives.Errors.Ok;
+
+         for Raw_Id in 1 .. Archive.Archives.Index.Entry_Count (Plan.Index) loop
+            declare
+               Id : constant Archive.Types.Entry_Id := Archive.Types.Entry_Id (Raw_Id);
+               Item : constant Archive.Archives.Entries.Archive_Entry :=
+                 Archive.Archives.Index.Entry_For (Plan.Index, Id);
+               Position : constant Natural := Source_Change_For (Plan, Id);
+            begin
+               if not Item.Synthetic then
+                  if Position > 0
+                    and then Plan.Changes.Element (Position).Request.Action =
+                      Archive.Writes.Plans.Remove_Entry
+                  then
+                     null;
+                  elsif Position > 0
+                    and then Plan.Changes.Element (Position).Request.Action =
+                      Archive.Writes.Plans.Replace_File
+                  then
+                     Append_Add_File
+                       (Requests,
+                        To_String (Plan.Changes.Element (Position).Request.Host_Source),
+                        To_String (Plan.Changes.Element (Position).Request.Target_Path));
+                  elsif Position > 0
+                    and then Plan.Changes.Element (Position).Request.Action =
+                      Archive.Writes.Plans.Rename_Entry
+                  then
+                     Add_Existing
+                       (Item,
+                        To_String
+                          (Plan.Changes.Element (Position).Request.Replacement_Path));
+                  else
+                     Add_Existing (Item, To_String (Item.Original_Path));
+                  end if;
+               end if;
+            end;
+            exit when Status /= Archive.Archives.Errors.Ok;
+         end loop;
+
+         if Status = Archive.Archives.Errors.Ok then
+            for Change of Plan.Changes loop
+               if Change.Decision /= Archive.Writes.Plans.Entry_Ready then
+                  Status := Archive.Archives.Errors.Unsupported_Method;
+               elsif Change.Request.Action = Archive.Writes.Plans.Add_File then
+                  Append_Add_File
+                    (Requests,
+                     To_String (Change.Request.Host_Source),
+                     To_String (Change.Request.Target_Path));
+               elsif Change.Request.Action = Archive.Writes.Plans.Add_Directory then
+                  Append_Add_Directory
+                    (Requests,
+                     To_String (Change.Request.Host_Source),
+                     To_String (Change.Request.Target_Path));
+               elsif Change.Request.Action in Archive.Writes.Plans.Replace_File
+                 | Archive.Writes.Plans.Remove_Entry
+                 | Archive.Writes.Plans.Rename_Entry
+               then
+                  null;
+               else
+                  Status := Archive.Archives.Errors.Unsupported_Method;
+               end if;
+               exit when Status /= Archive.Archives.Errors.Ok;
+            end loop;
+         end if;
+
+         if Status /= Archive.Archives.Errors.Ok then
+            return Archive.Writes.Plans.Build
+              (Empty_Index, Requests, Archive.Types.No_Generation);
+         end if;
+
+         return Archive.Writes.Plans.Build (Empty_Index, Requests, Plan.Session);
+      end Build_Staged_Plan;
    begin
+      if Source_Path /= "" then
+         declare
+            Preflight_Status : constant Archive.Writes.Results.Write_Status :=
+              Preflight (Destination_Path, Plan, Root, Overwrite, Cancelled);
+            Stage_Status : Archive.Archives.Errors.Error_Code :=
+              Archive.Archives.Errors.Ok;
+         begin
+            if Preflight_Status /= Archive.Writes.Results.Write_Completed then
+               return (Status => Preflight_Status);
+            elsif Stage_Dir = "" then
+               return (Status => Archive.Writes.Results.Write_Failed_Staging);
+            end if;
+
+            Ada.Directories.Create_Path (Root);
+            Ada.Directories.Create_Path (Stage_Dir);
+
+            declare
+               Staged_Plan : constant Archive.Writes.Plans.Write_Plan :=
+                 Build_Staged_Plan (Stage_Status);
+               Result : Archive.Writes.Results.Publish_Result;
+            begin
+               if Stage_Status /= Archive.Archives.Errors.Ok
+                 or else Staged_Plan.Status /= Archive.Writes.Plans.Write_Plan_Ready
+               then
+                  if Ada.Directories.Exists (Stage_Dir) then
+                     Ada.Directories.Delete_Tree (Stage_Dir);
+                  end if;
+                  return (Status => Archive.Writes.Results.Write_Blocked_By_Plan);
+               end if;
+
+               Result :=
+                 Publish_Zip
+                   (Destination_Path, Staged_Plan, Deflate => False,
+                    External_Method => Method_Name,
+                    Overwrite => Overwrite,
+                    Cancelled => Cancelled);
+
+               if Ada.Directories.Exists (Stage_Dir) then
+                  Ada.Directories.Delete_Tree (Stage_Dir);
+               end if;
+               return Result;
+            end;
+         exception
+            when others =>
+               if Ada.Directories.Exists (Stage_Dir) then
+                  begin
+                     Ada.Directories.Delete_Tree (Stage_Dir);
+                  exception
+                     when others =>
+                        null;
+                  end;
+               end if;
+               return (Status => Archive.Writes.Results.Write_Failed_Staging);
+         end;
+      end if;
+
       return Publish_Zip
         (Destination_Path, Plan, Deflate => False,
          External_Method => Method_Name,
@@ -805,6 +1076,8 @@ package body Archive.Writes.Execution is
    function Publish_Zip_BZip2
      (Destination_Path : String;
       Plan             : Archive.Writes.Plans.Write_Plan;
+      Source_Path      : String := "";
+      Source_Name      : String := "";
       Overwrite        : Boolean := False;
       Cancelled        : Boolean := False)
       return Archive.Writes.Results.Publish_Result
@@ -812,12 +1085,16 @@ package body Archive.Writes.Execution is
    begin
       return Publish_Zip_External
         (Destination_Path, Plan, "BZip2",
+         Source_Path => Source_Path,
+         Source_Name => Source_Name,
          Overwrite => Overwrite, Cancelled => Cancelled);
    end Publish_Zip_BZip2;
 
    function Publish_Zip_LZMA
      (Destination_Path : String;
       Plan             : Archive.Writes.Plans.Write_Plan;
+      Source_Path      : String := "";
+      Source_Name      : String := "";
       Overwrite        : Boolean := False;
       Cancelled        : Boolean := False)
       return Archive.Writes.Results.Publish_Result
@@ -825,12 +1102,16 @@ package body Archive.Writes.Execution is
    begin
       return Publish_Zip_External
         (Destination_Path, Plan, "LZMA",
+         Source_Path => Source_Path,
+         Source_Name => Source_Name,
          Overwrite => Overwrite, Cancelled => Cancelled);
    end Publish_Zip_LZMA;
 
    function Publish_Zip_Zstd
      (Destination_Path : String;
       Plan             : Archive.Writes.Plans.Write_Plan;
+      Source_Path      : String := "";
+      Source_Name      : String := "";
       Overwrite        : Boolean := False;
       Cancelled        : Boolean := False)
       return Archive.Writes.Results.Publish_Result
@@ -838,6 +1119,8 @@ package body Archive.Writes.Execution is
    begin
       return Publish_Zip_External
         (Destination_Path, Plan, "ZSTD",
+         Source_Path => Source_Path,
+         Source_Name => Source_Name,
          Overwrite => Overwrite, Cancelled => Cancelled);
    end Publish_Zip_Zstd;
 
