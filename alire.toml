@@ -1,0 +1,69 @@
+name = "archive"
+description = "Graphical archive manager"
+version = "0.1.0-dev"
+
+authors = ["Bent Bracke"]
+maintainers = ["Bent Bracke <bent@bracke.dk>"]
+maintainers-logins = ["bracke"]
+licenses = "MIT OR Apache-2.0 WITH LLVM-exception"
+website = "https://github.com/bracke/archive"
+tags = ["archive", "gui", "zip", "tar", "gzip"]
+
+executables = ["archive"]
+
+[[depends-on]]
+gnat_native = "=15.2.1"
+
+[[depends-on]]
+guikit = "*"
+
+[[pins]]
+guikit = { path = "../guikit" }
+
+[[depends-on]]
+i18n = "*"
+
+[[pins]]
+i18n = { path = "../i18n" }
+
+[[depends-on]]
+tarlib = "*"
+
+[[pins]]
+tarlib = { path = "../tarlib" }
+
+[[depends-on]]
+zlib = "*"
+
+[[pins]]
+zlib = { path = "../zlib" }
+
+[[pins]]
+cryptolib = { path = "../cryptolib" }
+
+[[depends-on]]
+cryptolib = "*"
+
+[[depends-on]]
+hostkit = "*"
+
+[[pins]]
+hostkit = { path = "../hostkit" }
+
+[[depends-on]]
+textrender = "*"
+
+[[pins]]
+textrender = { path = "../textrender" }
+
+[[depends-on]]
+df_vulkan = "~0.1.0"
+
+[[depends-on]]
+openglada_glfw = "~0.9.0"
+
+[[depends-on]]
+utilada = "^2.9.0"
+
+[build-profiles]
+"*" = "development"

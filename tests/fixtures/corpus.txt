@@ -1,0 +1,37 @@
+# archive malformed/security corpus v1
+case id=safe-file kind=path input=dir/file.txt safety=Safe_Path decision=Path_Accepted platform=POSIX
+case id=empty-name kind=path input=__empty__ safety=Empty_Path decision=Path_Blocked_Empty platform=POSIX
+case id=dot-only kind=path input=. safety=Empty_Path decision=Path_Blocked_Empty platform=POSIX
+case id=parent-traversal kind=path input=../outside safety=Parent_Traversal decision=Path_Blocked_Unsafe platform=POSIX
+case id=repeated-traversal kind=path input=a/../../outside safety=Parent_Traversal decision=Path_Blocked_Unsafe platform=POSIX
+case id=absolute-posix kind=path input=/etc/passwd safety=Absolute_Path decision=Path_Blocked_Unsafe platform=POSIX
+case id=windows-drive kind=path input=C:/Windows/win.ini safety=Windows_Drive_Path decision=Path_Blocked_Unsafe platform=Windows
+case id=windows-unc kind=path input=\\server\share\file.txt safety=Absolute_Path decision=Path_Blocked_Unsafe platform=Windows
+case id=alternate-stream kind=path input=file.txt:stream safety=Alternate_Data_Stream decision=Path_Blocked_Unsafe platform=Windows
+case id=reserved-device kind=path input=CON safety=Reserved_Name decision=Path_Blocked_Unsafe platform=Windows
+case id=drive-relative kind=path input=C:relative.txt safety=Windows_Drive_Path decision=Path_Blocked_Unsafe platform=Windows
+case id=long-component kind=path input=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa safety=Too_Long decision=Path_Blocked_Unsafe platform=POSIX
+case id=case-fold-collision-left kind=platform-key input=Readme.txt expected=readme.txt platform=Windows
+case id=case-fold-collision-right kind=platform-key input=README.TXT expected=readme.txt platform=Windows
+case id=mac-normalization-left kind=platform-key input=Café.txt expected=cafe.txt platform=MacOS
+case id=mac-normalization-right kind=platform-key input=Café.txt expected=cafe.txt platform=MacOS
+case id=unsupported-7z kind=format input=7z-signature expected=Seven_Zip_Format status=Recognized_Unsupported
+case id=unsupported-rar kind=format input=rar-signature expected=Rar_Format status=Recognized_Unsupported
+case id=unsupported-cab kind=format input=cab-signature expected=Cab_Format status=Recognized_Unsupported
+case id=unsupported-cpio kind=format input=cpio-newc-signature expected=Cpio_Format status=Recognized_Unsupported
+case id=unsupported-iso kind=format input=iso-signature expected=Iso_Format status=Recognized_Unsupported
+case id=unsupported-ar kind=format input=ar-signature expected=Ar_Format status=Recognized_Unsupported
+case id=unsupported-split-zip kind=format input=split-zip-signature expected=Split_Zip_Format status=Recognized_Unsupported
+case id=invalid-random kind=format input=random-bytes expected=Unknown_Format status=Invalid
+case id=archive-tar-basic kind=archive input=tar-basic source=fixture.tar open=Ok entries=1
+case id=archive-tar-gzip-basic kind=archive input=tar-gzip-basic source=fixture.tar.gz open=Ok entries=1
+case id=archive-zip-stored-basic kind=archive input=zip-stored-basic source=fixture.zip open=Ok entries=1
+case id=archive-zip-deflate-basic kind=archive input=zip-deflate-basic source=fixture.zip open=Ok entries=1
+case id=archive-gzip-basic kind=archive input=gzip-basic source=fixture.gz open=Ok entries=1
+case id=archive-zip-bad-crc kind=archive input=zip-bad-crc source=fixture.zip open=Ok entries=1
+case id=archive-zip-unsupported-method kind=archive input=zip-unsupported-method source=fixture.zip open=Ok entries=1 payload=Unsupported_Method
+case id=archive-zip-encrypted kind=archive input=zip-encrypted source=fixture.zip open=Ok entries=1 payload=Unsupported_Method
+case id=archive-zip-truncated-central kind=archive input=zip-truncated-central source=fixture.zip open=Invalid_Format entries=0
+case id=archive-gzip-truncated kind=archive input=gzip-truncated source=fixture.gz open=Ok entries=1 payload=Invalid_Format
+case id=archive-gzip-bad-trailer kind=archive input=gzip-bad-trailer source=fixture.gz open=Ok entries=1 payload=Invalid_Format
+case id=archive-tar-truncated kind=archive input=tar-truncated source=fixture.tar open=Invalid_Format entries=0

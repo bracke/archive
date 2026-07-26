@@ -1,0 +1,8 @@
+# archive package manifest v1
+package-file path=README.md kind=documentation required=true
+package-file path=CHANGELOG.md kind=documentation required=true
+package-file path=LICENSES kind=license required=false
+package-file path=share/archive.catalog kind=catalog required=true
+package-file path=docs/FORMAT_SUPPORT.md kind=documentation required=true
+package-file path=docs/release-guide.md kind=documentation required=true
+package-file path=tests/fixtures/corpus.txt kind=test-corpus required=true

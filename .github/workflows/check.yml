@@ -1,0 +1,17 @@
+name: check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: alire-project/setup-alire@v4
+      - name: Build Ada check tool
+        working-directory: tests
+        run: alr build
+      - name: Run Ada check workflow
+        run: tests/bin/check_all

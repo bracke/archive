@@ -1,0 +1,23 @@
+# Alire-generated local state
+/alire/
+/config/
+
+# Build outputs
+/obj/
+/bin/
+
+# Test crate generated state and build outputs
+/tests/alire/
+/tests/config/
+/tests/obj/
+/tests/bin/
+/tests/proof/obj/
+
+# Local runtime and temporary artifacts
+*.log
+*.tmp
+*.bak
+*.swp
+*~
+core
+core.*

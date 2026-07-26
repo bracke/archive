@@ -1,0 +1,45 @@
+name = "archive_tests"
+description = "Testsuite and Ada tooling for archive"
+version = "0.1.0-dev"
+
+authors = ["Bent Bracke"]
+maintainers = ["Bent Bracke <bent@bracke.dk>"]
+maintainers-logins = ["bracke"]
+licenses = "MIT OR Apache-2.0 WITH LLVM-exception"
+website = ""
+tags = ["tests"]
+
+executables = ["archive_tests", "check_all", "release_report"]
+
+[[depends-on]]
+gnat_native = "=15.2.1"
+
+[[depends-on]]
+archive = "*"
+
+[[pins]]
+archive = { path = ".." }
+
+[[depends-on]]
+project_tools = "*"
+
+[[pins]]
+project_tools = { path = "../../project_tools" }
+
+[[depends-on]]
+tarlib = "*"
+
+[[pins]]
+tarlib = { path = "../../tarlib" }
+
+[[depends-on]]
+aunit = "^26.0.0"
+
+[[pins]]
+cryptolib = { path = "../../cryptolib" }
+
+[[depends-on]]
+cryptolib = "*"
+
+[build-profiles]
+"*" = "development"
