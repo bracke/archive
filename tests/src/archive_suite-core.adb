@@ -661,6 +661,32 @@ package body Archive_Suite.Core is
       Put32_U (Bytes, Offset, Interfaces.Unsigned_32 (Value));
    end Put32;
 
+   function XZ_With_Check_Id
+     (Input    : Zlib.Byte_Array;
+      Check_Id : Zlib.Byte)
+      return Zlib.Byte_Array
+   is
+      Result       : Zlib.Byte_Array := Input;
+      Header_Flags : Zlib.Byte_Array (1 .. 2);
+      Footer_First : constant Natural := Result'Last - 11;
+   begin
+      Result (Result'First + 7) := Check_Id;
+      Header_Flags (1) := Result (Result'First + 6);
+      Header_Flags (2) := Result (Result'First + 7);
+      Put32_U
+        (Result,
+         8,
+         Interfaces.Unsigned_32 (CRC32_Compute (Header_Flags)));
+
+      Result (Footer_First + 9) := Check_Id;
+      Put32_U
+        (Result,
+         Footer_First - Result'First,
+         Interfaces.Unsigned_32
+           (CRC32_Compute (Result (Footer_First + 4 .. Footer_First + 9))));
+      return Result;
+   end XZ_With_Check_Id;
+
    procedure Put64 (Bytes : in out Zlib.Byte_Array; Offset : Natural; Value : Natural) is
       Wide : constant Interfaces.Unsigned_64 := Interfaces.Unsigned_64 (Value);
       Low  : constant Interfaces.Unsigned_32 :=
@@ -2755,6 +2781,7 @@ package body Archive_Suite.Core is
         Zlib.Zstd_Encoder.Encode (Plain, Zstd_Status);
       Xz_Status : Zlib.Status_Code;
       Xz : constant Zlib.Byte_Array := Zlib.XZ_LZMA2 (Plain, Xz_Status);
+      Xz_Unsupported_Check : constant Zlib.Byte_Array := XZ_With_Check_Id (Xz, 4);
       Tar : constant Zlib.Byte_Array := One_File_Tar;
       Ar : constant Zlib.Byte_Array := One_File_Ar;
       Cab : constant Zlib.Byte_Array := One_File_Cab;
@@ -2768,6 +2795,22 @@ package body Archive_Suite.Core is
       Assert (Bzip2_Status = Zlib.Ok, "dispatch bzip2 fixture builds");
       Assert (Zstd_Status = Zlib.Ok, "dispatch zstd fixture builds");
       Assert (Xz_Status = Zlib.Ok, "dispatch xz fixture builds");
+
+      declare
+         Decoded_Status : Zlib.Status_Code;
+         Decoded        : constant Zlib.Byte_Array :=
+           Zlib.XZ (Xz_Unsupported_Check, Decoded_Status);
+         Opened         : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+           Open_Dispatch (Xz_Unsupported_Check, Source_Name => "unsupported-check.xz");
+      begin
+         Assert (Decoded'Length = 0, "unsupported xz check does not decode payload");
+         Assert
+           (Decoded_Status = Zlib.Unsupported_Method,
+            "unsupported xz check is classified as unsupported method");
+         Assert
+           (Opened.Status = Archive.Archives.Errors.Unsupported_Method,
+            "xz dispatch preserves unsupported check classification");
+      end;
 
       declare
          Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
