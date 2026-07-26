@@ -6127,7 +6127,9 @@ package body Archive_Suite.Core is
       Seven_Zip_Two_Source : constant String := Root & "/dispatch-two-source.7z";
       Seven_Zip_Two_Rewrite : constant String := Root & "/dispatch-two-rewrite.7z";
       Bzip2_Target : constant String := Root & "/dispatch-stream.bz2";
+      Bzip2_Replace_Target : constant String := Root & "/dispatch-replace.bz2";
       Zstd_Target : constant String := Root & "/dispatch-stream.zst";
+      Zstd_Replace_Target : constant String := Root & "/dispatch-replace.zst";
       Second_File : constant String := Root & "/second.txt";
       Replacement_File : constant String := Root & "/replacement.txt";
       File : Ada.Streams.Stream_IO.File_Type;
@@ -6216,8 +6218,14 @@ package body Archive_Suite.Core is
       if Ada.Directories.Exists (Bzip2_Target) then
          Ada.Directories.Delete_File (Bzip2_Target);
       end if;
+      if Ada.Directories.Exists (Bzip2_Replace_Target) then
+         Ada.Directories.Delete_File (Bzip2_Replace_Target);
+      end if;
       if Ada.Directories.Exists (Zstd_Target) then
          Ada.Directories.Delete_File (Zstd_Target);
+      end if;
+      if Ada.Directories.Exists (Zstd_Replace_Target) then
+         Ada.Directories.Delete_File (Zstd_Replace_Target);
       end if;
 
       Ada.Streams.Stream_IO.Create (File, Ada.Streams.Stream_IO.Out_File, Host_File);
@@ -6427,6 +6435,106 @@ package body Archive_Suite.Core is
             and then Zstd_Opened.Format = Archive.Archives.Formats.Zstd_Format
             and then Archive.Archives.Index.Physical_Count (Zstd_Opened.Index) = 1,
             "write dispatch zstd publication reopens");
+
+         declare
+            Bzip2_Item : constant Archive.Archives.Entries.Archive_Entry :=
+              (if Bzip2_Opened.Status = Archive.Archives.Errors.Ok
+               then Entry_For_Path (Bzip2_Opened.Index, "dispatch-stream")
+               else (others => <>));
+            Zstd_Item : constant Archive.Archives.Entries.Archive_Entry :=
+              (if Zstd_Opened.Status = Archive.Archives.Errors.Ok
+               then Entry_For_Path (Zstd_Opened.Index, "dispatch-stream")
+               else (others => <>));
+            Bzip2_Requests : Archive.Writes.Plans.Write_Request_Vectors.Vector;
+            Zstd_Requests : Archive.Writes.Plans.Write_Request_Vectors.Vector;
+         begin
+            Bzip2_Requests.Append
+              (Archive.Writes.Plans.Write_Request'
+                 (Action           => Archive.Writes.Plans.Replace_File,
+                  Source_Entry     => Bzip2_Item.Id,
+                  Host_Source      => To_Unbounded_String (Replacement_File),
+                  Target_Path      => Bzip2_Item.Original_Path,
+                  Replacement_Path => Null_Unbounded_String));
+            Zstd_Requests.Append
+              (Archive.Writes.Plans.Write_Request'
+                 (Action           => Archive.Writes.Plans.Replace_File,
+                  Source_Entry     => Zstd_Item.Id,
+                  Host_Source      => To_Unbounded_String (Replacement_File),
+                  Target_Path      => Zstd_Item.Original_Path,
+                  Replacement_Path => Null_Unbounded_String));
+
+            declare
+               Bzip2_Plan : constant Archive.Writes.Plans.Write_Plan :=
+                 Archive.Writes.Plans.Build
+                   (Bzip2_Opened.Index, Bzip2_Requests, Session => 12);
+               Zstd_Plan : constant Archive.Writes.Plans.Write_Plan :=
+                 Archive.Writes.Plans.Build
+                   (Zstd_Opened.Index, Zstd_Requests, Session => 13);
+               Bzip2_Replaced : constant Archive.Writes.Results.Publish_Result :=
+                 Archive.Writes.Dispatch.Publish
+                   (Archive.Archives.Formats.BZip2_Format,
+                    Bzip2_Replace_Target,
+                    Bzip2_Plan,
+                    Overwrite => True);
+               Zstd_Replaced : constant Archive.Writes.Results.Publish_Result :=
+                 Archive.Writes.Dispatch.Publish
+                   (Archive.Archives.Formats.Zstd_Format,
+                    Zstd_Replace_Target,
+                    Zstd_Plan,
+                    Overwrite => True);
+               Bzip2_Reopened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+                 Archive.Archives.Readers.Dispatch.Open_File
+                   (Bzip2_Replace_Target, Source_Name => "dispatch-replace.bz2");
+               Zstd_Reopened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+                 Archive.Archives.Readers.Dispatch.Open_File
+                   (Zstd_Replace_Target, Source_Name => "dispatch-replace.zst");
+               Bzip2_Replaced_Item : constant Archive.Archives.Entries.Archive_Entry :=
+                 (if Bzip2_Reopened.Status = Archive.Archives.Errors.Ok
+                  then Entry_For_Path (Bzip2_Reopened.Index, "dispatch-replace")
+                  else (others => <>));
+               Zstd_Replaced_Item : constant Archive.Archives.Entries.Archive_Entry :=
+                 (if Zstd_Reopened.Status = Archive.Archives.Errors.Ok
+                  then Entry_For_Path (Zstd_Reopened.Index, "dispatch-replace")
+                  else (others => <>));
+               Bzip2_Payload : constant Test_Stream_Result :=
+                 (if Bzip2_Reopened.Status = Archive.Archives.Errors.Ok
+                  then Stream_Dispatch_Payload_File
+                    (Bzip2_Replace_Target, "dispatch-replace.bz2", Bzip2_Replaced_Item)
+                  else Empty_Test_Stream (Archive.Archives.Errors.Invalid_Format));
+               Zstd_Payload : constant Test_Stream_Result :=
+                 (if Zstd_Reopened.Status = Archive.Archives.Errors.Ok
+                  then Stream_Dispatch_Payload_File
+                    (Zstd_Replace_Target, "dispatch-replace.zst", Zstd_Replaced_Item)
+                  else Empty_Test_Stream (Archive.Archives.Errors.Invalid_Format));
+            begin
+               Assert (Bzip2_Plan.Status = Archive.Writes.Plans.Write_Plan_Ready,
+                       "write dispatch bzip2 replace plan is ready");
+               Assert (Zstd_Plan.Status = Archive.Writes.Plans.Write_Plan_Ready,
+                       "write dispatch zstd replace plan is ready");
+               Assert (Bzip2_Replaced.Status = Archive.Writes.Results.Write_Completed,
+                       "write dispatch replaces bzip2 logical payload");
+               Assert (Zstd_Replaced.Status = Archive.Writes.Results.Write_Completed,
+                       "write dispatch replaces zstd logical payload");
+               Assert
+                 (Bzip2_Payload.Status = Archive.Archives.Errors.Ok
+                  and then Bzip2_Payload.Integrity = Archive.Archives.Entries.Verified
+                  and then Bzip2_Payload.Bytes_Written = 2
+                  and then Bytes_Of (Bzip2_Payload) (1) =
+                    Zlib.Byte (Character'Pos ('g'))
+                  and then Bytes_Of (Bzip2_Payload) (2) =
+                    Zlib.Byte (Character'Pos ('o')),
+                  "write dispatch bzip2 replacement payload round-trips");
+               Assert
+                 (Zstd_Payload.Status = Archive.Archives.Errors.Ok
+                  and then Zstd_Payload.Integrity = Archive.Archives.Entries.Verified
+                  and then Zstd_Payload.Bytes_Written = 2
+                  and then Bytes_Of (Zstd_Payload) (1) =
+                    Zlib.Byte (Character'Pos ('g'))
+                  and then Bytes_Of (Zstd_Payload) (2) =
+                    Zlib.Byte (Character'Pos ('o')),
+                  "write dispatch zstd replacement payload round-trips");
+            end;
+         end;
 
          declare
             Rename_Requests : Archive.Writes.Plans.Write_Request_Vectors.Vector;
