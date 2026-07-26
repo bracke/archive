@@ -26,6 +26,7 @@ xz-unsupported-check
 seven-zip-encrypted
 rar-unsupported
 split-zip-unsupported
+bzip2-basic
 zip-stored-basic
 zip-deflate-basic
 zip-data-descriptor

@@ -514,6 +514,7 @@ procedure Release_Report is
       Has_Seven_Zip_Encrypted : Boolean := False;
       Has_Rar_Unsupported : Boolean := False;
       Has_Split_Zip_Unsupported : Boolean := False;
+      Has_BZip2 : Boolean := False;
       Has_Zip_Stored : Boolean := False;
       Has_Zip_Deflate : Boolean := False;
       Has_Zip_Descriptor : Boolean := False;
@@ -574,6 +575,8 @@ procedure Release_Report is
             return (True, 20, "EAEAB33A");
          elsif Id = "split-zip-unsupported" then
             return (True, 8, "5B7D7655");
+         elsif Id = "bzip2-basic" then
+            return (True, 38, "ED9E5814");
          elsif Id = "zip-stored-basic" then
             return (True, 111, "91E2A6FC");
          elsif Id = "zip-deflate-basic" then
@@ -764,6 +767,8 @@ procedure Release_Report is
                   Has_Rar_Unsupported := True;
                elsif Id = "split-zip-unsupported" then
                   Has_Split_Zip_Unsupported := True;
+               elsif Id = "bzip2-basic" then
+                  Has_BZip2 := True;
                elsif Id = "zip-stored-basic" then
                   Has_Zip_Stored := True;
                elsif Id = "zip-deflate-basic" then
@@ -827,6 +832,7 @@ procedure Release_Report is
         or else not Has_Seven_Zip_Encrypted
         or else not Has_Rar_Unsupported
         or else not Has_Split_Zip_Unsupported
+        or else not Has_BZip2
         or else not Has_Zip_Stored or else not Has_Zip_Deflate
         or else not Has_Zip_Descriptor or else not Has_Zip64
         or else not Has_Gzip or else not Has_Gzip_Empty
