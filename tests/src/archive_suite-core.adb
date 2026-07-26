@@ -206,7 +206,7 @@ package body Archive_Suite.Core is
      (Bytes : Zlib.Byte_Array)
       return Archive.Archives.Readers.Tar.Tar_Index_Result;
    function One_File_Ar return Zlib.Byte_Array;
-   function One_File_Cab return Zlib.Byte_Array;
+   function One_File_Cab (MSZIP : Boolean := False) return Zlib.Byte_Array;
    function One_File_Cpio return Zlib.Byte_Array;
    function One_File_Iso return Zlib.Byte_Array;
    function Index_Gzip
@@ -713,23 +713,56 @@ package body Archive_Suite.Core is
       return Bytes;
    end One_File_Ar;
 
-   function One_File_Cab return Zlib.Byte_Array is
-      Bytes : Zlib.Byte_Array (1 .. 77) := [others => 0];
+   function Cab_Image
+     (Payload            : Zlib.Byte_Array;
+      Compression        : Natural;
+      Uncompressed_Size  : Natural)
+      return Zlib.Byte_Array
+   is
+      Bytes : Zlib.Byte_Array (1 .. 74 + Payload'Length) := [others => 0];
    begin
       Put_Text (Bytes, 0, "MSCF");
-      Put32 (Bytes, 8, 77);
+      Put32 (Bytes, 8, Bytes'Length);
       Put32 (Bytes, 16, 44);
       Put16 (Bytes, 26, 1);
       Put16 (Bytes, 28, 1);
       Put32 (Bytes, 36, 66);
       Put16 (Bytes, 40, 1);
-      Put32 (Bytes, 44, 3);
+      Put16 (Bytes, 42, Compression);
+      Put32 (Bytes, 44, Uncompressed_Size);
       Put16 (Bytes, 52, 0);
       Put_Text (Bytes, 60, "a.txt" & Character'Val (0));
-      Put16 (Bytes, 70, 3);
-      Put16 (Bytes, 72, 3);
-      Put_Text (Bytes, 74, "abc");
+      Put16 (Bytes, 70, Payload'Length);
+      Put16 (Bytes, 72, Uncompressed_Size);
+      for Index in Payload'Range loop
+         Bytes (Bytes'First + 74 + Index - Payload'First) := Payload (Index);
+      end loop;
       return Bytes;
+   end Cab_Image;
+
+   function One_File_Cab (MSZIP : Boolean := False) return Zlib.Byte_Array is
+      Plain : constant Zlib.Byte_Array :=
+        [1 => Zlib.Byte (Character'Pos ('a')),
+         2 => Zlib.Byte (Character'Pos ('b')),
+         3 => Zlib.Byte (Character'Pos ('c'))];
+   begin
+      if MSZIP then
+         declare
+            Status : Zlib.Status_Code := Zlib.Ok;
+            Deflated : constant Zlib.Byte_Array := Zlib.Deflate_Raw (Plain, Zlib.Fixed, Status);
+            Payload : Zlib.Byte_Array (1 .. Deflated'Length + 2);
+         begin
+            Assert (Status = Zlib.Ok, "cab mszip fixture raw deflate builds");
+            Payload (1) := Zlib.Byte (Character'Pos ('C'));
+            Payload (2) := Zlib.Byte (Character'Pos ('K'));
+            for Index in Deflated'Range loop
+               Payload (Index + 2) := Deflated (Index);
+            end loop;
+            return Cab_Image (Payload, 1, Plain'Length);
+         end;
+      else
+         return Cab_Image (Plain, 0, Plain'Length);
+      end if;
    end One_File_Cab;
 
    function One_File_Cpio return Zlib.Byte_Array is
@@ -2673,6 +2706,7 @@ package body Archive_Suite.Core is
       Tar : constant Zlib.Byte_Array := One_File_Tar;
       Ar : constant Zlib.Byte_Array := One_File_Ar;
       Cab : constant Zlib.Byte_Array := One_File_Cab;
+      Cab_MSZIP : constant Zlib.Byte_Array := One_File_Cab (MSZIP => True);
       Cpio : constant Zlib.Byte_Array := One_File_Cpio;
       Iso : constant Zlib.Byte_Array := One_File_Iso;
    begin
@@ -2803,6 +2837,27 @@ package body Archive_Suite.Core is
             and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('a'))
             and then Bytes_Of (Payload) (3) = Zlib.Byte (Character'Pos ('c')),
             "cab dispatch streams stored file payload");
+      end;
+
+      declare
+         Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+           Open_Dispatch (Cab_MSZIP, Source_Name => "sample-mszip.cab");
+         Item : constant Archive.Archives.Entries.Archive_Entry :=
+           Archive.Archives.Index.Entry_For (Opened.Index, 2);
+         Payload : constant Test_Stream_Result :=
+           Stream_Dispatch_Payload (Cab_MSZIP, "sample-mszip.cab", Item);
+      begin
+         Assert (Opened.Status = Archive.Archives.Errors.Ok, "cab mszip dispatch succeeds");
+         Assert (Opened.Format = Archive.Archives.Formats.Cab_Format,
+                 "cab mszip dispatch records format");
+         Assert (Item.Method = Archive.Archives.Entries.Zip_Deflate,
+                 "cab mszip entry records deflate method");
+         Assert
+           (Payload.Status = Archive.Archives.Errors.Ok
+            and then Payload.Integrity = Archive.Archives.Entries.Verified
+            and then Payload.Bytes_Written = 3
+            and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('b')),
+            "cab mszip dispatch inflates payload through zlib");
       end;
 
       declare

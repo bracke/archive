@@ -5,13 +5,16 @@ with Ada.Strings.Unbounded;
 with Interfaces;
 
 with Archive.Archives.Paths;
+with Archive.Compression.Zlib;
 
 package body Archive.Archives.Readers.Cab is
    use Ada.Strings.Unbounded;
    use type Ada.Directories.File_Size;
    use type Ada.Streams.Stream_Element;
    use type Ada.Streams.Stream_Element_Offset;
+   use type Archive.Archives.Errors.Error_Code;
    use type Archive.Archives.Entries.Entry_Kind;
+   use type Archive.Archives.Entries.Compression_Method;
    use type Archive.Types.Archive_Ordinal;
    use type Archive.Types.Source_Offset;
    use type Archive.Types.Uncompressed_Size;
@@ -21,6 +24,8 @@ package body Archive.Archives.Readers.Cab is
    File_Record_Fixed_Size : constant Natural := 16;
    Data_Block_Header_Size : constant Natural := 8;
    Payload_Chunk_Size : constant Natural := 8_192;
+   CAB_Stored : constant Natural := 0;
+   CAB_MSZIP  : constant Natural := 1;
 
    function Read_U16_LE
      (Bytes : Ada.Streams.Stream_Element_Array;
@@ -172,8 +177,10 @@ package body Archive.Archives.Readers.Cab is
             Block_Count : constant Natural := Read_U16_LE (Folder, Folder'First + 4);
             Compression : constant Natural := Read_U16_LE (Folder, Folder'First + 6);
          begin
-            if Compression /= 0 or else Block_Count /= 1
+            if Compression not in CAB_Stored | CAB_MSZIP
+              or else Block_Count /= 1
               or else Data_Offset > Natural (Size) - Data_Block_Header_Size
+              or else (Compression = CAB_MSZIP and then File_Count /= 1)
             then
                Ada.Streams.Stream_IO.Close (File);
                return (Status => Archive.Archives.Errors.Unsupported_Method,
@@ -193,9 +200,11 @@ package body Archive.Archives.Readers.Cab is
                Block_Uncompressed : constant Natural := Read_U16_LE (Data, Data'First + 6);
                Payload_Offset     : constant Natural := Data_Offset + Data_Block_Header_Size;
             begin
-               if Block_Compressed /= Block_Uncompressed
-                 or else Payload_Offset > Natural (Size)
+               if Payload_Offset > Natural (Size)
                  or else Block_Compressed > Natural (Size) - Payload_Offset
+                 or else (Compression = CAB_Stored
+                          and then Block_Compressed /= Block_Uncompressed)
+                 or else (Compression = CAB_MSZIP and then Block_Compressed <= 2)
                then
                   Ada.Streams.Stream_IO.Close (File);
                   return (Status => Archive.Archives.Errors.Invalid_Format,
@@ -230,6 +239,7 @@ package body Archive.Archives.Readers.Cab is
                           or else Folder_Index /= 0
                           or else File_Offset > Block_Uncompressed
                           or else File_Size > Block_Uncompressed - File_Offset
+                          or else (Compression = CAB_MSZIP and then File_Offset /= 0)
                         then
                            Result.Status := Archive.Archives.Errors.Invalid_Format;
                            exit;
@@ -244,7 +254,10 @@ package body Archive.Archives.Readers.Cab is
                              To_Unbounded_String
                                (Archive.Archives.Paths.Safe_Display_Name (Name));
                            Item.Kind := Archive.Archives.Entries.Regular_File;
-                           Item.Method := Archive.Archives.Entries.No_Compression;
+                           Item.Method :=
+                             (if Compression = CAB_MSZIP
+                              then Archive.Archives.Entries.Zip_Deflate
+                              else Archive.Archives.Entries.No_Compression);
                            Item.Encryption := Archive.Archives.Entries.Not_Encrypted;
                            Item.Integrity := Archive.Archives.Entries.Not_Checked;
                            Item.Data_Offset :=
@@ -252,7 +265,11 @@ package body Archive.Archives.Readers.Cab is
                               Value => Archive.Types.Source_Offset (Payload_Offset + File_Offset));
                            Item.Compressed :=
                              (Present => True,
-                              Value => Archive.Types.Uncompressed_Size (File_Size));
+                              Value =>
+                                Archive.Types.Uncompressed_Size
+                                  ((if Compression = CAB_MSZIP
+                                    then Block_Compressed
+                                    else File_Size)));
                            Item.Uncompressed :=
                              (Present => True,
                               Value => Archive.Types.Uncompressed_Size (File_Size));
@@ -265,8 +282,14 @@ package body Archive.Archives.Readers.Cab is
                                ("cab.attrs=" & U64_Image (Interfaces.Unsigned_64 (Attributes)));
                            Item.Format_Metadata :=
                              To_Unbounded_String
-                               ("cab.folder=0;cab.block_offset="
+                              ("cab.folder=0;cab.block_offset="
                                 & U64_Image (Interfaces.Unsigned_64 (Data_Offset))
+                                & ";cab.compression="
+                                & U64_Image (Interfaces.Unsigned_64 (Compression))
+                                & ";cab.block_compressed="
+                                & U64_Image (Interfaces.Unsigned_64 (Block_Compressed))
+                                & ";cab.block_uncompressed="
+                                & U64_Image (Interfaces.Unsigned_64 (Block_Uncompressed))
                                 & ";cab.entry=" & U64_Image (Interfaces.Unsigned_64 (Entry_Index)));
                            Item.Safety := Archive.Archives.Paths.Normalize (Name).Safety;
                            Result.Entries.Append (Item);
@@ -323,6 +346,112 @@ package body Archive.Archives.Readers.Cab is
          return (Status => Archive.Archives.Errors.Limit_Exceeded,
                  Integrity => Archive.Archives.Entries.Not_Available,
                  Bytes_Written => 0);
+      end if;
+
+      if Item.Method = Archive.Archives.Entries.Zip_Deflate then
+         declare
+            Compressed_Size : constant Natural :=
+              (if Item.Compressed.Present then Natural (Item.Compressed.Value) else 0);
+            Raw : Ada.Streams.Stream_Element_Array
+              (1 .. Ada.Streams.Stream_Element_Offset (Compressed_Size));
+            Last : Ada.Streams.Stream_Element_Offset := 0;
+         begin
+            if Compressed_Size <= 2 then
+               return (Status => Archive.Archives.Errors.Invalid_Format,
+                       Integrity => Archive.Archives.Entries.Failed,
+                       Bytes_Written => 0);
+            end if;
+
+            Ada.Streams.Stream_IO.Open (File, Ada.Streams.Stream_IO.In_File, Path);
+            Ada.Streams.Stream_IO.Set_Index
+              (File, Ada.Streams.Stream_IO.Count (Natural (Item.Data_Offset.Value) + 1));
+            Ada.Streams.Stream_IO.Read (File, Raw, Last);
+            Ada.Streams.Stream_IO.Close (File);
+            if Last < Raw'First
+              or else Natural (Last - Raw'First + 1) /= Compressed_Size
+              or else Raw (Raw'First) /= Ada.Streams.Stream_Element (Character'Pos ('C'))
+              or else Raw (Raw'First + 1) /= Ada.Streams.Stream_Element (Character'Pos ('K'))
+            then
+               return (Status => Archive.Archives.Errors.Invalid_Format,
+                       Integrity => Archive.Archives.Entries.Failed,
+                       Bytes_Written => 0);
+            end if;
+
+            declare
+               Deflated : Zlib.Byte_Array (1 .. Compressed_Size - 2);
+            begin
+               for Index in Deflated'Range loop
+                  Deflated (Index) :=
+                    Zlib.Byte
+                      (Raw (Raw'First + 1 + Ada.Streams.Stream_Element_Offset (Index)));
+               end loop;
+
+               declare
+                  Inflater : Archive.Compression.Zlib.Inflate_Stream;
+                  Close_Result : Archive.Compression.Zlib.Stream_Close_Result;
+
+                  procedure Forward
+                    (Bytes : Zlib.Byte_Array;
+                     Continue : in out Boolean) is
+                  begin
+                     Consumer.all (Bytes, Continue);
+                  end Forward;
+               begin
+                  Archive.Compression.Zlib.Open
+                    (Inflater,
+                     Archive.Compression.Zlib.Raw_Deflate,
+                     Limits =>
+                       (Max_Output_Bytes => Item.Uncompressed.Value,
+                        Max_Ratio        => 1_000));
+                  declare
+                     Append_Result : constant Archive.Compression.Zlib.Stream_Step_Result :=
+                       Archive.Compression.Zlib.Append_Chunks
+                         (Inflater, Deflated, Forward'Access);
+                  begin
+                     if Append_Result.Status /= Archive.Archives.Errors.Ok then
+                        Close_Result := Archive.Compression.Zlib.Close (Inflater);
+                        return (Status => Append_Result.Status,
+                                Integrity => Archive.Archives.Entries.Failed,
+                                Bytes_Written =>
+                                  Archive.Types.Uncompressed_Size
+                                    (Append_Result.Total_Output_Bytes));
+                     end if;
+                  end;
+
+                  declare
+                     Finish_Result : constant Archive.Compression.Zlib.Stream_Step_Result :=
+                       Archive.Compression.Zlib.Finish_Chunks
+                         (Inflater, Forward'Access);
+                  begin
+                     Close_Result := Archive.Compression.Zlib.Close (Inflater);
+                     if Finish_Result.Status /= Archive.Archives.Errors.Ok
+                       or else Close_Result.Status /= Archive.Archives.Errors.Ok
+                       or else not Close_Result.Stream_Ended
+                       or else Finish_Result.Total_Output_Bytes /=
+                         Natural (Item.Uncompressed.Value)
+                     then
+                        return (Status =>
+                                  (if Finish_Result.Status /= Archive.Archives.Errors.Ok
+                                   then Finish_Result.Status
+                                   elsif Close_Result.Status /= Archive.Archives.Errors.Ok
+                                   then Close_Result.Status
+                                   else Archive.Archives.Errors.Invalid_Format),
+                                Integrity => Archive.Archives.Entries.Failed,
+                                Bytes_Written =>
+                                  Archive.Types.Uncompressed_Size
+                                    (Finish_Result.Total_Output_Bytes));
+                     end if;
+
+                     return
+                       (Status => Archive.Archives.Errors.Ok,
+                        Integrity => Archive.Archives.Entries.Verified,
+                        Bytes_Written =>
+                          Archive.Types.Uncompressed_Size
+                            (Finish_Result.Total_Output_Bytes));
+                  end;
+               end;
+            end;
+         end;
       end if;
 
       Remaining := Natural (Item.Uncompressed.Value);

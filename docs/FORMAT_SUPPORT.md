@@ -19,7 +19,7 @@ that registry and the AUnit format tests.
 | Zstandard | supported as one logical regular-file archive | supported through `zlib` Zstandard decoding | supported by zlib frame validation and optional content checksum | supported through safe extraction planning/execution | supported by Zstandard writer adapter | `zlib` |
 | AR | supported for stored members, symbol tables, GNU string tables, and BSD long names | supported for stored regular-file members | supported by bounded member header and size validation | supported through safe extraction planning/execution | not supported | archive AR adapter |
 | CPIO newc/crc | supported for stored members and trailer termination | supported for regular-file members | supported by bounded fixed-header, name, size, and alignment validation | supported through safe extraction planning/execution | not supported | archive CPIO adapter |
-| CAB stored | supported for one bounded uncompressed folder | supported for stored file payloads | supported by bounded MSCF header, folder, file-record, and data-block validation | supported through safe extraction planning/execution | not supported | archive CAB adapter |
+| CAB stored / MSZIP | supported for one bounded stored or MSZIP folder | supported for stored file payloads and MSZIP raw-DEFLATE payloads through `zlib` | supported by bounded MSCF header, folder, file-record, data-block, and inflate-size validation | supported through safe extraction planning/execution | not supported | archive CAB adapter + `zlib` |
 | ISO 9660 | supported for primary-volume directory records | supported for stored regular-file extents | supported by bounded descriptor, directory-record, extent, and size validation | supported through safe extraction planning/execution | not supported | archive ISO adapter |
 
 Current covered edge cases include ZIP comments, Unicode path extra fields,
@@ -35,9 +35,9 @@ native layouts, supported native 7z layouts in documentation and validation,
 and zlib-backed Deflate 7z file-list publication, zlib-backed bzip2 single-file
 decoding and publication, and zlib-backed Zstandard single-file decoding and
 publication, stored Unix AR member indexing and payload streaming, CPIO newc
-member indexing and payload streaming, bounded stored CAB folder indexing and
-payload streaming, and ISO 9660 directory-record indexing with stored
-file-extent streaming.
+member indexing and payload streaming, bounded stored and MSZIP CAB folder
+indexing and payload streaming, and ISO 9660 directory-record indexing with
+stored file-extent streaming.
 
 Recognized but unsupported:
 
@@ -49,8 +49,8 @@ Unsupported ZIP methods, including ZIP PPMd and non-bridge LZMA variants, remain
 visible as unsupported entries where the central directory can be safely parsed.
 7z layouts outside the supported native layout set accepted by `zlib` fail closed
 with typed unsupported-method or invalid-format results.
-Compressed CAB folders remain visible only as unsupported-method results until a
-compression adapter is explicitly added for the CAB folder method.
+Unsupported CAB folder methods remain visible only as unsupported-method results
+until a compression adapter is explicitly added for that CAB folder method.
 
 Save-in-place writes target the currently open archive path, validate the source
 fingerprint, stage the replacement archive beside the target, verify the staged

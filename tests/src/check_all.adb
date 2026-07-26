@@ -852,19 +852,19 @@ procedure Check_All is
       Require_Document_Text
         ("docs/FORMAT_SUPPORT.md", "ISO 9660 directory-record indexing");
       Require_Document_Text
-        ("docs/FORMAT_SUPPORT.md", "bounded stored CAB folder indexing");
+        ("docs/FORMAT_SUPPORT.md", "bounded stored and MSZIP CAB folder");
       Require_Document_Text
         ("README.md", "supported for native zlib-backed layouts");
       Require_Document_Text
         ("README.md", "ISO 9660");
       Require_Document_Text
-        ("README.md", "CAB stored");
+        ("README.md", "CAB stored / MSZIP");
       Require_Document_Text
         ("share/archive.catalog", "native zlib-backed layouts");
       Require_Document_Text
         ("share/archive.catalog", "stored directory records and file extents");
       Require_Document_Text
-        ("share/archive.catalog", "bounded stored folders and file payloads");
+        ("share/archive.catalog", "bounded stored and MSZIP file payloads");
       Require_Document_Text
         ("docs/FORMAT_SUPPORT.md", "Save-in-place writes target the currently open archive path");
       Require_Document_Text
