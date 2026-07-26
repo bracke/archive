@@ -5844,6 +5844,7 @@ package body Archive_Suite.Core is
       Host_File : constant String := Root & "/input.txt";
       Zip_Target : constant String := Root & "/dispatch-stream.zip";
       Tar_Gz_Target : constant String := Root & "/dispatch-stream.tar.gz";
+      Seven_Zip_Target : constant String := Root & "/dispatch-stream.7z";
       File : Ada.Streams.Stream_IO.File_Type;
       Host_Data : constant Ada.Streams.Stream_Element_Array :=
         [1 => Ada.Streams.Stream_Element (Character'Pos ('o')),
@@ -5859,6 +5860,9 @@ package body Archive_Suite.Core is
       end if;
       if Ada.Directories.Exists (Tar_Gz_Target) then
          Ada.Directories.Delete_File (Tar_Gz_Target);
+      end if;
+      if Ada.Directories.Exists (Seven_Zip_Target) then
+         Ada.Directories.Delete_File (Seven_Zip_Target);
       end if;
 
       Ada.Streams.Stream_IO.Create (File, Ada.Streams.Stream_IO.Out_File, Host_File);
@@ -5905,11 +5909,18 @@ package body Archive_Suite.Core is
              (Archive.Archives.Formats.Tar_GZip_Format,
               Tar_Gz_Target,
               Plan);
+         Seven_Zip_Published : constant Archive.Writes.Results.Publish_Result :=
+           Archive.Writes.Dispatch.Publish
+             (Archive.Archives.Formats.Seven_Zip_Format,
+              Seven_Zip_Target,
+              Plan);
          Zip_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
            Archive.Archives.Readers.Dispatch.Open_File (Zip_Target);
          Tar_Gz_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
            Archive.Archives.Readers.Dispatch.Open_File
              (Tar_Gz_Target, Source_Name => Tar_Gz_Target, Retain_Backing => True);
+         Seven_Zip_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+           Archive.Archives.Readers.Dispatch.Open_File (Seven_Zip_Target);
       begin
          Assert
            (Zip_Published.Status = Archive.Writes.Results.Write_Completed,
@@ -5918,6 +5929,9 @@ package body Archive_Suite.Core is
            (Tar_Gz_Published.Status = Archive.Writes.Results.Write_Completed,
             "write dispatch streams tar.gz publication to file");
          Assert
+           (Seven_Zip_Published.Status = Archive.Writes.Results.Write_Completed,
+            "write dispatch publishes 7z archive through zlib");
+         Assert
            (Zip_Opened.Status = Archive.Archives.Errors.Ok
             and then Zip_Opened.Format = Archive.Archives.Formats.Zip_Format,
             "streamed dispatch zip publication reopens");
@@ -5925,6 +5939,11 @@ package body Archive_Suite.Core is
            (Tar_Gz_Opened.Status = Archive.Archives.Errors.Ok
             and then Tar_Gz_Opened.Format = Archive.Archives.Formats.Tar_GZip_Format,
             "streamed dispatch tar.gz publication reopens");
+         Assert
+           (Seven_Zip_Opened.Status = Archive.Archives.Errors.Ok
+            and then Seven_Zip_Opened.Format = Archive.Archives.Formats.Seven_Zip_Format
+            and then Archive.Archives.Index.Physical_Count (Seven_Zip_Opened.Index) = 1,
+            "write dispatch 7z publication reopens");
       end;
    end Test_Write_Dispatch;
 
@@ -8703,7 +8722,7 @@ package body Archive_Suite.Core is
               Archive.Archives.Index.Build (Physical);
          begin
             Archive.Model.Publish_Archive_Index
-              (Read_Only_Model, "sample.7z", Build.Index, Archive.Archives.Formats.Seven_Zip_Format);
+              (Read_Only_Model, "sample.rar", Build.Index, Archive.Archives.Formats.Rar_Format);
             Assert
               (not Archive.Commands.Is_Enabled (Archive.Commands.Add_Files_Command, Read_Only_Model)
                and then Archive.Commands.Unavailable_Key

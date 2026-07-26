@@ -3,6 +3,8 @@ with Ada.Streams;
 with Ada.Streams.Stream_IO;
 with Ada.Strings.Unbounded;
 
+with Archive.Archives.Entries;
+with Archive.Archives.Index;
 with Archive.Archives.Readers.Dispatch;
 with Archive.Compression.Zlib;
 with Archive.Resource_Limits;
@@ -20,7 +22,10 @@ package body Archive.Writes.Execution is
    use type Archive.Writes.Plans.Entry_Decision;
    use type Archive.Writes.Results.Write_Status;
    use type Archive.Writes.Plans.Write_Action;
+   use type Archive.Archives.Entries.Entry_Kind;
+   use type Archive.Types.Entry_Id;
    use type Ada.Streams.Stream_Element_Offset;
+   use type Zlib.Status_Code;
 
    Chunk_Size : constant Ada.Streams.Stream_Element_Count := 32_768;
 
@@ -354,6 +359,243 @@ package body Archive.Writes.Execution is
          end if;
          return (Status => Archive.Writes.Results.Write_Failed_Publish);
    end Finalize_Staged_Archive;
+
+   function Zlib_Write_Status
+     (Status : Zlib.Status_Code)
+      return Archive.Writes.Results.Write_Status
+   is
+   begin
+      case Status is
+         when Zlib.Ok =>
+            return Archive.Writes.Results.Write_Completed;
+         when Zlib.Input_File_Error | Zlib.Output_File_Error =>
+            return Archive.Writes.Results.Write_Failed_Staging;
+         when Zlib.Unsupported_Method =>
+            return Archive.Writes.Results.Write_Blocked_By_Plan;
+         when others =>
+            return Archive.Writes.Results.Write_Failed_Verification;
+      end case;
+   end Zlib_Write_Status;
+
+   function Trimmed_Image (Value : Natural) return String is
+      Image : constant String := Natural'Image (Value);
+   begin
+      if Image (Image'First) = ' ' then
+         return Image (Image'First + 1 .. Image'Last);
+      end if;
+      return Image;
+   end Trimmed_Image;
+
+   function Source_Change_For
+     (Plan : Archive.Writes.Plans.Write_Plan;
+      Id   : Archive.Types.Entry_Id)
+      return Natural
+   is
+      Position : Natural := 0;
+   begin
+      for Change of Plan.Changes loop
+         Position := Position + 1;
+         if Change.Request.Source_Entry = Id
+           and then Change.Request.Action in Archive.Writes.Plans.Replace_File
+             | Archive.Writes.Plans.Remove_Entry
+             | Archive.Writes.Plans.Rename_Entry
+         then
+            return Position;
+         end if;
+      end loop;
+      return 0;
+   end Source_Change_For;
+
+   function Publish_Seven_Zip
+     (Destination_Path : String;
+      Plan             : Archive.Writes.Plans.Write_Plan;
+      Source_Path      : String := "";
+      Overwrite        : Boolean := False;
+      Cancelled        : Boolean := False)
+      return Archive.Writes.Results.Publish_Result
+   is
+      use Ada.Strings.Unbounded;
+
+      Root : constant String := Parent_Directory (Destination_Path);
+      Temp : constant String := Fresh_Write_Sibling_Path (Root, Destination_Path, "save");
+      Stage_Dir : constant String :=
+        Fresh_Write_Sibling_Path (Root, Destination_Path, "7z-stage");
+      Status : constant Archive.Writes.Results.Write_Status :=
+        Preflight (Destination_Path, Plan, Root, Overwrite, Cancelled);
+
+      function Planned_Count return Natural is
+         Count : Natural := 0;
+      begin
+         if Source_Path /= "" then
+            for Raw_Id in 1 .. Archive.Archives.Index.Entry_Count (Plan.Index) loop
+               declare
+                  Id : constant Archive.Types.Entry_Id := Archive.Types.Entry_Id (Raw_Id);
+                  Item : constant Archive.Archives.Entries.Archive_Entry :=
+                    Archive.Archives.Index.Entry_For (Plan.Index, Id);
+                  Position : constant Natural := Source_Change_For (Plan, Id);
+               begin
+                  if not Item.Synthetic
+                    and then not (Position > 0
+                                  and then Plan.Changes.Element (Position).Request.Action =
+                                    Archive.Writes.Plans.Remove_Entry)
+                  then
+                     Count := Count + 1;
+                  end if;
+               end;
+            end loop;
+         end if;
+
+         for Change of Plan.Changes loop
+            if Change.Decision = Archive.Writes.Plans.Entry_Ready
+              and then Change.Request.Action in Archive.Writes.Plans.Add_File
+                | Archive.Writes.Plans.Add_Directory
+            then
+               Count := Count + 1;
+            end if;
+         end loop;
+         return Count;
+      end Planned_Count;
+
+      Count : constant Natural := Planned_Count;
+      Z_Status : Zlib.Status_Code := Zlib.Ok;
+   begin
+      if Status /= Archive.Writes.Results.Write_Completed then
+         return (Status => Status);
+      elsif Temp = "" or else Stage_Dir = "" or else Count = 0 then
+         return (Status => Archive.Writes.Results.Write_Failed_Staging);
+      end if;
+
+      Ada.Directories.Create_Path (Root);
+      Ada.Directories.Create_Path (Stage_Dir);
+
+      declare
+         Input_Paths : Zlib.Text_Array (1 .. Count);
+         Entry_Names : Zlib.Text_Array (1 .. Count);
+         Next : Natural := 1;
+
+         procedure Add_Path (Input_Path : String; Entry_Name : String) is
+         begin
+            Input_Paths (Next) := To_Unbounded_String (Input_Path);
+            Entry_Names (Next) := To_Unbounded_String (Entry_Name);
+            Next := Next + 1;
+         end Add_Path;
+
+         procedure Add_Existing
+           (Item : Archive.Archives.Entries.Archive_Entry;
+            Name : String)
+         is
+            Extracted : constant String :=
+              Stage_Dir & "/entry-" & Trimmed_Image (Next);
+         begin
+            if Item.Kind = Archive.Archives.Entries.Directory then
+               Ada.Directories.Create_Path (Extracted);
+               Add_Path (Extracted, Name);
+            elsif Item.Kind = Archive.Archives.Entries.Regular_File then
+               Zlib.Extract_Seven_Zip_File
+                 (Source_Path, Extracted, To_String (Item.Original_Path), Z_Status);
+               if Z_Status = Zlib.Ok then
+                  Add_Path (Extracted, Name);
+               end if;
+            else
+               Z_Status := Zlib.Unsupported_Method;
+            end if;
+         end Add_Existing;
+      begin
+         if Source_Path /= "" then
+            for Raw_Id in 1 .. Archive.Archives.Index.Entry_Count (Plan.Index) loop
+               declare
+                  Id : constant Archive.Types.Entry_Id := Archive.Types.Entry_Id (Raw_Id);
+                  Item : constant Archive.Archives.Entries.Archive_Entry :=
+                    Archive.Archives.Index.Entry_For (Plan.Index, Id);
+                  Position : constant Natural := Source_Change_For (Plan, Id);
+               begin
+                  if not Item.Synthetic then
+                     if Position > 0
+                       and then Plan.Changes.Element (Position).Request.Action =
+                         Archive.Writes.Plans.Remove_Entry
+                     then
+                        null;
+                     elsif Position > 0
+                       and then Plan.Changes.Element (Position).Request.Action =
+                         Archive.Writes.Plans.Replace_File
+                     then
+                        Add_Path
+                          (To_String (Plan.Changes.Element (Position).Request.Host_Source),
+                           To_String (Plan.Changes.Element (Position).Request.Target_Path));
+                     elsif Position > 0
+                       and then Plan.Changes.Element (Position).Request.Action =
+                         Archive.Writes.Plans.Rename_Entry
+                     then
+                        Add_Existing
+                          (Item,
+                           To_String (Plan.Changes.Element (Position).Request.Replacement_Path));
+                     else
+                        Add_Existing (Item, To_String (Item.Original_Path));
+                     end if;
+                  end if;
+               end;
+               exit when Z_Status /= Zlib.Ok;
+            end loop;
+         end if;
+
+         if Z_Status = Zlib.Ok then
+            for Change of Plan.Changes loop
+               if Change.Decision /= Archive.Writes.Plans.Entry_Ready then
+                  Z_Status := Zlib.Unsupported_Method;
+               elsif Change.Request.Action = Archive.Writes.Plans.Add_File
+                 or else Change.Request.Action = Archive.Writes.Plans.Add_Directory
+               then
+                  Add_Path
+                    (To_String (Change.Request.Host_Source),
+                     To_String (Change.Request.Target_Path));
+               end if;
+               exit when Z_Status /= Zlib.Ok;
+            end loop;
+         end if;
+
+         if Z_Status = Zlib.Ok and then Next /= Count + 1 then
+            Z_Status := Zlib.Unsupported_Method;
+         end if;
+
+         if Z_Status = Zlib.Ok then
+            Zlib.Seven_Zip_Stored_Files (Input_Paths, Temp, Entry_Names, Z_Status);
+         end if;
+      end;
+
+      if Ada.Directories.Exists (Stage_Dir) then
+         Ada.Directories.Delete_Tree (Stage_Dir);
+      end if;
+
+      if Z_Status /= Zlib.Ok then
+         if Ada.Directories.Exists (Temp) then
+            Ada.Directories.Delete_File (Temp);
+         end if;
+         return (Status => Zlib_Write_Status (Z_Status));
+      end if;
+
+      return Finalize_Staged_Archive
+        (Destination_Path, Temp, Root, Overwrite,
+         Archive.Archives.Formats.Seven_Zip_Format, Destination_Path, Cancelled);
+   exception
+      when others =>
+         if Ada.Directories.Exists (Stage_Dir) then
+            begin
+               Ada.Directories.Delete_Tree (Stage_Dir);
+            exception
+               when others =>
+                  null;
+            end;
+         end if;
+         if Ada.Directories.Exists (Temp) then
+            begin
+               Ada.Directories.Delete_File (Temp);
+            exception
+               when others =>
+                  null;
+            end;
+         end if;
+         return (Status => Archive.Writes.Results.Write_Failed_Staging);
+   end Publish_Seven_Zip;
 
    function Publish_Archive_From_File
      (Destination_Path    : String;

@@ -6,7 +6,6 @@ with Archive.Archives.Readers.Seven_Zip;
 with Archive.Archives.Readers.Tar;
 with Archive.Archives.Readers.Zip;
 with Archive.Writes.Execution;
-with Zlib;
 
 package body Archive.Archives.Readers.Dispatch is
    use Ada.Strings.Unbounded;

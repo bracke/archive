@@ -66,6 +66,7 @@ Required V1 write workflows:
 | ZIP stored | required | required | required by save-in-place/save-as publication | required by save-in-place/save-as publication | archive ZIP adapter |
 | ZIP DEFLATE | required | required | required by save-in-place/save-as publication | required by save-in-place/save-as publication | archive ZIP adapter + `zlib` |
 | gzip | required single-file | replace logical file | not applicable | required logical name | `zlib` |
+| 7z | required for supported zlib subset | required | required by save-in-place/save-as publication | required by save-in-place/save-as publication | `zlib` |
 
 Save-in-place targets the currently open archive path. The implementation stages
 and verifies a replacement archive beside the target before publication, so the

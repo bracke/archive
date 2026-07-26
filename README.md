@@ -15,7 +15,7 @@ Current V1 support:
 | ZIP stored | supported | supported | supported | supported | supported by save-in-place and save-as publication | archive ZIP adapter |
 | ZIP DEFLATE | supported | supported | supported | supported | supported by save-in-place and save-as publication | archive ZIP adapter + `zlib` |
 | gzip | supported | supported | supported | supported | supported single-file replacement | `zlib` |
-| 7z | supported for the native zlib-backed subset | supported | supported | supported | not supported in V1 | `zlib` |
+| 7z | supported for the native zlib-backed subset | supported | supported | supported | supported by stored file-list publication | `zlib` |
 
 Recognized but unsupported in V1: RAR, XZ, bzip2, Zstandard, CAB, CPIO, ISO, AR, split ZIP, multi-volume ZIP, encrypted entries outside the supported 7z subset, and unsupported ZIP or 7z methods.
 

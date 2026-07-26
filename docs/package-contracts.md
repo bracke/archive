@@ -41,6 +41,9 @@ should remain behind the owning package.
 - `Archive.Writes.Tar` consumes public `tarlib` writer APIs only; TAR.GZ
   publication is orchestrated by `Archive.Writes.Execution` through the TAR
   writer and gzip-wrapped zlib stream.
+- 7z publication is orchestrated by `Archive.Writes.Execution` through public
+  `zlib` file-list writer APIs. Retained source entries are staged before
+  `zlib` publishes the supported native 7z file list.
 - `Archive.Archives.Readers.Zip` owns ZIP central-directory parsing, ZIP64
   validation, data descriptor handling, local-header consistency checks, CRC32,
   stored payloads, and raw-DEFLATE payload streaming through zlib.
