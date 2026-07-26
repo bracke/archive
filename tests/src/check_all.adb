@@ -301,6 +301,14 @@ procedure Check_All is
          Fail (Path & ": runtime readers must not use heap-backed metadata slice buffers");
       end if;
 
+      if Ends_With (Path, "/archive-archives-readers-tar.adb")
+        and then
+          (Contains (Content, "Index_Buffer")
+           or else Contains (Content, "Memory_Source"))
+      then
+         Fail (Path & ": TAR reader indexing must stay file-backed through tarlib inputs");
+      end if;
+
       if Ends_With (Path, "/archive-archives-opening-tasks.adb")
         and then
           (not Contains (Content, "task body Open_Worker")

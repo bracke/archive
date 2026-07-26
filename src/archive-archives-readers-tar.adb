@@ -20,37 +20,6 @@ package body Archive.Archives.Readers.Tar is
 
    Payload_Chunk_Size : constant := 8_192;
 
-   type Memory_Source
-     (Length : Natural)
-   is limited new Tarlib.Inputs.Input_Source with record
-      Buffer : Zlib.Byte_Array (1 .. Length);
-      Cursor : Natural := 1;
-   end record;
-
-   overriding procedure Read
-     (Source : in out Memory_Source;
-      Data   : out Ada.Streams.Stream_Element_Array;
-      Last   : out Ada.Streams.Stream_Element_Offset;
-      Result : out Tarlib.Errors.Status);
-
-   overriding procedure Read
-     (Source : in out Memory_Source;
-      Data   : out Ada.Streams.Stream_Element_Array;
-      Last   : out Ada.Streams.Stream_Element_Offset;
-      Result : out Tarlib.Errors.Status)
-   is
-      Out_Pos : Ada.Streams.Stream_Element_Offset := Data'First;
-   begin
-      while Out_Pos <= Data'Last and then Source.Cursor <= Source.Buffer'Last loop
-         Data (Out_Pos) := Ada.Streams.Stream_Element (Source.Buffer (Source.Cursor));
-         Source.Cursor := Source.Cursor + 1;
-         Out_Pos := Out_Pos + Ada.Streams.Stream_Element_Offset (1);
-      end loop;
-
-      Last := Out_Pos - Ada.Streams.Stream_Element_Offset (1);
-      Result := Tarlib.Errors.OK;
-   end Read;
-
    function Map_Kind
      (Kind : Tarlib.Entries.Entry_Kind)
       return Archive.Archives.Entries.Entry_Kind
@@ -227,15 +196,6 @@ package body Archive.Archives.Readers.Tar is
          end if;
       end loop;
    end Index_Source;
-
-   function Index_Buffer (Bytes : Zlib.Byte_Array) return Tar_Index_Result is
-      Source : aliased Memory_Source (Bytes'Length);
-   begin
-      for Index in Bytes'Range loop
-         Source.Buffer (Index - Bytes'First + 1) := Bytes (Index);
-      end loop;
-      return Index_Source (Source'Access);
-   end Index_Buffer;
 
    function Index_File (Path : String) return Tar_Index_Result is
       Source : aliased Tarlib.Files.File_Input_Source;
