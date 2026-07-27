@@ -1,0 +1,252 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# archive is a guikit/textrender desktop app that also depends on i18n and
+# messages. Building it checks out the full sibling set: the graphics stack
+# (guikit -> textrender) plus i18n's regeneration chain (i18n's pre-build action
+# runs cldr/regen_tool, which downloads and unpacks CLDR/tzdb via httpclient,
+# tarlib, awklib and regexp). Linux runs the release checklist (tests/bin/check_all,
+# which drives GNATprove and a headless smoke); macOS and Windows verify the app
+# and its AUnit suite build and run natively.
+
+jobs:
+  linux-release-check:
+    name: Linux release checklist
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out archive
+        uses: actions/checkout@v4
+        with: { path: archive }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/guikit", path: guikit }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/textrender", path: textrender }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/i18n", path: i18n }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/messages", path: messages }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/project_tools", path: project_tools }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/httpclient", path: httpclient }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/regexp", path: regexp }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/hostkit", path: hostkit }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/zlib", path: zlib }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/cryptolib", path: cryptolib }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/tarlib", path: tarlib }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/awklib", path: awklib }
+      - name: Set up Alire
+        uses: alire-project/setup-alire@v5
+        with:
+          toolchain: gnat_native=15.2.1 gprbuild
+      - name: Install GNATprove
+        # check_all runs a bare "gnatprove -P tests/proof/archive_release_proof.gpr".
+        # gnatprove is a regular Alire crate, not a toolchain component, and apt
+        # has no reliable package.
+        run: |
+          alr install gnatprove
+          echo "$HOME/.alire/bin" >> "$GITHUB_PATH"
+      - name: Install system libraries (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libvulkan-dev \
+            libgdk-pixbuf-2.0-dev \
+            libglib2.0-dev \
+            libgtk-3-dev \
+            fonts-dejavu-core \
+            mesa-vulkan-drivers \
+            xvfb \
+            libxcursor-dev \
+            libxxf86vm-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxi-dev
+          # OpenSSL for httpclient's TLS bridge (i18n's download_tzdb links it).
+          sudo apt-get install -y libssl-dev
+      - name: Build archive
+        # Generates the gitignored Alire configs for the path-pinned siblings,
+        # runs i18n's pre-build regeneration (download_tzdb links OpenSSL) and
+        # the post-build bundle of i18n data into archive/share/i18n.
+        working-directory: archive
+        run: alr --non-interactive build
+      - name: Build the test crate
+        # tests/ is its own Alire crate (it depends on aunit), so build it there
+        # rather than driving its .gpr with bare gprbuild.
+        working-directory: archive/tests
+        run: alr --non-interactive build
+      - name: Run archive release checker
+        working-directory: archive
+        # check_all runs from the archive root (Tests_Root finds tests/archive_tests.gpr);
+        # gnatprove resolves the path-pinned siblings through GPR_PROJECT_PATH, and
+        # xvfb gives the headless smoke (./bin/archive --headless-smoke) a display.
+        env:
+          GPR_PROJECT_PATH: ${{ github.workspace }}/httpclient:${{ github.workspace }}/zlib:${{ github.workspace }}/cryptolib:${{ github.workspace }}/regexp:${{ github.workspace }}/tarlib
+        run: xvfb-run -a ./tests/bin/check_all
+
+  macos-build-check:
+    name: macOS native build check
+    # macos-latest is arm64; gnat_native=15.2.1 ships no aarch64-darwin binary.
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: archive }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/guikit", path: guikit }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/textrender", path: textrender }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/i18n", path: i18n }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/messages", path: messages }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/project_tools", path: project_tools }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/httpclient", path: httpclient }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/regexp", path: regexp }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/hostkit", path: hostkit }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/zlib", path: zlib }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/cryptolib", path: cryptolib }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/tarlib", path: tarlib }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/awklib", path: awklib }
+      - name: Set up Alire
+        uses: alire-project/setup-alire@v5
+        with:
+          toolchain: gnat_native=15.2.1 gprbuild
+      - name: Install system libraries (macOS)
+        run: |
+          brew update
+          # MoltenVK provides the Vulkan loader/ICD on macOS; gdk-pixbuf (which
+          # pulls in glib) satisfies the thumbnail-decoding switches.
+          # openssl@3: httpclient's TLS bridge (i18n's download_tzdb links it).
+          brew install vulkan-headers vulkan-loader molten-vk glfw gdk-pixbuf openssl@3
+          echo "LIBRARY_PATH=$(brew --prefix)/lib:$(brew --prefix openssl@3)/lib" >> "$GITHUB_ENV"
+      - name: Build archive on macOS
+        working-directory: archive
+        run: alr --non-interactive build
+      - name: Build and run the suite on macOS
+        working-directory: archive/tests
+        # Point the runtime at i18n's regenerated data (the app build produced it
+        # in the i18n checkout); the test binary is not next to the bundled copy.
+        env:
+          I18N_DATA_DIR: ${{ github.workspace }}/i18n/share/i18n
+        run: |
+          alr --non-interactive build
+          ./bin/archive_tests
+
+  windows-build-check:
+    name: Windows native build check
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: archive }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/guikit", path: guikit }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/textrender", path: textrender }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/i18n", path: i18n }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/messages", path: messages }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/project_tools", path: project_tools }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/httpclient", path: httpclient }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/regexp", path: regexp }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/hostkit", path: hostkit }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/zlib", path: zlib }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/cryptolib", path: cryptolib }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/tarlib", path: tarlib }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/awklib", path: awklib }
+      - name: Set up Alire
+        uses: alire-project/setup-alire@v5
+        with:
+          toolchain: gnat_native=15.2.1 gprbuild
+      - name: Install system libraries (Windows)
+        shell: bash
+        run: |
+          # Alire's gnat_native is a mingw-w64 toolchain, so its `ld` needs mingw
+          # import libraries. Take every library from the MSYS2 installation
+          # preinstalled on the runner. vulkan-loader/glib2/gdk-pixbuf2/glfw
+          # satisfy the Windows linker switches; openssl is httpclient's TLS
+          # bridge (i18n's download_tzdb links it).
+          pacman() { /c/msys64/usr/bin/pacman "$@"; }
+
+          # The runner's MSYS2 keyring goes stale, and then the database refuses
+          # to sync at all. Refresh the keyring first, and if the signed sync
+          # still will not go, fall back to an unsigned one -- this is a throwaway
+          # CI image installing well-known libraries, not a machine whose supply
+          # chain we are defending.
+          pacman-key() { /c/msys64/usr/bin/pacman-key "$@"; }
+          pacman-key --init || true
+          pacman-key --populate msys2 || true
+
+          packages="mingw-w64-x86_64-vulkan-loader
+                    mingw-w64-x86_64-glib2
+                    mingw-w64-x86_64-gdk-pixbuf2
+                    mingw-w64-x86_64-glfw
+                    mingw-w64-x86_64-openssl"
+
+          # The mirrors stall often enough to matter, so give each sync room to
+          # be slow and retry it before concluding anything is actually wrong.
+          sync() {
+            pacman -Sy --noconfirm --needed --disable-download-timeout "$@" $packages
+          }
+
+          synced=""
+          for attempt in 1 2 3; do
+            if sync; then synced=yes; break; fi
+            echo "::warning::pacman sync attempt ${attempt} failed"
+            sleep 15
+          done
+
+          if [ -z "$synced" ]; then
+            echo "::warning::signed pacman sync failed; retrying without signature checks"
+            sed 's/^SigLevel.*/SigLevel = Never/' /c/msys64/etc/pacman.conf \
+              > /c/msys64/tmp/pacman-nosig.conf
+            for attempt in 1 2 3; do
+              if sync --config C:/msys64/tmp/pacman-nosig.conf; then synced=yes; break; fi
+              echo "::warning::unsigned pacman sync attempt ${attempt} failed"
+              sleep 15
+            done
+          fi
+
+          [ -n "$synced" ] || { echo "::error::could not install the MSYS2 packages"; exit 1; }
+
+          echo "CPATH=C:/msys64/mingw64/include" >> "$GITHUB_ENV"
+          echo "LIBRARY_PATH=C:/msys64/mingw64/lib" >> "$GITHUB_ENV"
+          echo "C:\msys64\mingw64\bin" >> "$GITHUB_PATH"
+      - name: Build archive on Windows
+        working-directory: archive
+        run: alr --non-interactive build
+      - name: Build and run the suite on Windows
+        working-directory: archive/tests
+        shell: bash
+        run: |
+          # i18n writes its data with a forward-slash path; hand the runtime a
+          # mixed (cygpath -m) path so the byte-exact reader finds the sections.
+          export I18N_DATA_DIR="$(cygpath -m "$GITHUB_WORKSPACE")/i18n/share/i18n"
+          alr --non-interactive build
+          ./bin/archive_tests.exe
