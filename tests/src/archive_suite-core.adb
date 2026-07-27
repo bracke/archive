@@ -836,6 +836,86 @@ package body Archive_Suite.Core is
       return Result;
    end XZ_With_CRC64;
 
+   function XZ_Two_Block
+     (First  : Zlib.Byte_Array;
+      Second : Zlib.Byte_Array)
+      return Zlib.Byte_Array
+   is
+      First_Footer        : constant Natural := First'Last - 11;
+      First_Backward      : constant Natural :=
+        Natural (U32_At (First, First_Footer - First'First + 4));
+      First_Index_Size    : constant Natural := (First_Backward + 1) * 4;
+      First_Index         : constant Natural := First_Footer - First_Index_Size;
+      First_Block_First   : constant Natural := First'First + 12;
+      First_Block_Last    : constant Natural := First_Index - 1;
+      First_Block_Length  : constant Natural := First_Block_Last - First_Block_First + 1;
+      First_Unpadded     : constant Zlib.Byte := First (First_Index + 2);
+      First_Uncompressed : constant Zlib.Byte := First (First_Index + 3);
+      Second_Footer       : constant Natural := Second'Last - 11;
+      Second_Backward     : constant Natural :=
+        Natural (U32_At (Second, Second_Footer - Second'First + 4));
+      Second_Index_Size   : constant Natural := (Second_Backward + 1) * 4;
+      Second_Index        : constant Natural := Second_Footer - Second_Index_Size;
+      Second_Unpadded    : constant Zlib.Byte := Second (Second_Index + 2);
+      Second_Uncompressed : constant Zlib.Byte := Second (Second_Index + 3);
+      Second_Block_First  : constant Natural := Second'First + 12;
+      Second_Block_Last   : constant Natural := Second_Index - 1;
+      Second_Block_Length : constant Natural := Second_Block_Last - Second_Block_First + 1;
+      Index_Length        : constant Natural := 12;
+      Result              : Zlib.Byte_Array
+        (1 .. 12 + First_Block_Length + Second_Block_Length + Index_Length + 12) :=
+          [others => 0];
+      Out_Pos             : Natural := Result'First;
+      Index_First         : Natural;
+      Index_CRC_Pos       : Natural;
+      Footer_First        : Natural;
+      Footer_Data         : Zlib.Byte_Array (1 .. 6) := [others => 0];
+   begin
+      for Pos in First'First .. First'First + 11 loop
+         Result (Out_Pos) := First (Pos);
+         Out_Pos := Out_Pos + 1;
+      end loop;
+      for Pos in First_Block_First .. First_Block_Last loop
+         Result (Out_Pos) := First (Pos);
+         Out_Pos := Out_Pos + 1;
+      end loop;
+      for Pos in Second_Block_First .. Second_Block_Last loop
+         Result (Out_Pos) := Second (Pos);
+         Out_Pos := Out_Pos + 1;
+      end loop;
+
+      Index_First := Out_Pos;
+      Result (Out_Pos) := 0;
+      Result (Out_Pos + 1) := 2;
+      Result (Out_Pos + 2) := First_Unpadded;
+      Result (Out_Pos + 3) := First_Uncompressed;
+      Result (Out_Pos + 4) := Second_Unpadded;
+      Result (Out_Pos + 5) := Second_Uncompressed;
+      Out_Pos := Out_Pos + 8;
+      Index_CRC_Pos := Out_Pos;
+      Put32_U
+        (Result,
+         Index_CRC_Pos - Result'First,
+         Interfaces.Unsigned_32
+           (CRC32_Compute (Result (Index_First .. Index_CRC_Pos - 1))));
+      Out_Pos := Out_Pos + 4;
+
+      Footer_First := Out_Pos;
+      Put32_U (Footer_Data, 0, 2);
+      Footer_Data (5) := Result (Result'First + 6);
+      Footer_Data (6) := Result (Result'First + 7);
+      Put32_U
+        (Result,
+         Footer_First - Result'First,
+         Interfaces.Unsigned_32 (CRC32_Compute (Footer_Data)));
+      Put32_U (Result, Footer_First - Result'First + 4, 2);
+      Result (Footer_First + 8) := Footer_Data (5);
+      Result (Footer_First + 9) := Footer_Data (6);
+      Result (Footer_First + 10) := Zlib.Byte (Character'Pos ('Y'));
+      Result (Footer_First + 11) := Zlib.Byte (Character'Pos ('Z'));
+      return Result;
+   end XZ_Two_Block;
+
    function Empty_Zip return Zlib.Byte_Array is
       Bytes : Zlib.Byte_Array (1 .. 22) := [others => 0];
    begin
@@ -3214,6 +3294,19 @@ package body Archive_Suite.Core is
         Encoded_By_File_Encoder (Plain, "dispatch-xz", Zlib.XZ_LZMA2_File'Access);
       Xz_Unsupported_Check : constant Zlib.Byte_Array := XZ_With_Check_Id (Xz, 10);
       Xz_CRC64 : constant Zlib.Byte_Array := XZ_With_CRC64 (Xz, Plain);
+      Xz_Block_One : constant Zlib.Byte_Array :=
+        Encoded_By_File_Encoder
+          ([1 => Zlib.Byte (Character'Pos ('a'))],
+           "dispatch-xz-block-one",
+           Zlib.XZ_LZMA2_File'Access);
+      Xz_Block_Two : constant Zlib.Byte_Array :=
+        Encoded_By_File_Encoder
+          ([1 => Zlib.Byte (Character'Pos ('b')),
+            2 => Zlib.Byte (Character'Pos ('c'))],
+           "dispatch-xz-block-two",
+           Zlib.XZ_LZMA2_File'Access);
+      Xz_Two_Blocks : constant Zlib.Byte_Array :=
+        XZ_Two_Block (Xz_Block_One, Xz_Block_Two);
       Tar : constant Zlib.Byte_Array := One_File_Tar;
       Ar : constant Zlib.Byte_Array := One_File_Ar;
       Cab : constant Zlib.Byte_Array := One_File_Cab;
@@ -3295,6 +3388,8 @@ package body Archive_Suite.Core is
       Assert (Seven_Filtered_Status = Zlib.Ok, "dispatch 7z filtered fixture builds");
       Assert (Seven_BCJ2_Status = Zlib.Ok, "dispatch 7z bcj2 fixture builds");
       Assert (Seven_Encrypted_Status = Zlib.Ok, "dispatch 7z encrypted fixture builds");
+      Assert (Xz_Block_One'Length > 0, "dispatch xz first block fixture builds");
+      Assert (Xz_Block_Two'Length > 0, "dispatch xz second block fixture builds");
 
       declare
          Decoded_Status : Zlib.Status_Code;
@@ -3322,6 +3417,32 @@ package body Archive_Suite.Core is
            (Payload.Bytes_Written = Plain'Length
             and then Bytes_Of (Payload) (1 .. Plain'Length) = Plain,
             "xz crc64 payload bytes");
+      end;
+
+      declare
+         Decoded_Status : Zlib.Status_Code;
+         Decoded        : constant Zlib.Byte_Array := Zlib.XZ (Xz_Two_Blocks, Decoded_Status);
+         Opened         : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+           Open_Dispatch (Xz_Two_Blocks, Source_Name => "two-block.xz");
+         Item           : constant Archive.Archives.Entries.Archive_Entry :=
+           Archive.Archives.Index.Entry_For (Opened.Index, 2);
+         Payload        : constant Test_Stream_Result :=
+           Stream_Dispatch_Payload (Xz_Two_Blocks, "two-block.xz", Item);
+      begin
+         Assert
+           (Decoded_Status = Zlib.Ok
+            and then Decoded = Plain,
+            "xz multi-block stream decodes through zlib");
+         Assert
+           (Opened.Status = Archive.Archives.Errors.Ok
+            and then Opened.Format = Archive.Archives.Formats.Xz_Format,
+            "xz multi-block stream opens through dispatch");
+         Assert
+           (Payload.Status = Archive.Archives.Errors.Ok
+            and then Payload.Integrity = Archive.Archives.Entries.Verified
+            and then Payload.Bytes_Written = Plain'Length
+            and then Bytes_Of (Payload) (1 .. Plain'Length) = Plain,
+            "xz multi-block payload streams through dispatch");
       end;
 
       declare

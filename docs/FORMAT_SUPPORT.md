@@ -20,7 +20,7 @@ that registry and the AUnit format tests.
 | 7z | supported for native zlib-backed Copy, Deflate, BZip2, LZMA, LZMA2, PPMd, filtered, BCJ2, solid-substream, and bounded `.7z.001` first-volume layouts | supported through `zlib` native 7z extraction, including password-backed AES payload extraction and bounded multi-volume reassembly | supported through zlib header, size, CRC, method, password, and joined-volume limit validation | supported through safe extraction planning/execution when required passwords are supplied in memory | supported by Deflate file-list publication through `zlib` | `zlib` |
 | bzip2 | supported as one logical regular-file archive | supported through `zlib` bzip2 decoding | supported by bzip2 block and combined CRC validation | supported through safe extraction planning/execution | supported by bzip2 writer adapter | `zlib` |
 | Zstandard | supported as one logical regular-file archive | supported through `zlib` Zstandard decoding | supported by zlib frame validation and optional content checksum | supported through safe extraction planning/execution | supported by Zstandard writer adapter | `zlib` |
-| XZ | supported as one logical regular-file archive for one-stream, one-block LZMA2 files | supported through `zlib` XZ/LZMA2 decoding | supported by zlib XZ header, block, index, footer, CRC32, and CRC64 validation | supported through safe extraction planning/execution | supported by XZ LZMA2 writer adapter | `zlib` |
+| XZ | supported as one logical regular-file archive for one-stream, one-or-more-block LZMA2 files | supported through `zlib` XZ/LZMA2 decoding | supported by zlib XZ header, block, index, footer, CRC32, and CRC64 validation | supported through safe extraction planning/execution | supported by XZ LZMA2 writer adapter | `zlib` |
 | AR | supported for stored members, symbol tables, GNU string tables, and BSD long names | supported for stored regular-file members | supported by bounded member header and size validation | supported through safe extraction planning/execution | supported by stored-member rewrite publication | archive AR adapter |
 | CPIO newc/crc | supported for stored members and trailer termination | supported for regular-file members | supported by bounded fixed-header, name, size, and alignment validation | supported through safe extraction planning/execution | supported by newc rewrite publication | archive CPIO adapter |
 | CAB stored / MSZIP | supported for one bounded stored or MSZIP folder | supported for stored file payloads and MSZIP raw-DEFLATE payloads through `zlib` | supported by bounded MSCF header, folder, file-record, data-block, and inflate-size validation | supported through safe extraction planning/execution | supported by stored-cabinet rewrite publication | archive CAB adapter + `zlib` |
@@ -43,7 +43,7 @@ with a final `.zip` segment,
 supported native 7z layouts in documentation and validation,
 and zlib-backed Deflate 7z file-list publication, zlib-backed bzip2 single-file
 decoding and publication, zlib-backed Zstandard single-file decoding and
-publication, zlib-backed XZ one-block LZMA2 decoding and publication, supported ZIP PPMd method 98 bridge decoding and publication, stored Unix AR member indexing, payload streaming, and rewrite publication, CPIO newc member indexing, payload streaming, and rewrite publication, bounded stored and MSZIP CAB folder indexing, payload streaming, and stored-cabinet rewrite publication, and ISO 9660 directory-record indexing, stored file-extent streaming, and flat-image rewrite publication.
+publication, zlib-backed XZ multi-block LZMA2 decoding and publication, supported ZIP PPMd method 98 bridge decoding and publication, stored Unix AR member indexing, payload streaming, and rewrite publication, CPIO newc member indexing, payload streaming, and rewrite publication, bounded stored and MSZIP CAB folder indexing, payload streaming, and stored-cabinet rewrite publication, and ISO 9660 directory-record indexing, stored file-extent streaming, and flat-image rewrite publication.
 
 Recognized but unsupported:
 
@@ -57,7 +57,7 @@ LZMA variants, remain visible as unsupported entries where the central
 directory can be safely parsed.
 7z layouts outside the supported native layout set accepted by `zlib` fail closed
 with typed unsupported-method or invalid-format results.
-XZ layouts outside the supported one-stream, one-block LZMA2 subset fail closed
+XZ layouts outside the supported one-stream LZMA2 layout set fail closed
 with typed unsupported-method or invalid-format results.
 Unsupported CAB folder methods remain visible only as unsupported-method results
 until a compression adapter is explicitly added for that CAB folder method.

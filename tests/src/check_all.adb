@@ -892,9 +892,9 @@ procedure Check_All is
       Require_Document_Text
         ("docs/FORMAT_SUPPORT.md", "bounded stored and MSZIP CAB folder");
       Require_Document_Text
-        ("docs/FORMAT_SUPPORT.md", "zlib-backed XZ one-block LZMA2 decoding");
+        ("docs/FORMAT_SUPPORT.md", "zlib-backed XZ multi-block LZMA2 decoding");
       Require_Document_Text
-        ("docs/FORMAT_SUPPORT.md", "zlib-backed XZ one-block LZMA2 decoding and publication");
+        ("docs/FORMAT_SUPPORT.md", "zlib-backed XZ multi-block LZMA2 decoding and publication");
       Require_Document_Text
         ("docs/FORMAT_SUPPORT.md", "stored Unix AR member indexing, payload streaming, and rewrite publication");
       Require_Document_Text
@@ -920,7 +920,7 @@ procedure Check_All is
       Require_Document_Text
         ("README.md", "CAB stored / MSZIP");
       Require_Document_Text
-        ("README.md", "one-block LZMA2 streams");
+        ("README.md", "multi-block LZMA2 streams");
       Require_Document_Text
         ("share/archive.catalog", "native zlib-backed layouts");
       Require_Document_Text
