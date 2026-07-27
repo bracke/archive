@@ -14,8 +14,25 @@ package body Archive.Application.Windows is
    use Ada.Strings.Unbounded;
    use type Glfw.Size;
    use type Guikit.Vulkan.Vulkan_Status;
+   use type Archive.Operations.Opening.Operation_Status;
 
    Event_Wait_Timeout : constant Duration := 0.016;
+   --  When no archive-open is in flight the loop sleeps this long between events
+   --  instead of spinning at Event_Wait_Timeout; a real window event still wakes
+   --  it immediately, and the async open worker only needs ticking while running.
+   Idle_Wait_Timeout : constant Duration := 1.0;
+
+   --  Lets Render_Once leave an unchanged frame on screen instead of rebuilding
+   --  and re-presenting it every wake. The frame is a pure function of the model,
+   --  so it is invalidated only when the async open worker publishes a change or
+   --  the window is resized.
+   type Render_Cache is record
+      Presented_Once : Boolean := False;
+      Frame_Valid    : Boolean := False;
+      Last_Width     : Natural := 0;
+      Last_Height    : Natural := 0;
+      Cached_Frame   : Archive.GUI_Frame.Frame;
+   end record;
 
    type Desktop_Window is new Glfw.Windows.Window with null record;
    type Window_Access is access all Desktop_Window;
@@ -105,10 +122,13 @@ package body Archive.Application.Windows is
      (Runtime : in out Archive.GUI_Runtime.Runtime_State;
       Window  : not null access Glfw.Windows.Window;
       Vulkan  : in out Guikit.Vulkan.Vulkan_Renderer;
+      Cache   : in out Render_Cache;
+      Force   : Boolean;
       Status  : out Guikit.Vulkan.Vulkan_Status)
    is
-      Width  : Glfw.Size := 0;
-      Height : Glfw.Size := 0;
+      Width   : Glfw.Size := 0;
+      Height  : Glfw.Size := 0;
+      Rebuilt : Boolean := False;
    begin
       Glfw.Windows.Get_Framebuffer_Size (Window, Width, Height);
       if Width = 0 or else Height = 0 then
@@ -116,12 +136,32 @@ package body Archive.Application.Windows is
          return;
       end if;
 
+      --  Pump the async open worker every frame; a published change or any
+      --  dequeued event invalidates the cached frame. This is the sole per-loop
+      --  model-mutation point, so it is the only place that needs to invalidate.
       declare
          Drain : constant Archive.Operations.Opening.Drain_Result :=
            Archive.GUI_Runtime.Drain_Operations (Runtime);
       begin
-         pragma Unreferenced (Drain);
+         if Drain.Applied or else Drain.Event_Seen then
+            Cache.Frame_Valid := False;
+         end if;
       end;
+
+      if not Cache.Frame_Valid
+        or else Cache.Last_Width /= Natural (Width)
+        or else Cache.Last_Height /= Natural (Height)
+      then
+         Rebuilt := True;
+      end if;
+
+      --  Present gate: an unchanged frame is already on screen, so skip the whole
+      --  resize/build/submit/present path. Force keeps the smoke presenting every
+      --  frame so its present counts are unchanged.
+      if Cache.Presented_Once and then not Rebuilt and then not Force then
+         Status := Guikit.Vulkan.Vulkan_Present_Skipped;
+         return;
+      end if;
 
       Archive.GUI_Runtime.Resize (Runtime, Natural (Width), Natural (Height));
       Glfw.Windows.Set_Title
@@ -132,9 +172,14 @@ package body Archive.Application.Windows is
          Width    => Natural (Width),
          Height   => Natural (Height));
 
+      Cache.Cached_Frame := Archive.GUI_Runtime.Render_Frame (Runtime);
+      Cache.Last_Width := Natural (Width);
+      Cache.Last_Height := Natural (Height);
+      Cache.Frame_Valid := True;
+
       declare
-         Frame : constant Archive.GUI_Frame.Frame := Archive.GUI_Runtime.Render_Frame (Runtime);
-         Batch : constant Guikit.Vulkan.Submission_Batch := Archive.GUI_Frame.To_Submission (Frame);
+         Batch : constant Guikit.Vulkan.Submission_Batch :=
+           Archive.GUI_Frame.To_Submission (Cache.Cached_Frame);
       begin
          Status := Guikit.Vulkan.Present_Frame
            (Renderer => Vulkan,
@@ -142,6 +187,7 @@ package body Archive.Application.Windows is
             Width    => Natural (Width),
             Height   => Natural (Height));
       end;
+      Cache.Presented_Once := True;
    end Render_Once;
 
    function Live_Smoke (Plan : Live_Smoke_Plan := Default_Live_Smoke_Plan) return Live_Smoke_Result is
@@ -150,6 +196,7 @@ package body Archive.Application.Windows is
       Handle      : Window_Access := null;
       Runtime     : Archive.GUI_Runtime.Runtime_State;
       Vulkan      : Guikit.Vulkan.Vulkan_Renderer;
+      Smoke_Cache : Render_Cache;
    begin
       Result.Skipped_By_Plan := not Plan.Can_Run;
       if not Plan.Can_Run then
@@ -185,7 +232,8 @@ package body Archive.Application.Windows is
             Archive.GUI_Runtime.Resize (Runtime, Plan.Resize_Width, Plan.Resize_Height);
             Result.Resize_Applied := True;
          end if;
-         Render_Once (Runtime, As_Window (Handle), Vulkan, Result.Last_Status);
+         Render_Once (Runtime, As_Window (Handle), Vulkan, Smoke_Cache,
+                      Force => True, Status => Result.Last_Status);
          Result.Frames_Attempted := Result.Frames_Attempted + 1;
          if Result.Last_Status = Guikit.Vulkan.Vulkan_Presented then
             Result.Frames_Presented := Result.Frames_Presented + 1;
@@ -242,6 +290,7 @@ package body Archive.Application.Windows is
       Vulkan      : Guikit.Vulkan.Vulkan_Renderer;
       Status      : Guikit.Vulkan.Vulkan_Status := Guikit.Vulkan.Vulkan_Not_Initialized;
       Initialized : Boolean := False;
+      Cache       : Render_Cache;
    begin
       Glfw.Init;
       Initialized := True;
@@ -259,8 +308,15 @@ package body Archive.Application.Windows is
       end if;
 
       while not Glfw.Windows.Should_Close (As_Window (Handle)) loop
-         Render_Once (Runtime, As_Window (Handle), Vulkan, Status);
-         Guikit.Vulkan.Wait_For_Events (Event_Wait_Timeout);
+         Render_Once (Runtime, As_Window (Handle), Vulkan, Cache,
+                      Force => False, Status => Status);
+         --  Spin only while a background archive-open is running (the worker
+         --  signals internally, not through a window event); otherwise sleep and
+         --  let real window events wake the loop.
+         Guikit.Vulkan.Wait_For_Events
+           (if Archive.GUI_Runtime.Open_Operation_Status (Runtime)
+                 = Archive.Operations.Opening.Operation_Running
+            then Event_Wait_Timeout else Idle_Wait_Timeout);
       end loop;
 
       Guikit.Vulkan.Shutdown (Vulkan);
