@@ -26,17 +26,19 @@ Current V1 support:
 | CPIO newc | supported for stored members | supported | supported | supported | supported by newc rewrite publication | archive CPIO adapter |
 | CAB stored / MSZIP | supported for bounded single-folder, multi-file archives | supported | supported | supported | supported by stored-cabinet rewrite publication | archive CAB adapter + `zlib` |
 | ISO 9660 | supported for stored directory records and files | supported | supported | supported | supported by flat-image rewrite publication | archive ISO adapter |
+| RAR4 stored | supported for stored file entries | supported | supported with CRC-32 | supported | not supported | archive RAR adapter |
 
-Recognized but unsupported in V1: RAR archives.
+RAR4 stored archives are supported for browsing, preview, verification, and extraction.
 
 Supported formats still fail closed for unsupported sublayouts: split ZIP sets
 with missing or non-contiguous numbered volumes, ZIP strong encryption, encrypted
 7z headers without a supplied password, XZ layouts outside the supported LZMA2
 layout set, CAB folder methods outside stored/MSZIP, non-bridge ZIP PPMd
 variants, ZIP methods outside the archive adapter and zlib bridge, and 7z layouts
-outside the zlib-backed native layout set. ZIP traditional encryption and WinZip
-AES entries using supported ZIP methods are supported when a password is supplied
-in memory.
+outside the zlib-backed native layout set. RAR5 archives, compressed RAR entries,
+and encrypted RAR entries are detected but unavailable in V1. ZIP traditional
+encryption and WinZip AES entries using supported ZIP methods are supported when
+a password is supplied in memory.
 
 ## Current Implementation Status
 

@@ -26,8 +26,8 @@ case id=seven-zip-signature kind=format input=7z-signature expected=Seven_Zip_Fo
 case id=bzip2-signature kind=format input=bzip2-signature expected=BZip2_Format status=Detected
 case id=zstd-signature kind=format input=zstd-signature expected=Zstd_Format status=Detected
 case id=xz-signature kind=format input=xz-signature expected=Xz_Format status=Detected
-case id=unsupported-rar4 kind=format input=rar4-signature expected=Rar_Format status=Recognized_Unsupported
-case id=unsupported-rar5 kind=format input=rar5-signature expected=Rar_Format status=Recognized_Unsupported
+case id=rar4-signature kind=format input=rar4-signature expected=Rar_Format status=Detected
+case id=rar5-signature kind=format input=rar5-signature expected=Rar_Format status=Detected
 case id=invalid-rar-version kind=format input=rar-bad-version expected=Unknown_Format status=Invalid
 case id=supported-cab kind=format input=cab-signature expected=Cab_Format status=Detected
 case id=cpio-newc-signature kind=format input=cpio-newc-signature expected=Cpio_Format status=Detected
@@ -49,7 +49,8 @@ case id=archive-xz-basic kind=archive input=xz-basic source=fixture.xz open=Ok e
 case id=archive-seven-zip-basic kind=archive input=seven-zip-basic source=fixture.7z open=Ok entries=1 payload=Ok
 case id=archive-seven-zip-volume kind=archive input=seven-zip-basic source=fixture.7z.001 open=Ok entries=1 payload=Ok
 case id=archive-seven-zip-encrypted kind=archive input=seven-zip-encrypted source=fixture.7z open=Ok entries=1 payload=Unsupported_Method
-case id=archive-rar-unsupported kind=archive input=rar-unsupported source=fixture.rar open=Unsupported_Format entries=0
+case id=archive-rar-malformed kind=archive input=rar-unsupported source=fixture.rar open=Invalid_Format entries=0
+case id=archive-rar-stored-basic kind=archive input=rar-stored-basic source=fixture.rar open=Ok entries=1 payload=Ok
 case id=archive-rar5-unsupported kind=archive input=rar5-unsupported source=fixture.rar open=Unsupported_Format entries=0
 case id=archive-split-zip-unsupported kind=archive input=split-zip-unsupported source=fixture.z01 open=Unsupported_Format entries=0
 case id=archive-bzip2-basic kind=archive input=bzip2-basic source=fixture.bz2 open=Ok entries=1 payload=Ok

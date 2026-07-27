@@ -519,7 +519,7 @@ procedure Release_Report is
       Has_Xz : Boolean := False;
       Has_Seven_Zip : Boolean := False;
       Has_Seven_Zip_Encrypted : Boolean := False;
-      Has_Rar_Unsupported : Boolean := False;
+      Has_Rar_Stored : Boolean := False;
       Has_Rar5_Unsupported : Boolean := False;
       Has_Split_Zip_Unsupported : Boolean := False;
       Has_BZip2 : Boolean := False;
@@ -596,6 +596,8 @@ procedure Release_Report is
             return (True, 163, "5FE648EF");
          elsif Id = "rar-unsupported" then
             return (True, 20, "EAEAB33A");
+         elsif Id = "rar-stored-basic" then
+            return (True, 72, "22E614D9");
          elsif Id = "rar5-unsupported" then
             return (True, 20, "32AAFBC4");
          elsif Id = "split-zip-unsupported" then
@@ -804,8 +806,8 @@ procedure Release_Report is
                   Has_Seven_Zip := True;
                elsif Id = "seven-zip-encrypted" then
                   Has_Seven_Zip_Encrypted := True;
-               elsif Id = "rar-unsupported" then
-                  Has_Rar_Unsupported := True;
+               elsif Id = "rar-stored-basic" then
+                  Has_Rar_Stored := True;
                elsif Id = "rar5-unsupported" then
                   Has_Rar5_Unsupported := True;
                elsif Id = "split-zip-unsupported" then
@@ -882,7 +884,7 @@ procedure Release_Report is
         or else not Has_Xz
         or else not Has_Seven_Zip
         or else not Has_Seven_Zip_Encrypted
-        or else not Has_Rar_Unsupported
+        or else not Has_Rar_Stored
         or else not Has_Rar5_Unsupported
         or else not Has_Split_Zip_Unsupported
         or else not Has_BZip2
@@ -931,6 +933,7 @@ procedure Release_Report is
       Has_Zip_Stored : Boolean := False;
       Has_Zip_Deflate : Boolean := False;
       Has_Gzip : Boolean := False;
+      Has_Rar : Boolean := False;
       Has_Malformed : Boolean := False;
       Has_Platform_Collision : Boolean := False;
       Has_Zip_Unicode : Boolean := False;
@@ -1222,6 +1225,9 @@ procedure Release_Report is
                         & ": unknown archive corpus input "
                         & Field_Value (Line, "input"));
                   end if;
+                  if Field_Value (Line, "open") = "Unsupported_Format" then
+                     Has_Unsupported_Format := True;
+                  end if;
                   if Id = "archive-tar-basic" then
                      Has_Tar := True;
                   elsif Id = "archive-tar-gzip-basic" then
@@ -1232,6 +1238,8 @@ procedure Release_Report is
                      Has_Zip_Deflate := True;
                   elsif Id = "archive-gzip-basic" then
                      Has_Gzip := True;
+                  elsif Id = "archive-rar-stored-basic" then
+                     Has_Rar := True;
                   elsif Id = "archive-zip-unicode-path" then
                      Has_Zip_Unicode := True;
                   elsif Id = "archive-zip-zip64-too-large" then
@@ -1275,7 +1283,8 @@ procedure Release_Report is
          Put_Line (Standard_Error, Manifest & ": corpus manifest has too few cases");
       elsif not Has_Path_Attack or else not Has_Unsupported_Format
         or else not Has_Tar or else not Has_Tar_Gzip or else not Has_Zip_Stored
-        or else not Has_Zip_Deflate or else not Has_Gzip or else not Has_Malformed
+        or else not Has_Zip_Deflate or else not Has_Gzip or else not Has_Rar
+        or else not Has_Malformed
         or else not Has_Platform_Collision
         or else not Has_Zip_Unicode or else not Has_Zip64_Overflow
         or else not Has_Seven_Zip_Volume

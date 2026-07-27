@@ -1193,15 +1193,15 @@ procedure Check_All is
       Require_Document_Text
         ("CHANGELOG.md", "0.1.0-dev");
       Require_Document_Text
-        ("README.md", "Recognized but unsupported in V1: RAR archives.");
+        ("README.md", "RAR4 stored archives are supported for browsing, preview, verification, and extraction.");
       Require_Document_Text
         ("README.md", "Supported formats still fail closed for unsupported sublayouts");
       Require_Document_Text
-        ("docs/FORMAT_SUPPORT.md", "Recognized whole formats that remain unsupported");
+        ("docs/FORMAT_SUPPORT.md", "RAR4 stored");
       Require_Document_Text
         ("docs/FORMAT_SUPPORT.md", "Supported formats may still contain unsupported sublayouts");
       Require_Document_Text
-        ("docs/PRODUCT_SCOPE.md", "Recognized unsupported whole formats include RAR archives.");
+        ("docs/PRODUCT_SCOPE.md", "RAR4 stored archives are in scope");
       Require_Document_Text
         ("docs/PRODUCT_SCOPE.md", "Supported formats may still contain unsupported sublayouts");
 
@@ -1230,6 +1230,8 @@ procedure Check_All is
       Forbid_Document_Text
         ("README.md", "Recognized but unsupported in V1: RAR" & ASCII.LF);
       Forbid_Document_Text
+        ("README.md", "Recognized but unsupported in V1: RAR archives.");
+      Forbid_Document_Text
         ("docs/FORMAT_SUPPORT.md", "native zlib-backed subset");
       Forbid_Document_Text
         ("docs/FORMAT_SUPPORT.md", "- CAB");
@@ -1255,6 +1257,8 @@ procedure Check_All is
         ("docs/PRODUCT_SCOPE.md", "RAR, XZ");
       Forbid_Document_Text
         ("docs/PRODUCT_SCOPE.md", "Recognized unsupported formats include RAR,");
+      Forbid_Document_Text
+        ("docs/PRODUCT_SCOPE.md", "Recognized unsupported whole formats include RAR archives.");
       Forbid_Document_Text
         ("docs/ai-implementation-guide.md", "supported native subset");
       Forbid_Document_Text
@@ -1960,6 +1964,22 @@ procedure Check_All is
          16#00#, 16#00#, 16#00#, 16#00#, 16#00#, 16#00#];
    end Generated_Rar_Unsupported;
 
+   function Generated_Rar_Stored return Zlib.Byte_Array is
+   begin
+      return
+        [16#52#, 16#61#, 16#72#, 16#21#, 16#1A#, 16#07#, 16#00#,
+         16#00#, 16#00#, 16#73#, 16#00#, 16#00#, 16#0D#, 16#00#,
+         16#00#, 16#00#, 16#00#, 16#00#, 16#00#, 16#00#, 16#00#,
+         16#00#, 16#74#, 16#00#, 16#00#, 16#2B#, 16#00#,
+         16#02#, 16#00#, 16#00#, 16#00#, 16#02#, 16#00#, 16#00#,
+         16#00#, 16#03#, 16#47#, 16#DD#, 16#DC#, 16#79#, 16#00#,
+         16#00#, 16#00#, 16#00#, 16#14#, 16#30#, 16#0B#, 16#00#,
+         16#20#, 16#00#, 16#00#, 16#00#, 16#70#, 16#61#, 16#79#,
+         16#6C#, 16#6F#, 16#61#, 16#64#, 16#2E#, 16#74#, 16#78#,
+         16#74#, 16#6F#, 16#6B#, 16#00#, 16#00#, 16#7B#, 16#00#,
+         16#00#, 16#07#, 16#00#];
+   end Generated_Rar_Stored;
+
    function Generated_Rar5_Unsupported return Zlib.Byte_Array is
    begin
       return
@@ -2339,6 +2359,8 @@ procedure Check_All is
          return Generated_Seven_Zip_Encrypted;
       elsif Id = "rar-unsupported" then
          return Generated_Rar_Unsupported;
+      elsif Id = "rar-stored-basic" then
+         return Generated_Rar_Stored;
       elsif Id = "rar5-unsupported" then
          return Generated_Rar5_Unsupported;
       elsif Id = "split-zip-unsupported" then
@@ -2472,8 +2494,12 @@ procedure Check_All is
             Fail ("generated unsupported XZ check should be rejected as unsupported");
          end if;
       elsif Id = "rar-unsupported" then
-         if Opened.Status /= Archive.Archives.Errors.Unsupported_Format then
-            Fail ("generated RAR should be rejected as unsupported");
+         if Opened.Status /= Archive.Archives.Errors.Invalid_Format then
+            Fail ("generated malformed RAR should be rejected as invalid");
+         end if;
+      elsif Id = "rar-stored-basic" then
+         if Opened.Status /= Archive.Archives.Errors.Ok then
+            Fail ("generated RAR4 stored fixture should be supported");
          end if;
       elsif Id = "rar5-unsupported" then
          if Opened.Status /= Archive.Archives.Errors.Unsupported_Format then
@@ -2604,7 +2630,7 @@ procedure Check_All is
       Has_Xz : Boolean := False;
       Has_Seven_Zip : Boolean := False;
       Has_Seven_Zip_Encrypted : Boolean := False;
-      Has_Rar_Unsupported : Boolean := False;
+      Has_Rar_Stored : Boolean := False;
       Has_Rar5_Unsupported : Boolean := False;
       Has_Split_Zip_Unsupported : Boolean := False;
       Has_BZip2 : Boolean := False;
@@ -2675,8 +2701,8 @@ procedure Check_All is
                      Has_Seven_Zip := True;
                   elsif Id = "seven-zip-encrypted" then
                      Has_Seven_Zip_Encrypted := True;
-                  elsif Id = "rar-unsupported" then
-                     Has_Rar_Unsupported := True;
+                  elsif Id = "rar-stored-basic" then
+                     Has_Rar_Stored := True;
                   elsif Id = "rar5-unsupported" then
                      Has_Rar5_Unsupported := True;
                   elsif Id = "split-zip-unsupported" then
@@ -2752,7 +2778,7 @@ procedure Check_All is
         or else not Has_Xz
         or else not Has_Seven_Zip
         or else not Has_Seven_Zip_Encrypted
-        or else not Has_Rar_Unsupported
+        or else not Has_Rar_Stored
         or else not Has_Rar5_Unsupported
         or else not Has_Split_Zip_Unsupported
         or else not Has_BZip2
@@ -3331,6 +3357,7 @@ procedure Check_All is
       Has_Zip_Stored : Boolean := False;
       Has_Zip_Deflate : Boolean := False;
       Has_Gzip : Boolean := False;
+      Has_Rar : Boolean := False;
       Has_Malformed : Boolean := False;
       Has_Platform_Collision : Boolean := False;
       Has_Zip_Unicode : Boolean := False;
@@ -3365,6 +3392,10 @@ procedure Check_All is
                     and then Field_Value (Line, "status") = "Recognized_Unsupported"
                   then
                      Has_Unsupported_Format := True;
+                  elsif Kind = "archive"
+                    and then Field_Value (Line, "open") = "Unsupported_Format"
+                  then
+                     Has_Unsupported_Format := True;
                   elsif Kind = "platform-collision" then
                      Has_Platform_Collision := True;
                   elsif Id = "archive-tar-basic" then
@@ -3377,6 +3408,8 @@ procedure Check_All is
                      Has_Zip_Deflate := True;
                   elsif Id = "archive-gzip-basic" then
                      Has_Gzip := True;
+                  elsif Id = "archive-rar-stored-basic" then
+                     Has_Rar := True;
                   elsif Id = "archive-zip-unicode-path" then
                      Has_Zip_Unicode := True;
                   elsif Id = "archive-zip-zip64-too-large" then
@@ -3403,7 +3436,8 @@ procedure Check_All is
          Fail (Manifest & ": corpus manifest has too few cases");
       elsif not Has_Path_Attack or else not Has_Unsupported_Format
         or else not Has_Tar or else not Has_Tar_Gzip or else not Has_Zip_Stored
-        or else not Has_Zip_Deflate or else not Has_Gzip or else not Has_Malformed
+        or else not Has_Zip_Deflate or else not Has_Gzip or else not Has_Rar
+        or else not Has_Malformed
         or else not Has_Platform_Collision
         or else not Has_Zip_Unicode or else not Has_Zip64_Overflow
         or else not Has_Seven_Zip_Volume

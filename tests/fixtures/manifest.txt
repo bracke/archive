@@ -16,7 +16,8 @@ fixture id=xz-unsupported-check path=generated:xz-unsupported-check format=xz pu
 fixture id=xz-basic path=generated:xz-basic format=xz purpose=xz-open-index size=56 crc32=2CB5327A
 fixture id=seven-zip-basic path=generated:seven-zip-basic format=7z purpose=seven-zip-open-index size=97 crc32=23675528
 fixture id=seven-zip-encrypted path=generated:seven-zip-encrypted format=7z purpose=seven-zip-encrypted-unsupported size=163 crc32=5FE648EF
-fixture id=rar-unsupported path=generated:rar-unsupported format=rar purpose=rar-unsupported-format size=20 crc32=EAEAB33A
+fixture id=rar-unsupported path=generated:rar-unsupported format=rar purpose=rar-malformed-header size=20 crc32=EAEAB33A
+fixture id=rar-stored-basic path=generated:rar-stored-basic format=rar purpose=rar4-stored-open-index size=72 crc32=22E614D9
 fixture id=rar5-unsupported path=generated:rar5-unsupported format=rar purpose=rar5-unsupported-format size=20 crc32=32AAFBC4
 fixture id=split-zip-unsupported path=generated:split-zip-unsupported format=split_zip purpose=split-zip-unsupported-format size=8 crc32=5B7D7655
 fixture id=bzip2-basic path=generated:bzip2-basic format=bzip2 purpose=bzip2-open-index size=38 crc32=ED9E5814

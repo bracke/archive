@@ -32,6 +32,8 @@ xz-basic
 seven-zip-basic
 seven-zip-encrypted
 rar-unsupported
+rar-stored-basic
+rar5-unsupported
 split-zip-unsupported
 bzip2-basic
 zstd-basic

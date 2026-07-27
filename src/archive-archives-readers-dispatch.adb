@@ -7,6 +7,7 @@ with Archive.Archives.Readers.Cab;
 with Archive.Archives.Readers.Cpio;
 with Archive.Archives.Readers.Gzip;
 with Archive.Archives.Readers.Iso;
+with Archive.Archives.Readers.Rar;
 with Archive.Archives.Readers.Seven_Zip;
 with Archive.Archives.Readers.Tar;
 with Archive.Archives.Readers.Zip;
@@ -330,6 +331,30 @@ package body Archive.Archives.Readers.Dispatch is
             declare
                Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
                  Archive.Archives.Readers.Zip.Index_File (Path);
+            begin
+               Result.Status := Parsed.Status;
+               if Parsed.Status = Archive.Archives.Errors.Ok then
+                  Result.Index := Archive.Archives.Index.Build (Parsed.Entries).Index;
+               end if;
+               return Result;
+            end;
+         elsif Detection.Format = Archive.Archives.Formats.Rar_Format then
+            declare
+               Size : constant Ada.Directories.File_Size := Ada.Directories.Size (Path);
+               Limit : constant Ada.Directories.File_Size :=
+                 Ada.Directories.File_Size (Max_Bytes);
+            begin
+               if Size > Limit
+                 or else Size > Ada.Directories.File_Size (Natural'Last)
+               then
+                  Result.Status := Archive.Archives.Errors.Limit_Exceeded;
+                  return Result;
+               end if;
+            end;
+
+            declare
+               Parsed : constant Archive.Archives.Readers.Rar.Rar_Index_Result :=
+                 Archive.Archives.Readers.Rar.Index_File (Path);
             begin
                Result.Status := Parsed.Status;
                if Parsed.Status = Archive.Archives.Errors.Ok then
@@ -672,6 +697,24 @@ package body Archive.Archives.Readers.Dispatch is
                   else Archive.Archives.Readers.Seven_Zip.Stream_Payload_File
                     (Path, 256 * 1_024 * 1_024, Item, Forward'Access,
                      Password => Password));
+            begin
+               return (Status => Payload.Status,
+                       Integrity => Payload.Integrity,
+                       Bytes_Written => Payload.Bytes_Written);
+            end;
+
+         when Archive.Archives.Formats.Rar_Format =>
+            declare
+               procedure Forward
+                 (Bytes : Zlib.Byte_Array;
+                  Continue : in out Boolean) is
+               begin
+                  Consumer.all (Bytes, Continue);
+               end Forward;
+
+               Payload : constant Archive.Archives.Readers.Rar.Stream_Result :=
+                 Archive.Archives.Readers.Rar.Stream_Payload_File
+                   (Path, Item, Forward'Access);
             begin
                return (Status => Payload.Status,
                        Integrity => Payload.Integrity,

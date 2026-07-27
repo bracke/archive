@@ -175,7 +175,9 @@ Recent archive paths are persisted as stable data, not localized display labels,
 and shell snapshots expose the recent count and ordered path list through the
 settings snapshot for menu construction.
 
-Recognized unsupported whole formats include RAR archives.
+RAR4 stored archives are in scope for browsing, preview, verification, and
+extraction. RAR5 archives, encrypted RAR entries, and compressed RAR entries
+are detected where possible but fail closed in V1.
 
 Supported formats may still contain unsupported sublayouts. Multi-volume ZIP
 sets with missing or non-contiguous numbered segments, ZIP strong encryption,

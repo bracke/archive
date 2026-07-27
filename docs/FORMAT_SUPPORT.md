@@ -25,6 +25,7 @@ that registry and the AUnit format tests.
 | CPIO newc/crc | supported for stored members and trailer termination | supported for regular-file members | supported by bounded fixed-header, name, size, and alignment validation | supported through safe extraction planning/execution | supported by newc rewrite publication | archive CPIO adapter |
 | CAB stored / MSZIP | supported for one bounded stored or MSZIP folder with multiple files | supported for stored file payloads and MSZIP raw-DEFLATE payloads through `zlib` | supported by bounded MSCF header, folder, file-record, data-block, and inflate-size validation | supported through safe extraction planning/execution | supported by stored-cabinet rewrite publication | archive CAB adapter + `zlib` |
 | ISO 9660 | supported for primary-volume directory records | supported for stored regular-file extents | supported by bounded descriptor, directory-record, extent, and size validation | supported through safe extraction planning/execution | supported by flat-image rewrite publication | archive ISO adapter |
+| RAR4 stored | supported for stored file records and duplicate names | supported for stored regular-file payloads | supported with CRC-32 over stored bytes | supported through safe extraction planning/execution | not supported | archive RAR adapter |
 
 Current covered edge cases include ZIP comments, Unicode path extra fields,
 ZIP64 per-entry size extras within host bounds, data descriptors with and
@@ -44,11 +45,11 @@ with a final `.zip` segment,
 supported native 7z layouts in documentation and validation,
 and zlib-backed Deflate 7z file-list publication, zlib-backed bzip2 single-file
 decoding and publication, zlib-backed Zstandard single-file decoding and
-publication, zlib-backed XZ multi-block LZMA2 decoding and publication, supported ZIP PPMd method 98 bridge decoding and publication, stored Unix AR member indexing, payload streaming, and rewrite publication, CPIO newc member indexing, payload streaming, and rewrite publication, bounded stored and MSZIP CAB multi-file folder indexing, payload streaming, and stored-cabinet rewrite publication, and ISO 9660 directory-record indexing, stored file-extent streaming, and flat-image rewrite publication.
+publication, zlib-backed XZ multi-block LZMA2 decoding and publication, supported ZIP PPMd method 98 bridge decoding and publication, stored Unix AR member indexing, payload streaming, and rewrite publication, CPIO newc member indexing, payload streaming, and rewrite publication, bounded stored and MSZIP CAB multi-file folder indexing, payload streaming, and stored-cabinet rewrite publication, ISO 9660 directory-record indexing, stored file-extent streaming, and flat-image rewrite publication, plus RAR4 stored entry indexing with CRC-checked payload streaming.
 
-Recognized whole formats that remain unsupported:
-
-- RAR
+RAR4 stored archive support is intentionally narrow. RAR5 archives, encrypted
+RAR entries, and compressed RAR entries remain visible where possible but fail
+closed with typed unsupported-format or unsupported-method results.
 
 Supported formats may still contain unsupported sublayouts. ZIP strong
 encryption remains visible but unavailable until a dedicated decrypting backend
