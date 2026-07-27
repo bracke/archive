@@ -25,6 +25,7 @@ package body Archive.Archives.Readers.Zip is
    use type Zlib.Status_Code;
 
    EOCD_Min_Size : constant Natural := 22;
+   ZIP_Traditional_Header_Length : constant Natural := 12;
    Max_EOCD_Search : constant Natural := EOCD_Min_Size + 65_535;
    Max_Zip_Record_Metadata : constant Natural :=
      Natural
@@ -103,6 +104,88 @@ package body Archive.Archives.Readers.Zip is
    begin
       return Bytes (Bytes'First + Offset);
    end Octet;
+
+   type ZIP_Crypto_State is record
+      Key0 : Interfaces.Unsigned_32 := 16#1234_5678#;
+      Key1 : Interfaces.Unsigned_32 := 16#2345_6789#;
+      Key2 : Interfaces.Unsigned_32 := 16#3456_7890#;
+   end record;
+
+   function CRC32_Update
+     (Current : Interfaces.Unsigned_32;
+      Byte    : Zlib.Byte)
+      return Interfaces.Unsigned_32
+   is
+      C : Interfaces.Unsigned_32 := Current xor Interfaces.Unsigned_32 (Byte);
+   begin
+      for Bit in 1 .. 8 loop
+         if (C and 1) = 1 then
+            C := Interfaces.Shift_Right (C, 1) xor 16#EDB8_8320#;
+         else
+            C := Interfaces.Shift_Right (C, 1);
+         end if;
+      end loop;
+      return C;
+   end CRC32_Update;
+
+   procedure Update_Crypto_Key
+     (State : in out ZIP_Crypto_State;
+      Plain : Zlib.Byte)
+   is
+   begin
+      State.Key0 := CRC32_Update (State.Key0, Plain);
+      State.Key1 :=
+        (State.Key1 + (State.Key0 and 16#FF#)) * 134_775_813 + 1;
+      State.Key2 :=
+        CRC32_Update
+          (State.Key2,
+           Zlib.Byte (Interfaces.Shift_Right (State.Key1, 24) and 16#FF#));
+   end Update_Crypto_Key;
+
+   function Initialized_Crypto (Password : String) return ZIP_Crypto_State is
+      State : ZIP_Crypto_State;
+   begin
+      for Ch of Password loop
+         Update_Crypto_Key (State, Zlib.Byte (Character'Pos (Ch)));
+      end loop;
+      return State;
+   end Initialized_Crypto;
+
+   function Crypto_Byte (State : ZIP_Crypto_State) return Zlib.Byte is
+      Temp : constant Interfaces.Unsigned_32 := State.Key2 or 2;
+   begin
+      return Zlib.Byte
+        (Interfaces.Shift_Right ((Temp * (Temp xor 1)), 8) and 16#FF#);
+   end Crypto_Byte;
+
+   procedure Decrypt_In_Place
+     (State : in out ZIP_Crypto_State;
+      Bytes : in out Zlib.Byte_Array)
+   is
+   begin
+      for Index in Bytes'Range loop
+         declare
+            Plain : constant Zlib.Byte := Bytes (Index) xor Crypto_Byte (State);
+         begin
+            Bytes (Index) := Plain;
+            Update_Crypto_Key (State, Plain);
+         end;
+      end loop;
+   end Decrypt_In_Place;
+
+   function ZIP_Check_Byte
+     (Item : Archive.Archives.Entries.Archive_Entry)
+      return Zlib.Byte
+   is
+   begin
+      if Item.CRC32.Present then
+         return Zlib.Byte
+           (Interfaces.Shift_Right
+              (Interfaces.Unsigned_32 (Item.CRC32.Value), 24)
+            and 16#FF#);
+      end if;
+      return 0;
+   end ZIP_Check_Byte;
 
    function U16 (Bytes : Zlib.Byte_Array; Offset : Natural) return Interfaces.Unsigned_16 is
    begin
@@ -1053,14 +1136,21 @@ package body Archive.Archives.Readers.Zip is
       Item     : Archive.Archives.Entries.Archive_Entry;
       Consumer : not null access procedure
         (Bytes : Zlib.Byte_Array;
-         Continue : in out Boolean))
+         Continue : in out Boolean);
+      Password : String := "")
       return Stream_Result
    is
       use type Archive.Types.CRC32_Value;
       File : Ada.Streams.Stream_IO.File_Type;
       Chunk_Size : constant Natural := 32_768;
+      Traditional_Encrypted : constant Boolean :=
+        Item.Encryption = Archive.Archives.Entries.Zip_Traditional_Encryption;
    begin
-      if Item.Encryption /= Archive.Archives.Entries.Not_Encrypted then
+      if Item.Encryption = Archive.Archives.Entries.Zip_Strong_Encryption
+        or else Item.Encryption = Archive.Archives.Entries.Encrypted
+        or else Item.Encryption = Archive.Archives.Entries.Unknown_Encryption
+        or else (Traditional_Encrypted and then Password'Length = 0)
+      then
          return (Status => Archive.Archives.Errors.Unsupported_Method,
                  Integrity => Archive.Archives.Entries.Not_Available,
                  Bytes_Written => 0);
@@ -1074,9 +1164,23 @@ package body Archive.Archives.Readers.Zip is
          return (Status => Archive.Archives.Errors.Unsupported_Method,
                  Integrity => Archive.Archives.Entries.Not_Available,
                  Bytes_Written => 0);
+      elsif Traditional_Encrypted
+        and then Item.Method not in Archive.Archives.Entries.Zip_Stored
+          | Archive.Archives.Entries.Zip_Deflate
+      then
+         return (Status => Archive.Archives.Errors.Unsupported_Method,
+                 Integrity => Archive.Archives.Entries.Not_Available,
+                 Bytes_Written => 0);
       elsif not Item.Data_Offset.Present or else not Item.Compressed.Present then
          return (Status => Archive.Archives.Errors.Invalid_Format,
                  Integrity => Archive.Archives.Entries.Not_Available,
+                 Bytes_Written => 0);
+      elsif Traditional_Encrypted
+        and then Item.Compressed.Value <
+          Archive.Types.Uncompressed_Size (ZIP_Traditional_Header_Length)
+      then
+         return (Status => Archive.Archives.Errors.Invalid_Format,
+                 Integrity => Archive.Archives.Entries.Failed,
                  Bytes_Written => 0);
       elsif Item.Compressed.Value > Archive.Types.Uncompressed_Size (Natural'Last) then
          return (Status => Archive.Archives.Errors.Limit_Exceeded,
@@ -1086,14 +1190,15 @@ package body Archive.Archives.Readers.Zip is
 
       if Item.Method = Archive.Archives.Entries.Zip_Deflate then
          declare
-            Offset : constant Natural := Natural (Item.Data_Offset.Value);
-            Count  : constant Natural := Natural (Item.Compressed.Value);
+            Offset : Natural := Natural (Item.Data_Offset.Value);
+            Count  : Natural := Natural (Item.Compressed.Value);
             Source_Size : constant Ada.Directories.File_Size := Ada.Directories.Size (Path);
             Remaining : Natural := Count;
             Written : Archive.Types.Uncompressed_Size := 0;
             CRC : Archive.Verification.CRC32.CRC32_State := Archive.Verification.CRC32.Initial;
             Stream : Archive.Compression.Zlib.Inflate_Stream;
             Close_Status : Archive.Compression.Zlib.Stream_Close_Result;
+            Crypto : ZIP_Crypto_State;
 
             procedure Forward_Output
               (Bytes : Zlib.Byte_Array;
@@ -1147,6 +1252,32 @@ package body Archive.Archives.Readers.Zip is
                        Bytes_Written => 0);
             end if;
 
+            if Traditional_Encrypted then
+               declare
+                  Header : Zlib.Byte_Array (1 .. ZIP_Traditional_Header_Length);
+                  Status : Archive.Archives.Errors.Error_Code;
+               begin
+                  Crypto := Initialized_Crypto (Password);
+                  Read_File_Slice (Path, Offset, Header, Status);
+                  if Status /= Archive.Archives.Errors.Ok then
+                     return (Status => Status,
+                             Integrity => Archive.Archives.Entries.Not_Available,
+                             Bytes_Written => 0);
+                  end if;
+
+                  Decrypt_In_Place (Crypto, Header);
+                  if Header (Header'Last) /= ZIP_Check_Byte (Item) then
+                     return (Status => Archive.Archives.Errors.Invalid_Format,
+                             Integrity => Archive.Archives.Entries.Failed,
+                             Bytes_Written => 0);
+                  end if;
+
+                  Offset := Offset + ZIP_Traditional_Header_Length;
+                  Count := Count - ZIP_Traditional_Header_Length;
+                  Remaining := Count;
+               end;
+            end if;
+
             Archive.Compression.Zlib.Open
               (Stream,
                Archive.Compression.Zlib.Raw_Deflate,
@@ -1184,6 +1315,10 @@ package body Archive.Archives.Readers.Zip is
                      Chunk (Index) := Zlib.Byte
                        (Raw (Ada.Streams.Stream_Element_Offset (Index)));
                   end loop;
+
+                  if Traditional_Encrypted then
+                     Decrypt_In_Place (Crypto, Chunk);
+                  end if;
 
                   declare
                      Emitted : constant Stream_Result := Emit
@@ -1311,12 +1446,13 @@ package body Archive.Archives.Readers.Zip is
       end if;
 
       declare
-         Offset : constant Natural := Natural (Item.Data_Offset.Value);
-         Count  : constant Natural := Natural (Item.Compressed.Value);
+         Offset : Natural := Natural (Item.Data_Offset.Value);
+         Count  : Natural := Natural (Item.Compressed.Value);
          Source_Size : constant Ada.Directories.File_Size := Ada.Directories.Size (Path);
          Remaining : Natural := Count;
          Written : Archive.Types.Uncompressed_Size := 0;
          CRC : Archive.Verification.CRC32.CRC32_State := Archive.Verification.CRC32.Initial;
+         Crypto : ZIP_Crypto_State;
       begin
          if Ada.Directories.File_Size (Offset) > Source_Size
            or else Ada.Directories.File_Size (Count) >
@@ -1325,6 +1461,32 @@ package body Archive.Archives.Readers.Zip is
             return (Status => Archive.Archives.Errors.Invalid_Format,
                     Integrity => Archive.Archives.Entries.Not_Available,
                     Bytes_Written => 0);
+         end if;
+
+         if Traditional_Encrypted then
+            declare
+               Header : Zlib.Byte_Array (1 .. ZIP_Traditional_Header_Length);
+               Status : Archive.Archives.Errors.Error_Code;
+            begin
+               Crypto := Initialized_Crypto (Password);
+               Read_File_Slice (Path, Offset, Header, Status);
+               if Status /= Archive.Archives.Errors.Ok then
+                  return (Status => Status,
+                          Integrity => Archive.Archives.Entries.Not_Available,
+                          Bytes_Written => 0);
+               end if;
+
+               Decrypt_In_Place (Crypto, Header);
+               if Header (Header'Last) /= ZIP_Check_Byte (Item) then
+                  return (Status => Archive.Archives.Errors.Invalid_Format,
+                          Integrity => Archive.Archives.Entries.Failed,
+                          Bytes_Written => 0);
+               end if;
+
+               Offset := Offset + ZIP_Traditional_Header_Length;
+               Count := Count - ZIP_Traditional_Header_Length;
+               Remaining := Count;
+            end;
          end if;
 
          Ada.Streams.Stream_IO.Open (File, Ada.Streams.Stream_IO.In_File, Path);
@@ -1352,6 +1514,10 @@ package body Archive.Archives.Readers.Zip is
                   Chunk (Index) := Zlib.Byte
                     (Raw (Ada.Streams.Stream_Element_Offset (Index)));
                end loop;
+
+               if Traditional_Encrypted then
+                  Decrypt_In_Place (Crypto, Chunk);
+               end if;
 
                Archive.Verification.CRC32.Update (CRC, Chunk);
                Consumer.all (Chunk, Continue);

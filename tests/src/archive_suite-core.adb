@@ -303,20 +303,24 @@ package body Archive_Suite.Core is
    function Stream_Dispatch_Payload_File
      (Path        : String;
       Source_Name : String;
-      Item        : Archive.Archives.Entries.Archive_Entry)
+      Item        : Archive.Archives.Entries.Archive_Entry;
+      Password    : String := "")
       return Test_Stream_Result;
    function Stream_Dispatch_Payload
      (Bytes       : Zlib.Byte_Array;
       Source_Name : String;
-      Item        : Archive.Archives.Entries.Archive_Entry)
+      Item        : Archive.Archives.Entries.Archive_Entry;
+      Password    : String := "")
       return Test_Stream_Result;
    function Stream_Zip_Payload_File
      (Path : String;
-      Item : Archive.Archives.Entries.Archive_Entry)
+      Item : Archive.Archives.Entries.Archive_Entry;
+      Password : String := "")
       return Test_Stream_Result;
    function Stream_Zip_Payload
      (Bytes : Zlib.Byte_Array;
-      Item  : Archive.Archives.Entries.Archive_Entry)
+      Item  : Archive.Archives.Entries.Archive_Entry;
+      Password : String := "")
       return Test_Stream_Result;
    function Stream_Tar_Payload_File
      (Path : String;
@@ -1039,7 +1043,8 @@ package body Archive_Suite.Core is
       Descriptor_Signature : Boolean := True;
       Descriptor_Zip64 : Boolean := False;
       Zip64_Extra : Boolean := False;
-      Zip64_Too_Large : Boolean := False)
+      Zip64_Too_Large : Boolean := False;
+      Password : String := "secret")
       return Zlib.Byte_Array
    is
       Name : constant String := "a.txt";
@@ -1048,6 +1053,104 @@ package body Archive_Suite.Core is
         [1 => Zlib.Byte (Character'Pos ('a')),
          2 => Zlib.Byte (Character'Pos ('b')),
          3 => Zlib.Byte (Character'Pos ('c'))];
+
+      type ZIP_Crypto_State is record
+         Key0 : Interfaces.Unsigned_32 := 16#1234_5678#;
+         Key1 : Interfaces.Unsigned_32 := 16#2345_6789#;
+         Key2 : Interfaces.Unsigned_32 := 16#3456_7890#;
+      end record;
+
+      function CRC32_Update
+        (Current : Interfaces.Unsigned_32;
+         Byte    : Zlib.Byte)
+         return Interfaces.Unsigned_32
+      is
+         C : Interfaces.Unsigned_32 := Current xor Interfaces.Unsigned_32 (Byte);
+      begin
+         for Bit in 1 .. 8 loop
+            if (C and 1) = 1 then
+               C := Interfaces.Shift_Right (C, 1) xor 16#EDB8_8320#;
+            else
+               C := Interfaces.Shift_Right (C, 1);
+            end if;
+         end loop;
+         return C;
+      end CRC32_Update;
+
+      procedure Update_Crypto_Key
+        (State : in out ZIP_Crypto_State;
+         Plain_Byte : Zlib.Byte)
+      is
+      begin
+         State.Key0 := CRC32_Update (State.Key0, Plain_Byte);
+         State.Key1 :=
+           (State.Key1 + (State.Key0 and 16#FF#)) * 134_775_813 + 1;
+         State.Key2 :=
+           CRC32_Update
+             (State.Key2,
+              Zlib.Byte (Interfaces.Shift_Right (State.Key1, 24) and 16#FF#));
+      end Update_Crypto_Key;
+
+      function Initialized_Crypto return ZIP_Crypto_State is
+         State : ZIP_Crypto_State;
+      begin
+         for Ch of Password loop
+            Update_Crypto_Key (State, Zlib.Byte (Character'Pos (Ch)));
+         end loop;
+         return State;
+      end Initialized_Crypto;
+
+      function Crypto_Byte (State : ZIP_Crypto_State) return Zlib.Byte is
+         Temp : constant Interfaces.Unsigned_32 := State.Key2 or 2;
+      begin
+         return Zlib.Byte
+           (Interfaces.Shift_Right ((Temp * (Temp xor 1)), 8) and 16#FF#);
+      end Crypto_Byte;
+
+      procedure Encrypt_In_Place
+        (State : in out ZIP_Crypto_State;
+         Bytes : in out Zlib.Byte_Array)
+      is
+      begin
+         for Index in Bytes'Range loop
+            declare
+               Plain_Byte  : constant Zlib.Byte := Bytes (Index);
+               Cipher_Byte : constant Zlib.Byte := Plain_Byte xor Crypto_Byte (State);
+            begin
+               Bytes (Index) := Cipher_Byte;
+               Update_Crypto_Key (State, Plain_Byte);
+            end;
+         end loop;
+      end Encrypt_In_Place;
+
+      function Maybe_Encrypted (Payload : Zlib.Byte_Array) return Zlib.Byte_Array is
+      begin
+         if not Encrypted and then not Strong_Encryption then
+            return Payload;
+         end if;
+
+         declare
+            Result : Zlib.Byte_Array (1 .. Payload'Length + 12);
+            State  : ZIP_Crypto_State := Initialized_Crypto;
+            Check  : constant Zlib.Byte :=
+              Zlib.Byte
+                (Interfaces.Shift_Right
+                   (Interfaces.Unsigned_32 (CRC32_Compute (Plain)), 24)
+                 and 16#FF#);
+         begin
+            for Index in 1 .. 11 loop
+               Result (Index) := Zlib.Byte (Index);
+            end loop;
+            Result (12) := Check;
+
+            for Index in Payload'Range loop
+               Result (12 + Index - Payload'First + 1) := Payload (Index);
+            end loop;
+
+            Encrypt_In_Place (State, Result);
+            return Result;
+         end;
+      end Maybe_Encrypted;
 
       function Build (Payload : Zlib.Byte_Array) return Zlib.Byte_Array is
          Local_Offset : constant Natural := 0;
@@ -1236,10 +1339,10 @@ package body Archive_Suite.Core is
             Deflated : constant Zlib.Byte_Array := Zlib.Deflate_Raw (Plain, Zlib.Fixed, Status);
          begin
             Assert (Status = Zlib.Ok, "test fixture raw deflate succeeds");
-            return Build (Deflated);
+            return Build (Maybe_Encrypted (Deflated));
          end;
       else
-         return Build (Plain);
+         return Build (Maybe_Encrypted (Plain));
       end if;
    end One_File_Zip;
 
@@ -1711,6 +1814,63 @@ package body Archive_Suite.Core is
               (Archive.Verification.CRC32.Final (PPMd_CRC) = CRC32_Compute (Plain),
                "zip ppmd stream bytes match expected crc");
          end;
+      end;
+
+      declare
+         Bytes : constant Zlib.Byte_Array :=
+           One_File_Zip (Encrypted => True, Password => "secret");
+         Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
+           Index_Zip (Bytes);
+         Item : constant Archive.Archives.Entries.Archive_Entry := Parsed.Entries.Element (1);
+         Missing : constant Test_Stream_Result :=
+           Stream_Zip_Payload (Bytes, Item);
+         Wrong : constant Test_Stream_Result :=
+           Stream_Zip_Payload (Bytes, Item, Password => "wrong");
+         Payload : constant Test_Stream_Result :=
+           Stream_Zip_Payload (Bytes, Item, Password => "secret");
+      begin
+         Assert (Parsed.Status = Archive.Archives.Errors.Ok,
+                 "zip traditional encrypted stored entry indexes");
+         Assert
+           (Item.Encryption = Archive.Archives.Entries.Zip_Traditional_Encryption,
+            "zip traditional encrypted stored flag retained");
+         Assert (Missing.Status = Archive.Archives.Errors.Unsupported_Method,
+                 "zip traditional encrypted stored entry requires password");
+         Assert (Wrong.Status = Archive.Archives.Errors.Invalid_Format,
+                 "zip traditional encrypted stored wrong password fails");
+         Assert (Payload.Status = Archive.Archives.Errors.Ok,
+                 "zip traditional encrypted stored entry streams with password");
+         Assert (Payload.Integrity = Archive.Archives.Entries.Verified,
+                 "zip traditional encrypted stored entry verifies with password");
+         Assert (Payload.Bytes_Written = 3, "zip traditional encrypted stored byte count");
+         Assert
+           (Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('a'))
+            and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('b'))
+            and then Bytes_Of (Payload) (3) = Zlib.Byte (Character'Pos ('c')),
+            "zip traditional encrypted stored plaintext matches");
+      end;
+
+      declare
+         Bytes : constant Zlib.Byte_Array :=
+           One_File_Zip (Method => 8, Encrypted => True, Password => "secret");
+         Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
+           Index_Zip (Bytes);
+         Item : constant Archive.Archives.Entries.Archive_Entry := Parsed.Entries.Element (1);
+         Payload : constant Test_Stream_Result :=
+           Stream_Zip_Payload (Bytes, Item, Password => "secret");
+      begin
+         Assert (Parsed.Status = Archive.Archives.Errors.Ok,
+                 "zip traditional encrypted deflate entry indexes");
+         Assert (Payload.Status = Archive.Archives.Errors.Ok,
+                 "zip traditional encrypted deflate entry streams with password");
+         Assert (Payload.Integrity = Archive.Archives.Entries.Verified,
+                 "zip traditional encrypted deflate entry verifies with password");
+         Assert (Payload.Bytes_Written = 3, "zip traditional encrypted deflate byte count");
+         Assert
+           (Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('a'))
+            and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('b'))
+            and then Bytes_Of (Payload) (3) = Zlib.Byte (Character'Pos ('c')),
+            "zip traditional encrypted deflate plaintext matches");
       end;
 
       declare
@@ -5511,7 +5671,8 @@ package body Archive_Suite.Core is
    function Stream_Dispatch_Payload_File
      (Path        : String;
       Source_Name : String;
-      Item        : Archive.Archives.Entries.Archive_Entry)
+      Item        : Archive.Archives.Entries.Archive_Entry;
+      Password    : String := "")
       return Test_Stream_Result
    is
       Result : Test_Stream_Result;
@@ -5527,7 +5688,7 @@ package body Archive_Suite.Core is
 
       Streamed : constant Archive.Archives.Readers.Dispatch.Stream_Result :=
         Archive.Archives.Readers.Dispatch.Stream_Payload_File
-          (Path, Source_Name, Item, Consume'Access);
+          (Path, Source_Name, Item, Consume'Access, Password => Password);
    begin
       if Streamed.Status /= Archive.Archives.Errors.Ok then
          return Empty_Test_Stream (Streamed.Status, Streamed.Integrity);
@@ -5540,7 +5701,8 @@ package body Archive_Suite.Core is
    function Stream_Dispatch_Payload
      (Bytes       : Zlib.Byte_Array;
       Source_Name : String;
-      Item        : Archive.Archives.Entries.Archive_Entry)
+      Item        : Archive.Archives.Entries.Archive_Entry;
+      Password    : String := "")
       return Test_Stream_Result
    is
       Root : constant String := "obj/reader-stream-fixtures";
@@ -5548,12 +5710,13 @@ package body Archive_Suite.Core is
    begin
       Ada.Directories.Create_Path (Root);
       Write_Bytes (Path, Bytes);
-      return Stream_Dispatch_Payload_File (Path, Source_Name, Item);
+      return Stream_Dispatch_Payload_File (Path, Source_Name, Item, Password);
    end Stream_Dispatch_Payload;
 
    function Stream_Zip_Payload_File
      (Path : String;
-      Item : Archive.Archives.Entries.Archive_Entry)
+      Item : Archive.Archives.Entries.Archive_Entry;
+      Password : String := "")
       return Test_Stream_Result
    is
       Result : Test_Stream_Result;
@@ -5568,7 +5731,8 @@ package body Archive_Suite.Core is
       end Consume;
 
       Streamed : constant Archive.Archives.Readers.Zip.Stream_Result :=
-        Archive.Archives.Readers.Zip.Stream_Payload_File (Path, Item, Consume'Access);
+        Archive.Archives.Readers.Zip.Stream_Payload_File
+          (Path, Item, Consume'Access, Password => Password);
    begin
       if Streamed.Status /= Archive.Archives.Errors.Ok then
          return Empty_Test_Stream (Streamed.Status, Streamed.Integrity);
@@ -5580,7 +5744,8 @@ package body Archive_Suite.Core is
 
    function Stream_Zip_Payload
      (Bytes : Zlib.Byte_Array;
-      Item  : Archive.Archives.Entries.Archive_Entry)
+      Item  : Archive.Archives.Entries.Archive_Entry;
+      Password : String := "")
       return Test_Stream_Result
    is
       Root : constant String := "obj/reader-stream-fixtures";
@@ -5588,7 +5753,7 @@ package body Archive_Suite.Core is
    begin
       Ada.Directories.Create_Path (Root);
       Write_Bytes (Path, Bytes);
-      return Stream_Zip_Payload_File (Path, Item);
+      return Stream_Zip_Payload_File (Path, Item, Password);
    end Stream_Zip_Payload;
 
    function Stream_Tar_Payload_File

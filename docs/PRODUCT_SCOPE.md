@@ -55,6 +55,7 @@ Required V1 read workflows:
 | TAR.GZ / TGZ | required | required | required | required | `zlib` + `tarlib` |
 | ZIP stored | required | required | required | required | archive ZIP adapter |
 | ZIP DEFLATE | required | required | required | required | archive ZIP adapter + `zlib` |
+| ZIP traditional encryption | supported for stored/DEFLATE entries | required with caller-supplied in-memory password | required over decrypted payload | required where extraction caller supplies password | archive ZIP adapter |
 | ZIP BZip2 / LZMA / Zstandard | supported | supported | supported | supported | archive ZIP adapter + `zlib` |
 | split ZIP / spanning ZIP | supported through bounded numbered-volume reassembly | supported | supported | supported | archive ZIP adapter |
 | gzip | required | required | required | required | `zlib` |
@@ -174,7 +175,8 @@ and shell snapshots expose the recent count and ordered path list through the
 settings snapshot for menu construction.
 
 Recognized unsupported formats include RAR, multi-volume ZIP sets with missing
-or non-contiguous numbered segments, encrypted entries outside supported 7z layouts, unsupported XZ layouts,
+or non-contiguous numbered segments, ZIP strong/AES encryption and encrypted
+external-method ZIP entries, encrypted entries outside supported 7z layouts, unsupported XZ layouts,
 unsupported CAB folder methods, unsupported non-bridge ZIP PPMd variants, and
 unsupported ZIP methods or 7z layouts. 7z first-volume sources (`.7z.001`) are
 supported only for bounded volume sets whose joined archive image remains

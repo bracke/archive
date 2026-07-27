@@ -910,7 +910,8 @@ procedure Check_All is
       Require_Document_Text
         ("docs/FORMAT_SUPPORT.md", "supported ZIP PPMd method 98 bridge decoding and publication");
       Require_Document_Text
-        ("docs/FORMAT_SUPPORT.md", "ZIP traditional and strong encrypted-entry detection");
+        ("docs/FORMAT_SUPPORT.md",
+         "ZIP traditional encrypted stored/DEFLATE password-backed payload streaming");
       Require_Document_Text
         ("README.md", "supported for native zlib-backed layouts");
       Require_Document_Text

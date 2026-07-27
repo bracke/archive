@@ -27,6 +27,7 @@ package Archive.Archives.Readers.Zip is
       Item     : Archive.Archives.Entries.Archive_Entry;
       Consumer : not null access procedure
         (Bytes : Zlib.Byte_Array;
-         Continue : in out Boolean))
+         Continue : in out Boolean);
+      Password : String := "")
       return Stream_Result;
 end Archive.Archives.Readers.Zip;

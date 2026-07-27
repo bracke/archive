@@ -548,7 +548,8 @@ package body Archive.Archives.Readers.Dispatch is
       Item        : Archive.Archives.Entries.Archive_Entry;
       Consumer    : not null access procedure
         (Bytes : Zlib.Byte_Array;
-         Continue : in out Boolean))
+         Continue : in out Boolean);
+      Password    : String := "")
       return Stream_Result
    is
       Opened : constant Open_Result :=
@@ -572,7 +573,7 @@ package body Archive.Archives.Readers.Dispatch is
 
                Payload : constant Archive.Archives.Readers.Zip.Stream_Result :=
                  Archive.Archives.Readers.Zip.Stream_Payload_File
-                   (Path, Item, Forward'Access);
+                   (Path, Item, Forward'Access, Password => Password);
             begin
                return (Status => Payload.Status,
                        Integrity => Payload.Integrity,
@@ -590,7 +591,8 @@ package body Archive.Archives.Readers.Dispatch is
 
                Payload : constant Archive.Archives.Readers.Zip.Stream_Result :=
                  Archive.Archives.Readers.Zip.Stream_Payload_File
-                   (To_String (Opened.Backing_Path), Item, Forward'Access);
+                   (To_String (Opened.Backing_Path), Item, Forward'Access,
+                    Password => Password);
             begin
                return (Status => Payload.Status,
                        Integrity => Payload.Integrity,

@@ -14,6 +14,7 @@ that registry and the AUnit format tests.
 | ZIP LZMA | supported for streams emitted by the zlib ZIP external-method bridge | supported through the zlib ZIP external-method bridge | supported with CRC-32 after decode before payload publication | supported through safe extraction planning/execution | supported for host-file publication and source-aware rewrite through the zlib ZIP external-method bridge | archive ZIP adapter + `zlib` |
 | ZIP Zstandard | supported through authoritative central directory plus local-header validation | supported through the zlib ZIP external-method bridge | supported with CRC-32 after decode before payload publication | supported through safe extraction planning/execution | supported for host-file publication and source-aware rewrite through the zlib ZIP external-method bridge | archive ZIP adapter + `zlib` |
 | ZIP PPMd | supported for default-parameter PPMd streams emitted by the zlib ZIP external-method bridge | supported through the zlib ZIP external-method bridge | supported with CRC-32 after decode before payload publication | supported through safe extraction planning/execution | supported for host-file publication and source-aware rewrite through the zlib ZIP external-method bridge | archive ZIP adapter + `zlib` |
+| ZIP traditional encryption | supported for stored and DEFLATE entries with caller-supplied in-memory passwords | supported through PKZIP traditional decrypt before stored/raw-DEFLATE payload publication | supported with password header validation and CRC-32 over decrypted bytes | supported where the extraction caller supplies the password and safe extraction planning succeeds | not supported for encrypted publication; update by writing unencrypted output | archive ZIP adapter |
 | split ZIP / spanning ZIP | supported by bounded `.z01`, `.z02`, ... plus final `.zip` reassembly into a retained backing file | supported through the normal ZIP reader after reassembly | supported through normal ZIP CRC and metadata validation after reassembly | supported through safe extraction planning/execution | not supported; update by saving as a non-split ZIP archive | archive ZIP adapter |
 | gzip | supported as one logical regular-file archive | supported through gzip-wrapped zlib adapter | supported by zlib gzip trailer checks; bounded header CRC is validated during indexing | supported through safe extraction planning/execution | supported by gzip writer adapter | `zlib` |
 | 7z | supported for native zlib-backed layouts, including bounded `.7z.001` first-volume reassembly | supported through `zlib` native 7z extraction, including bounded multi-volume reassembly | supported through zlib header, size, CRC, method, and joined-volume limit validation | supported through safe extraction planning/execution | supported by Deflate file-list publication through `zlib` | `zlib` |
@@ -28,7 +29,8 @@ that registry and the AUnit format tests.
 Current covered edge cases include ZIP comments, Unicode path extra fields,
 ZIP64 per-entry size extras within host bounds, data descriptors with and
  without signatures, ZIP BZip2, LZMA, Zstandard, and default-parameter PPMd payload decoding through zlib,
-ZIP traditional and strong encrypted-entry detection, unsupported compression-method reporting,
+ZIP traditional encrypted stored/DEFLATE password-backed payload streaming,
+ZIP strong encrypted-entry detection, unsupported compression-method reporting,
 multi-disk rejection, duplicate ZIP names, explicit ZIP directories,
 gzip optional fields, gzip header CRC, unsafe gzip filename fallback, truncated
 gzip payload rejection, TAR duplicate paths, TAR symbolic and hard links, TAR
@@ -46,6 +48,9 @@ Recognized but unsupported:
 
 - RAR
 
+Unsupported ZIP encryption modes, including strong encryption, AES extra-field
+encryption, and encrypted external-method bridge entries, remain visible but
+unavailable until a dedicated decrypting backend is added.
 Unsupported ZIP methods, including non-bridge PPMd variants and non-bridge
 LZMA variants, remain visible as unsupported entries where the central
 directory can be safely parsed.
