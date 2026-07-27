@@ -24,13 +24,13 @@ Current V1 support:
 | XZ | supported as one logical file for multi-block LZMA2 streams | supported | supported | supported | supported single-file replacement | `zlib` |
 | AR | supported for stored members | supported | supported | supported | supported by stored-member rewrite publication | archive AR adapter |
 | CPIO newc | supported for stored members | supported | supported | supported | supported by newc rewrite publication | archive CPIO adapter |
-| CAB stored / MSZIP | supported for bounded single-folder archives | supported | supported | supported | supported by stored-cabinet rewrite publication | archive CAB adapter + `zlib` |
+| CAB stored / MSZIP | supported for bounded single-folder, multi-file archives | supported | supported | supported | supported by stored-cabinet rewrite publication | archive CAB adapter + `zlib` |
 | ISO 9660 | supported for stored directory records and files | supported | supported | supported | supported by flat-image rewrite publication | archive ISO adapter |
 
 Recognized but unsupported in V1: RAR, non-contiguous multi-volume ZIP sets,
 ZIP strong/AES encryption and encrypted external-method ZIP entries, encrypted
 7z headers without a supplied password, XZ layouts outside the supported native LZMA2 layout set, unsupported CAB
-folder methods, unsupported non-bridge ZIP PPMd variants, and unsupported ZIP
+folder methods outside stored/MSZIP, unsupported non-bridge ZIP PPMd variants, and unsupported ZIP
 methods or 7z layouts outside the zlib-backed native layout set.
 
 ## Current Implementation Status

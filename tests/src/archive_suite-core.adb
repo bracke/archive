@@ -992,6 +992,54 @@ package body Archive_Suite.Core is
       end if;
    end One_File_Cab;
 
+   function Two_File_MSZIP_Cab return Zlib.Byte_Array is
+      Plain : constant Zlib.Byte_Array :=
+        [1 => Zlib.Byte (Character'Pos ('a')),
+         2 => Zlib.Byte (Character'Pos ('b')),
+         3 => Zlib.Byte (Character'Pos ('c'))];
+      Status : Zlib.Status_Code := Zlib.Ok;
+      Deflated : constant Zlib.Byte_Array :=
+        Zlib.Deflate_Raw (Plain, Zlib.Fixed, Status);
+      Payload : Zlib.Byte_Array (1 .. Deflated'Length + 2);
+      Data_Offset : constant Natural := 88;
+      Bytes : Zlib.Byte_Array (1 .. Data_Offset + 8 + Payload'Length) :=
+        [others => 0];
+   begin
+      Assert (Status = Zlib.Ok, "cab multi-file mszip fixture raw deflate builds");
+      Payload (1) := Zlib.Byte (Character'Pos ('C'));
+      Payload (2) := Zlib.Byte (Character'Pos ('K'));
+      for Index in Deflated'Range loop
+         Payload (Index + 2) := Deflated (Index);
+      end loop;
+
+      Put_Text (Bytes, 0, "MSCF");
+      Put32 (Bytes, 8, Bytes'Length);
+      Put32 (Bytes, 16, 44);
+      Put16 (Bytes, 26, 1);
+      Put16 (Bytes, 28, 2);
+      Put32 (Bytes, 36, Data_Offset);
+      Put16 (Bytes, 40, 1);
+      Put16 (Bytes, 42, 1);
+
+      Put32 (Bytes, 44, 1);
+      Put32 (Bytes, 48, 0);
+      Put16 (Bytes, 52, 0);
+      Put_Text (Bytes, 60, "a.txt" & Character'Val (0));
+
+      Put32 (Bytes, 66, 2);
+      Put32 (Bytes, 70, 1);
+      Put16 (Bytes, 74, 0);
+      Put_Text (Bytes, 82, "b.txt" & Character'Val (0));
+
+      Put16 (Bytes, Data_Offset + 4, Payload'Length);
+      Put16 (Bytes, Data_Offset + 6, Plain'Length);
+      for Index in Payload'Range loop
+         Bytes (Bytes'First + Data_Offset + 8 + Index - Payload'First) :=
+           Payload (Index);
+      end loop;
+      return Bytes;
+   end Two_File_MSZIP_Cab;
+
    function One_File_Cpio return Zlib.Byte_Array is
       Header_Length : constant Natural := 110;
       Name : constant String := "a.txt" & Character'Val (0);
@@ -3311,6 +3359,7 @@ package body Archive_Suite.Core is
       Ar : constant Zlib.Byte_Array := One_File_Ar;
       Cab : constant Zlib.Byte_Array := One_File_Cab;
       Cab_MSZIP : constant Zlib.Byte_Array := One_File_Cab (MSZIP => True);
+      Cab_MSZIP_Multi : constant Zlib.Byte_Array := Two_File_MSZIP_Cab;
       Cpio : constant Zlib.Byte_Array := One_File_Cpio;
       Iso : constant Zlib.Byte_Array := One_File_Iso;
 
@@ -3655,6 +3704,42 @@ package body Archive_Suite.Core is
             and then Payload.Bytes_Written = 3
             and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('b')),
             "cab mszip dispatch inflates payload through zlib");
+      end;
+
+      declare
+         Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+           Open_Dispatch (Cab_MSZIP_Multi, Source_Name => "sample-mszip-multi.cab");
+         First_Item : constant Archive.Archives.Entries.Archive_Entry :=
+           Archive.Archives.Index.Entry_For (Opened.Index, 2);
+         Second_Item : constant Archive.Archives.Entries.Archive_Entry :=
+           Archive.Archives.Index.Entry_For (Opened.Index, 3);
+         First_Payload : constant Test_Stream_Result :=
+           Stream_Dispatch_Payload
+             (Cab_MSZIP_Multi, "sample-mszip-multi.cab", First_Item);
+         Second_Payload : constant Test_Stream_Result :=
+           Stream_Dispatch_Payload
+             (Cab_MSZIP_Multi, "sample-mszip-multi.cab", Second_Item);
+      begin
+         Assert (Opened.Status = Archive.Archives.Errors.Ok,
+                 "cab multi-file mszip dispatch succeeds");
+         Assert (Archive.Archives.Index.Physical_Count (Opened.Index) = 2,
+                 "cab multi-file mszip dispatch publishes both entries");
+         Assert
+           (First_Payload.Status = Archive.Archives.Errors.Ok
+            and then First_Payload.Integrity = Archive.Archives.Entries.Verified
+            and then First_Payload.Bytes_Written = 1
+            and then Bytes_Of (First_Payload) (1) =
+              Zlib.Byte (Character'Pos ('a')),
+            "cab multi-file mszip dispatch slices first entry");
+         Assert
+           (Second_Payload.Status = Archive.Archives.Errors.Ok
+            and then Second_Payload.Integrity = Archive.Archives.Entries.Verified
+            and then Second_Payload.Bytes_Written = 2
+            and then Bytes_Of (Second_Payload) (1) =
+              Zlib.Byte (Character'Pos ('b'))
+            and then Bytes_Of (Second_Payload) (2) =
+              Zlib.Byte (Character'Pos ('c')),
+            "cab multi-file mszip dispatch slices nonzero-offset entry");
       end;
 
       declare

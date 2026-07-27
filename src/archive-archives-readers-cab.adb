@@ -74,6 +74,52 @@ package body Archive.Archives.Readers.Cab is
       return Result;
    end Bytes_To_String;
 
+   function Metadata_Natural
+     (Metadata : String;
+      Key      : String;
+      Default  : Natural := 0)
+      return Natural
+   is
+      Prefix : constant String := Key & "=";
+      Pos    : Natural := Metadata'First;
+   begin
+      while Pos <= Metadata'Last loop
+         declare
+            Field_First : constant Natural := Pos;
+            Field_Last  : Natural := Pos;
+            Value       : Natural := 0;
+         begin
+            while Field_Last <= Metadata'Last
+              and then Metadata (Field_Last) /= ';'
+            loop
+               Field_Last := Field_Last + 1;
+            end loop;
+
+            if Field_Last - Field_First >= Prefix'Length
+              and then Metadata (Field_First .. Field_First + Prefix'Length - 1) =
+                Prefix
+            then
+               for Index in Field_First + Prefix'Length .. Field_Last - 1 loop
+                  if Metadata (Index) not in '0' .. '9' then
+                     return Default;
+                  end if;
+                  Value :=
+                    Value * 10
+                    + Character'Pos (Metadata (Index)) - Character'Pos ('0');
+               end loop;
+               return Value;
+            end if;
+
+            Pos := Field_Last + 1;
+         end;
+      end loop;
+
+      return Default;
+   exception
+      when Constraint_Error =>
+         return Default;
+   end Metadata_Natural;
+
    function Read_Exact
      (File  : in out Ada.Streams.Stream_IO.File_Type;
       Count : Natural;
@@ -180,7 +226,6 @@ package body Archive.Archives.Readers.Cab is
             if Compression not in CAB_Stored | CAB_MSZIP
               or else Block_Count /= 1
               or else Data_Offset > Natural (Size) - Data_Block_Header_Size
-              or else (Compression = CAB_MSZIP and then File_Count /= 1)
             then
                Ada.Streams.Stream_IO.Close (File);
                return (Status => Archive.Archives.Errors.Unsupported_Method,
@@ -241,7 +286,6 @@ package body Archive.Archives.Readers.Cab is
                           or else File_Offset > Block_Uncompressed
                           or else File_Size > Block_Uncompressed - File_Offset
                           or else (Is_Directory and then File_Size /= 0)
-                          or else (Compression = CAB_MSZIP and then File_Offset /= 0)
                         then
                            Result.Status := Archive.Archives.Errors.Invalid_Format;
                            exit;
@@ -268,7 +312,11 @@ package body Archive.Archives.Readers.Cab is
                            if not Is_Directory then
                               Item.Data_Offset :=
                                 (Present => True,
-                                 Value => Archive.Types.Source_Offset (Payload_Offset + File_Offset));
+                                 Value =>
+                                   Archive.Types.Source_Offset
+                                     ((if Compression = CAB_MSZIP
+                                       then Payload_Offset
+                                       else Payload_Offset + File_Offset)));
                            end if;
                            Item.Compressed :=
                              (Present => True,
@@ -297,6 +345,8 @@ package body Archive.Archives.Readers.Cab is
                                 & U64_Image (Interfaces.Unsigned_64 (Block_Compressed))
                                 & ";cab.block_uncompressed="
                                 & U64_Image (Interfaces.Unsigned_64 (Block_Uncompressed))
+                                & ";cab.file_offset="
+                                & U64_Image (Interfaces.Unsigned_64 (File_Offset))
                                 & ";cab.entry=" & U64_Image (Interfaces.Unsigned_64 (Entry_Index)));
                            Item.Safety := Archive.Archives.Paths.Normalize (Name).Safety;
                            Result.Entries.Append (Item);
@@ -357,14 +407,25 @@ package body Archive.Archives.Readers.Cab is
 
       if Item.Method = Archive.Archives.Entries.Zip_Deflate then
          declare
+            Metadata : constant String := To_String (Item.Format_Metadata);
             Compressed_Size : constant Natural :=
               (if Item.Compressed.Present then Natural (Item.Compressed.Value) else 0);
+            Block_Uncompressed : constant Natural :=
+              Metadata_Natural
+                (Metadata, "cab.block_uncompressed", Natural (Item.Uncompressed.Value));
+            File_Offset : constant Natural :=
+              Metadata_Natural (Metadata, "cab.file_offset", 0);
             Marker : Ada.Streams.Stream_Element_Array (1 .. 2);
             Marker_Last : Ada.Streams.Stream_Element_Offset := 0;
             Compressed_Remaining : Natural := 0;
-            Total_Output : Archive.Types.Uncompressed_Size := 0;
+            Inflated_Total : Archive.Types.Uncompressed_Size := 0;
+            Entry_Output : Archive.Types.Uncompressed_Size := 0;
          begin
-            if Compressed_Size <= 2 then
+            if Compressed_Size <= 2
+              or else File_Offset > Block_Uncompressed
+              or else Natural (Item.Uncompressed.Value) >
+                Block_Uncompressed - File_Offset
+            then
                return (Status => Archive.Archives.Errors.Invalid_Format,
                        Integrity => Archive.Archives.Entries.Failed,
                        Bytes_Written => 0);
@@ -394,10 +455,36 @@ package body Archive.Archives.Readers.Cab is
                procedure Forward
                  (Bytes : Zlib.Byte_Array;
                   Continue : in out Boolean) is
+                  Chunk_First : constant Natural := Natural (Inflated_Total);
+                  Chunk_Last  : constant Natural := Chunk_First + Bytes'Length;
+                  Entry_First : constant Natural := File_Offset;
+                  Entry_Last  : constant Natural :=
+                    File_Offset + Natural (Item.Uncompressed.Value);
+                  Slice_First : Natural;
+                  Slice_Last  : Natural;
                begin
-                  Consumer.all (Bytes, Continue);
+                  if Chunk_Last > Entry_First and then Chunk_First < Entry_Last then
+                     Slice_First := Natural'Max (Chunk_First, Entry_First);
+                     Slice_Last := Natural'Min (Chunk_Last, Entry_Last);
+
+                     declare
+                        Local_First : constant Natural :=
+                          Bytes'First + Slice_First - Chunk_First;
+                        Local_Last  : constant Natural :=
+                          Bytes'First + Slice_Last - Chunk_First - 1;
+                        Slice       : constant Zlib.Byte_Array :=
+                          Bytes (Local_First .. Local_Last);
+                     begin
+                        Consumer.all (Slice, Continue);
+                        if Continue then
+                           Entry_Output := Entry_Output +
+                             Archive.Types.Uncompressed_Size (Slice'Length);
+                        end if;
+                     end;
+                  end if;
+
                   if Continue then
-                     Total_Output := Total_Output +
+                     Inflated_Total := Inflated_Total +
                        Archive.Types.Uncompressed_Size (Bytes'Length);
                   end if;
                end Forward;
@@ -406,7 +493,7 @@ package body Archive.Archives.Readers.Cab is
                  (Inflater,
                   Archive.Compression.Zlib.Raw_Deflate,
                   Limits =>
-                    (Max_Output_Bytes => Item.Uncompressed.Value,
+                    (Max_Output_Bytes => Archive.Types.Uncompressed_Size (Block_Uncompressed),
                      Max_Ratio        => 1_000));
 
                while Compressed_Remaining > 0 loop
@@ -426,7 +513,7 @@ package body Archive.Archives.Readers.Cab is
                         Ada.Streams.Stream_IO.Close (File);
                         return (Status => Archive.Archives.Errors.Read_Failed,
                                 Integrity => Archive.Archives.Entries.Failed,
-                                Bytes_Written => Total_Output);
+                                Bytes_Written => Entry_Output);
                      end if;
 
                      for Index in Deflated_Chunk'Range loop
@@ -450,7 +537,7 @@ package body Archive.Archives.Readers.Cab is
                            Ada.Streams.Stream_IO.Close (File);
                            return (Status => Append_Result.Status,
                                    Integrity => Archive.Archives.Entries.Failed,
-                                   Bytes_Written => Total_Output);
+                                   Bytes_Written => Entry_Output);
                         end if;
                      end;
                   end;
@@ -467,7 +554,9 @@ package body Archive.Archives.Readers.Cab is
                   if Finish_Result.Status /= Archive.Archives.Errors.Ok
                     or else Close_Result.Status /= Archive.Archives.Errors.Ok
                     or else not Close_Result.Stream_Ended
-                    or else Total_Output /= Item.Uncompressed.Value
+                    or else Inflated_Total /=
+                      Archive.Types.Uncompressed_Size (Block_Uncompressed)
+                    or else Entry_Output /= Item.Uncompressed.Value
                   then
                      return (Status =>
                                (if Finish_Result.Status /= Archive.Archives.Errors.Ok
@@ -476,13 +565,13 @@ package body Archive.Archives.Readers.Cab is
                                 then Close_Result.Status
                                 else Archive.Archives.Errors.Invalid_Format),
                              Integrity => Archive.Archives.Entries.Failed,
-                             Bytes_Written => Total_Output);
+                             Bytes_Written => Entry_Output);
                   end if;
 
                   return
                     (Status => Archive.Archives.Errors.Ok,
                      Integrity => Archive.Archives.Entries.Verified,
-                     Bytes_Written => Total_Output);
+                     Bytes_Written => Entry_Output);
                end;
             end;
          end;
