@@ -1192,6 +1192,18 @@ procedure Check_All is
         ("CONTRIBUTING.md", "use `tarlib` for TAR reading and writing");
       Require_Document_Text
         ("CHANGELOG.md", "0.1.0-dev");
+      Require_Document_Text
+        ("README.md", "Recognized but unsupported in V1: RAR archives.");
+      Require_Document_Text
+        ("README.md", "Supported formats still fail closed for unsupported sublayouts");
+      Require_Document_Text
+        ("docs/FORMAT_SUPPORT.md", "Recognized whole formats that remain unsupported");
+      Require_Document_Text
+        ("docs/FORMAT_SUPPORT.md", "Supported formats may still contain unsupported sublayouts");
+      Require_Document_Text
+        ("docs/PRODUCT_SCOPE.md", "Recognized unsupported whole formats include RAR archives.");
+      Require_Document_Text
+        ("docs/PRODUCT_SCOPE.md", "Supported formats may still contain unsupported sublayouts");
 
       Forbid_Document_Text
         ("README.md", "read-only graphical desktop archive browser");
@@ -1214,6 +1226,10 @@ procedure Check_All is
       Forbid_Document_Text
         ("README.md", "RAR, XZ, split ZIP");
       Forbid_Document_Text
+        ("README.md", "Recognized but unsupported in V1: RAR,");
+      Forbid_Document_Text
+        ("README.md", "Recognized but unsupported in V1: RAR" & ASCII.LF);
+      Forbid_Document_Text
         ("docs/FORMAT_SUPPORT.md", "native zlib-backed subset");
       Forbid_Document_Text
         ("docs/FORMAT_SUPPORT.md", "- CAB");
@@ -1221,6 +1237,8 @@ procedure Check_All is
         ("docs/FORMAT_SUPPORT.md", "- XZ");
       Forbid_Document_Text
         ("docs/FORMAT_SUPPORT.md", "- ISO");
+      Forbid_Document_Text
+        ("docs/FORMAT_SUPPORT.md", "Recognized but unsupported:");
       Forbid_Document_Text
         ("docs/FORMAT_SUPPORT.md", "outside the native subset");
       Forbid_Document_Text
@@ -1235,6 +1253,8 @@ procedure Check_All is
         ("docs/PRODUCT_SCOPE.md", "XZ, CAB");
       Forbid_Document_Text
         ("docs/PRODUCT_SCOPE.md", "RAR, XZ");
+      Forbid_Document_Text
+        ("docs/PRODUCT_SCOPE.md", "Recognized unsupported formats include RAR,");
       Forbid_Document_Text
         ("docs/ai-implementation-guide.md", "supported native subset");
       Forbid_Document_Text

@@ -27,13 +27,16 @@ Current V1 support:
 | CAB stored / MSZIP | supported for bounded single-folder, multi-file archives | supported | supported | supported | supported by stored-cabinet rewrite publication | archive CAB adapter + `zlib` |
 | ISO 9660 | supported for stored directory records and files | supported | supported | supported | supported by flat-image rewrite publication | archive ISO adapter |
 
-Recognized but unsupported in V1: RAR, non-contiguous multi-volume ZIP sets,
-ZIP strong encryption, encrypted 7z headers without a supplied password, XZ
-layouts outside the supported native LZMA2 layout set, unsupported CAB folder
-methods outside stored/MSZIP, unsupported non-bridge ZIP PPMd variants, and
-unsupported ZIP methods or 7z layouts outside the zlib-backed native layout set.
-ZIP traditional encryption and WinZip AES entries using supported ZIP methods
-are supported when a password is supplied in memory.
+Recognized but unsupported in V1: RAR archives.
+
+Supported formats still fail closed for unsupported sublayouts: split ZIP sets
+with missing or non-contiguous numbered volumes, ZIP strong encryption, encrypted
+7z headers without a supplied password, XZ layouts outside the supported LZMA2
+layout set, CAB folder methods outside stored/MSZIP, non-bridge ZIP PPMd
+variants, ZIP methods outside the archive adapter and zlib bridge, and 7z layouts
+outside the zlib-backed native layout set. ZIP traditional encryption and WinZip
+AES entries using supported ZIP methods are supported when a password is supplied
+in memory.
 
 ## Current Implementation Status
 

@@ -175,13 +175,18 @@ Recent archive paths are persisted as stable data, not localized display labels,
 and shell snapshots expose the recent count and ordered path list through the
 settings snapshot for menu construction.
 
-Recognized unsupported formats include RAR, multi-volume ZIP sets with missing
-or non-contiguous numbered segments, ZIP strong encryption, encrypted 7z headers without a supplied password, XZ layouts outside the supported native LZMA2 layout set,
-unsupported CAB folder methods outside stored/MSZIP, unsupported non-bridge ZIP PPMd variants, and
-unsupported ZIP methods or 7z layouts outside the zlib-backed native layout set. 7z first-volume sources (`.7z.001`) are
-supported only for bounded volume sets whose joined archive image remains
-within the configured reader limit and whose native 7z layout is accepted by
-`zlib`.
+Recognized unsupported whole formats include RAR archives.
+
+Supported formats may still contain unsupported sublayouts. Multi-volume ZIP
+sets with missing or non-contiguous numbered segments, ZIP strong encryption,
+encrypted 7z headers without a supplied password, XZ layouts outside the
+supported LZMA2 layout set, unsupported CAB folder methods outside stored/MSZIP,
+unsupported non-bridge ZIP PPMd variants, and unsupported ZIP methods or 7z
+layouts outside the zlib-backed native layout set fail closed with typed
+unsupported-method, unsupported-format, or invalid-format results as applicable.
+7z first-volume sources (`.7z.001`) are supported only for bounded volume sets
+whose joined archive image remains within the configured reader limit and whose
+native 7z layout is accepted by `zlib`.
 
 ## Non-Negotiable Invariants
 

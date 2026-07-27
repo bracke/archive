@@ -46,14 +46,14 @@ and zlib-backed Deflate 7z file-list publication, zlib-backed bzip2 single-file
 decoding and publication, zlib-backed Zstandard single-file decoding and
 publication, zlib-backed XZ multi-block LZMA2 decoding and publication, supported ZIP PPMd method 98 bridge decoding and publication, stored Unix AR member indexing, payload streaming, and rewrite publication, CPIO newc member indexing, payload streaming, and rewrite publication, bounded stored and MSZIP CAB multi-file folder indexing, payload streaming, and stored-cabinet rewrite publication, and ISO 9660 directory-record indexing, stored file-extent streaming, and flat-image rewrite publication.
 
-Recognized but unsupported:
+Recognized whole formats that remain unsupported:
 
 - RAR
 
-Unsupported ZIP encryption modes, including strong encryption, remain visible
-but unavailable until a dedicated decrypting backend is added. WinZip AES
-entries using stored, DEFLATE, or zlib-backed external ZIP methods are supported
-when a password is supplied in memory.
+Supported formats may still contain unsupported sublayouts. ZIP strong
+encryption remains visible but unavailable until a dedicated decrypting backend
+is added. WinZip AES entries using stored, DEFLATE, or zlib-backed external ZIP
+methods are supported when a password is supplied in memory.
 Unsupported ZIP methods, including non-bridge PPMd variants and non-bridge
 LZMA variants, remain visible as unsupported entries where the central
 directory can be safely parsed.
