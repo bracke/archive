@@ -1964,21 +1964,64 @@ procedure Check_All is
          16#00#, 16#00#, 16#00#, 16#00#, 16#00#, 16#00#];
    end Generated_Rar_Unsupported;
 
+   function Generated_Rar4_File
+     (Method : Natural := 16#30#;
+      Flags  : Natural := 0)
+      return Zlib.Byte_Array
+   is
+      Name    : constant String := "payload.txt";
+      Payload : constant Zlib.Byte_Array := [16#6F#, 16#6B#];
+      Total   : constant Natural := 72;
+      Header_Size : constant Natural := 7 + 25 + Name'Length;
+      Bytes   : Zlib.Byte_Array (1 .. Total) := [others => 0];
+      Main_Offset : constant Natural := 7;
+      File_Offset : constant Natural := 20;
+      Data_Offset : constant Natural := File_Offset + Header_Size;
+      End_Offset  : constant Natural := Data_Offset + Payload'Length;
+   begin
+      Bytes (1 .. 7) := [16#52#, 16#61#, 16#72#, 16#21#, 16#1A#, 16#07#, 16#00#];
+
+      Bytes (Bytes'First + Main_Offset + 2) := 16#73#;
+      Put16 (Bytes, Main_Offset + 5, 13);
+
+      Bytes (Bytes'First + File_Offset + 2) := 16#74#;
+      Put16 (Bytes, File_Offset + 3, Flags);
+      Put16 (Bytes, File_Offset + 5, Header_Size);
+      Put32 (Bytes, File_Offset + 7, Payload'Length);
+      Put32 (Bytes, File_Offset + 11, Payload'Length);
+      Bytes (Bytes'First + File_Offset + 15) := 3;
+      Put32_U
+        (Bytes,
+         File_Offset + 16,
+         Interfaces.Unsigned_32 (CRC32_Compute (Payload)));
+      Bytes (Bytes'First + File_Offset + 24) := 20;
+      Bytes (Bytes'First + File_Offset + 25) := Zlib.Byte (Method);
+      Put16 (Bytes, File_Offset + 26, Name'Length);
+      Put16 (Bytes, File_Offset + 28, 16#20#);
+      Put_Text (Bytes, File_Offset + 32, Name);
+      for Index in Payload'Range loop
+         Bytes (Bytes'First + Data_Offset + Index - Payload'First) := Payload (Index);
+      end loop;
+
+      Bytes (Bytes'First + End_Offset + 2) := 16#7B#;
+      Put16 (Bytes, End_Offset + 5, 7);
+      return Bytes;
+   end Generated_Rar4_File;
+
    function Generated_Rar_Stored return Zlib.Byte_Array is
    begin
-      return
-        [16#52#, 16#61#, 16#72#, 16#21#, 16#1A#, 16#07#, 16#00#,
-         16#00#, 16#00#, 16#73#, 16#00#, 16#00#, 16#0D#, 16#00#,
-         16#00#, 16#00#, 16#00#, 16#00#, 16#00#, 16#00#, 16#00#,
-         16#00#, 16#74#, 16#00#, 16#00#, 16#2B#, 16#00#,
-         16#02#, 16#00#, 16#00#, 16#00#, 16#02#, 16#00#, 16#00#,
-         16#00#, 16#03#, 16#47#, 16#DD#, 16#DC#, 16#79#, 16#00#,
-         16#00#, 16#00#, 16#00#, 16#14#, 16#30#, 16#0B#, 16#00#,
-         16#20#, 16#00#, 16#00#, 16#00#, 16#70#, 16#61#, 16#79#,
-         16#6C#, 16#6F#, 16#61#, 16#64#, 16#2E#, 16#74#, 16#78#,
-         16#74#, 16#6F#, 16#6B#, 16#00#, 16#00#, 16#7B#, 16#00#,
-         16#00#, 16#07#, 16#00#];
+      return Generated_Rar4_File;
    end Generated_Rar_Stored;
+
+   function Generated_Rar_Compressed_Method return Zlib.Byte_Array is
+   begin
+      return Generated_Rar4_File (Method => 16#31#);
+   end Generated_Rar_Compressed_Method;
+
+   function Generated_Rar_Encrypted return Zlib.Byte_Array is
+   begin
+      return Generated_Rar4_File (Flags => 16#0004#);
+   end Generated_Rar_Encrypted;
 
    function Generated_Rar5_Unsupported return Zlib.Byte_Array is
    begin
@@ -2361,6 +2404,10 @@ procedure Check_All is
          return Generated_Rar_Unsupported;
       elsif Id = "rar-stored-basic" then
          return Generated_Rar_Stored;
+      elsif Id = "rar-compressed-method" then
+         return Generated_Rar_Compressed_Method;
+      elsif Id = "rar-encrypted" then
+         return Generated_Rar_Encrypted;
       elsif Id = "rar5-unsupported" then
          return Generated_Rar5_Unsupported;
       elsif Id = "split-zip-unsupported" then
@@ -2501,6 +2548,12 @@ procedure Check_All is
          if Opened.Status /= Archive.Archives.Errors.Ok then
             Fail ("generated RAR4 stored fixture should be supported");
          end if;
+      elsif Id = "rar-compressed-method"
+        or else Id = "rar-encrypted"
+      then
+         if Opened.Status /= Archive.Archives.Errors.Ok then
+            Fail ("generated RAR4 unsupported-subtype fixture should remain indexable");
+         end if;
       elsif Id = "rar5-unsupported" then
          if Opened.Status /= Archive.Archives.Errors.Unsupported_Format then
             Fail ("generated RAR5 should be rejected as unsupported");
@@ -2631,6 +2684,8 @@ procedure Check_All is
       Has_Seven_Zip : Boolean := False;
       Has_Seven_Zip_Encrypted : Boolean := False;
       Has_Rar_Stored : Boolean := False;
+      Has_Rar_Compressed : Boolean := False;
+      Has_Rar_Encrypted : Boolean := False;
       Has_Rar5_Unsupported : Boolean := False;
       Has_Split_Zip_Unsupported : Boolean := False;
       Has_BZip2 : Boolean := False;
@@ -2703,6 +2758,10 @@ procedure Check_All is
                      Has_Seven_Zip_Encrypted := True;
                   elsif Id = "rar-stored-basic" then
                      Has_Rar_Stored := True;
+                  elsif Id = "rar-compressed-method" then
+                     Has_Rar_Compressed := True;
+                  elsif Id = "rar-encrypted" then
+                     Has_Rar_Encrypted := True;
                   elsif Id = "rar5-unsupported" then
                      Has_Rar5_Unsupported := True;
                   elsif Id = "split-zip-unsupported" then
@@ -2779,6 +2838,8 @@ procedure Check_All is
         or else not Has_Seven_Zip
         or else not Has_Seven_Zip_Encrypted
         or else not Has_Rar_Stored
+        or else not Has_Rar_Compressed
+        or else not Has_Rar_Encrypted
         or else not Has_Rar5_Unsupported
         or else not Has_Split_Zip_Unsupported
         or else not Has_BZip2

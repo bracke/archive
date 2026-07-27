@@ -12,6 +12,7 @@ package body Archive.Archives.Readers.Rar is
    use type Ada.Directories.File_Size;
    use type Ada.Streams.Stream_Element_Offset;
    use type Archive.Archives.Entries.Compression_Method;
+   use type Archive.Archives.Entries.Encryption_State;
    use type Archive.Archives.Entries.Entry_Kind;
    use type Archive.Archives.Errors.Error_Code;
    use type Archive.Types.Archive_Ordinal;
@@ -385,6 +386,7 @@ package body Archive.Archives.Readers.Rar is
    begin
       if Item.Kind /= Archive.Archives.Entries.Regular_File
         or else Item.Method /= Archive.Archives.Entries.No_Compression
+        or else Item.Encryption /= Archive.Archives.Entries.Not_Encrypted
         or else not Item.Data_Offset.Present
         or else not Item.Uncompressed.Present
       then

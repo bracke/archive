@@ -520,6 +520,8 @@ procedure Release_Report is
       Has_Seven_Zip : Boolean := False;
       Has_Seven_Zip_Encrypted : Boolean := False;
       Has_Rar_Stored : Boolean := False;
+      Has_Rar_Compressed : Boolean := False;
+      Has_Rar_Encrypted : Boolean := False;
       Has_Rar5_Unsupported : Boolean := False;
       Has_Split_Zip_Unsupported : Boolean := False;
       Has_BZip2 : Boolean := False;
@@ -598,6 +600,10 @@ procedure Release_Report is
             return (True, 20, "EAEAB33A");
          elsif Id = "rar-stored-basic" then
             return (True, 72, "22E614D9");
+         elsif Id = "rar-compressed-method" then
+            return (True, 72, "4C6A0F98");
+         elsif Id = "rar-encrypted" then
+            return (True, 72, "7215A256");
          elsif Id = "rar5-unsupported" then
             return (True, 20, "32AAFBC4");
          elsif Id = "split-zip-unsupported" then
@@ -808,6 +814,10 @@ procedure Release_Report is
                   Has_Seven_Zip_Encrypted := True;
                elsif Id = "rar-stored-basic" then
                   Has_Rar_Stored := True;
+               elsif Id = "rar-compressed-method" then
+                  Has_Rar_Compressed := True;
+               elsif Id = "rar-encrypted" then
+                  Has_Rar_Encrypted := True;
                elsif Id = "rar5-unsupported" then
                   Has_Rar5_Unsupported := True;
                elsif Id = "split-zip-unsupported" then
@@ -885,6 +895,8 @@ procedure Release_Report is
         or else not Has_Seven_Zip
         or else not Has_Seven_Zip_Encrypted
         or else not Has_Rar_Stored
+        or else not Has_Rar_Compressed
+        or else not Has_Rar_Encrypted
         or else not Has_Rar5_Unsupported
         or else not Has_Split_Zip_Unsupported
         or else not Has_BZip2
