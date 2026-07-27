@@ -50,6 +50,7 @@ case id=archive-seven-zip-basic kind=archive input=seven-zip-basic source=fixtur
 case id=archive-seven-zip-volume kind=archive input=seven-zip-basic source=fixture.7z.001 open=Ok entries=1 payload=Ok
 case id=archive-seven-zip-encrypted kind=archive input=seven-zip-encrypted source=fixture.7z open=Ok entries=1 payload=Unsupported_Method
 case id=archive-rar-unsupported kind=archive input=rar-unsupported source=fixture.rar open=Unsupported_Format entries=0
+case id=archive-rar5-unsupported kind=archive input=rar5-unsupported source=fixture.rar open=Unsupported_Format entries=0
 case id=archive-split-zip-unsupported kind=archive input=split-zip-unsupported source=fixture.z01 open=Unsupported_Format entries=0
 case id=archive-bzip2-basic kind=archive input=bzip2-basic source=fixture.bz2 open=Ok entries=1 payload=Ok
 case id=archive-zstd-basic kind=archive input=zstd-basic source=fixture.zst open=Ok entries=1 payload=Ok

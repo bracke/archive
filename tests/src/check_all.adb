@@ -1960,6 +1960,14 @@ procedure Check_All is
          16#00#, 16#00#, 16#00#, 16#00#, 16#00#, 16#00#];
    end Generated_Rar_Unsupported;
 
+   function Generated_Rar5_Unsupported return Zlib.Byte_Array is
+   begin
+      return
+        [16#52#, 16#61#, 16#72#, 16#21#, 16#1A#, 16#07#, 16#01#, 16#00#,
+         16#00#, 16#00#, 16#01#, 16#00#, 16#00#, 16#00#, 16#00#, 16#00#,
+         16#00#, 16#00#, 16#00#, 16#00#];
+   end Generated_Rar5_Unsupported;
+
    function Generated_Split_Zip_Unsupported return Zlib.Byte_Array is
    begin
       return [16#50#, 16#4B#, 16#07#, 16#08#, 16#00#, 16#00#, 16#00#, 16#00#];
@@ -2331,6 +2339,8 @@ procedure Check_All is
          return Generated_Seven_Zip_Encrypted;
       elsif Id = "rar-unsupported" then
          return Generated_Rar_Unsupported;
+      elsif Id = "rar5-unsupported" then
+         return Generated_Rar5_Unsupported;
       elsif Id = "split-zip-unsupported" then
          return Generated_Split_Zip_Unsupported;
       elsif Id = "bzip2-basic" then
@@ -2465,6 +2475,10 @@ procedure Check_All is
          if Opened.Status /= Archive.Archives.Errors.Unsupported_Format then
             Fail ("generated RAR should be rejected as unsupported");
          end if;
+      elsif Id = "rar5-unsupported" then
+         if Opened.Status /= Archive.Archives.Errors.Unsupported_Format then
+            Fail ("generated RAR5 should be rejected as unsupported");
+         end if;
       elsif Id = "split-zip-unsupported" then
          if Opened.Status /= Archive.Archives.Errors.Unsupported_Format then
             Fail ("generated split ZIP should be rejected as unsupported");
@@ -2591,6 +2605,7 @@ procedure Check_All is
       Has_Seven_Zip : Boolean := False;
       Has_Seven_Zip_Encrypted : Boolean := False;
       Has_Rar_Unsupported : Boolean := False;
+      Has_Rar5_Unsupported : Boolean := False;
       Has_Split_Zip_Unsupported : Boolean := False;
       Has_BZip2 : Boolean := False;
       Has_Zstd : Boolean := False;
@@ -2662,6 +2677,8 @@ procedure Check_All is
                      Has_Seven_Zip_Encrypted := True;
                   elsif Id = "rar-unsupported" then
                      Has_Rar_Unsupported := True;
+                  elsif Id = "rar5-unsupported" then
+                     Has_Rar5_Unsupported := True;
                   elsif Id = "split-zip-unsupported" then
                      Has_Split_Zip_Unsupported := True;
                   elsif Id = "bzip2-basic" then
@@ -2736,6 +2753,7 @@ procedure Check_All is
         or else not Has_Seven_Zip
         or else not Has_Seven_Zip_Encrypted
         or else not Has_Rar_Unsupported
+        or else not Has_Rar5_Unsupported
         or else not Has_Split_Zip_Unsupported
         or else not Has_BZip2
         or else not Has_Zstd
