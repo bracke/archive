@@ -2958,8 +2958,12 @@ procedure Check_All is
          return [16#FD#, 16#37#, 16#7A#, 16#58#, 16#5A#, 16#00#];
       elsif Value = "bzip2-signature" then
          return [Character'Pos ('B'), Character'Pos ('Z'), Character'Pos ('h')];
-      elsif Value = "rar-signature" then
+      elsif Value = "rar-signature" or else Value = "rar4-signature" then
          return [16#52#, 16#61#, 16#72#, 16#21#, 16#1A#, 16#07#, 16#00#];
+      elsif Value = "rar5-signature" then
+         return [16#52#, 16#61#, 16#72#, 16#21#, 16#1A#, 16#07#, 16#01#, 16#00#];
+      elsif Value = "rar-bad-version" then
+         return [16#52#, 16#61#, 16#72#, 16#21#, 16#1A#, 16#07#, 16#02#, 16#00#];
       elsif Value = "random-bytes" then
          return [16#6E#, 16#6F#, 16#74#, 16#61#, 16#72#, 16#63#];
       elsif Value = "cab-signature" then

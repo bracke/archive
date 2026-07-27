@@ -323,6 +323,18 @@ package body Archive.Archives.Formats is
         and then B (Bytes, 3) = 16#21#
         and then B (Bytes, 4) = 16#1A#
         and then B (Bytes, 5) = 16#07#
+        and then B (Bytes, 6) = 16#00#
+      then
+         return (Recognized_Unsupported, Rar_Format);
+      elsif Bytes'Length >= 8
+        and then B (Bytes, 0) = 16#52#
+        and then B (Bytes, 1) = 16#61#
+        and then B (Bytes, 2) = 16#72#
+        and then B (Bytes, 3) = 16#21#
+        and then B (Bytes, 4) = 16#1A#
+        and then B (Bytes, 5) = 16#07#
+        and then B (Bytes, 6) = 16#01#
+        and then B (Bytes, 7) = 16#00#
       then
          return (Recognized_Unsupported, Rar_Format);
       elsif Bytes'Length >= 6
