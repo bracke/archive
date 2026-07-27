@@ -590,7 +590,7 @@ procedure Check_All is
       end;
 
       declare
-         CI_Path : constant String := Root & "/.github/workflows/check.yml";
+         CI_Path : constant String := Root & "/.github/workflows/ci.yml";
          CI      : constant String := To_String (Read_Text_File (CI_Path));
       begin
          if CI'Length = 0 then

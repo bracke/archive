@@ -1376,7 +1376,7 @@ begin
    Require_File (Root & "/tests/fixtures/corpus.txt");
    Require_File (Tests & "/archive_tests.gpr");
 
-   Require_Text (".github/workflows/check.yml", "tests/bin/check_all");
+   Require_Text (".github/workflows/ci.yml", "tests/bin/check_all");
    Require_Text ("README.md", "tests/bin/release_report --check");
    Require_Text ("docs/release-guide.md", "Release validation is owned by Ada tooling");
    Require_Text ("docs/release-guide.md", "packaging/manifest.txt");
