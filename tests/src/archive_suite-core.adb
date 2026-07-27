@@ -2067,8 +2067,20 @@ package body Archive_Suite.Core is
               (Plain, Method => 12, AES_Encrypted => True, Password => "secret"));
          Write_Bytes ("obj/zip-stream-lzma-payload.zip",
                       Stored_Zip_With_Payload (Plain, Method => 14));
+         Write_Bytes
+           ("obj/zip-stream-encrypted-lzma-payload.zip",
+            Stored_Zip_With_Payload
+              (Plain, Method => 14, Encrypted => True, Password => "secret"));
          Write_Bytes (Zstd_Path, Stored_Zip_With_Payload (Plain, Method => 20));
+         Write_Bytes
+           ("obj/zip-stream-encrypted-zstd-payload.zip",
+            Stored_Zip_With_Payload
+              (Plain, Method => 20, Encrypted => True, Password => "secret"));
          Write_Bytes (PPMd_Path, Stored_Zip_With_Payload (Plain, Method => 98));
+         Write_Bytes
+           ("obj/zip-stream-encrypted-ppmd-payload.zip",
+            Stored_Zip_With_Payload
+              (Plain, Method => 98, Encrypted => True, Password => "secret"));
 
          declare
             Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
@@ -2243,6 +2255,52 @@ package body Archive_Suite.Core is
          end;
 
          declare
+            Encrypted_LZMA_Path : constant String :=
+              "obj/zip-stream-encrypted-lzma-payload.zip";
+            Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
+              Index_Zip (Read_All_Bytes (Encrypted_LZMA_Path));
+            Item : constant Archive.Archives.Entries.Archive_Entry :=
+              Parsed.Entries.Element (1);
+            Missing : constant Test_Stream_Result :=
+              Stream_Zip_Payload_File (Encrypted_LZMA_Path, Item);
+            Wrong : constant Test_Stream_Result :=
+              Stream_Zip_Payload_File
+                (Encrypted_LZMA_Path, Item, Password => "wrong");
+            Streamed : constant Test_Stream_Result :=
+              Stream_Zip_Payload_File
+                (Encrypted_LZMA_Path, Item, Password => "secret");
+         begin
+            Assert
+              (Parsed.Status = Archive.Archives.Errors.Ok,
+               "zip encrypted lzma method parses");
+            Assert
+              (Item.Method = Archive.Archives.Entries.LZMA_Compression,
+               "zip encrypted lzma method maps to supported compression");
+            Assert
+              (Item.Encryption =
+                 Archive.Archives.Entries.Zip_Traditional_Encryption,
+               "zip encrypted lzma retains traditional encryption");
+            Assert
+              (Missing.Status = Archive.Archives.Errors.Unsupported_Method,
+               "zip encrypted lzma requires password");
+            Assert
+              (Wrong.Status /= Archive.Archives.Errors.Ok,
+               "zip encrypted lzma rejects wrong password");
+            Assert
+              (Streamed.Status = Archive.Archives.Errors.Ok,
+               "zip encrypted lzma streams with password");
+            Assert
+              (Streamed.Integrity = Archive.Archives.Entries.Verified,
+               "zip encrypted lzma verifies with password");
+            Assert
+              (Streamed.Bytes_Written = Plain'Length,
+               "zip encrypted lzma byte count matches payload");
+            Assert
+              (Bytes_Of (Streamed) (1) = Plain (Plain'First),
+               "zip encrypted lzma plaintext prefix matches");
+         end;
+
+         declare
             Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
               Index_Zip (Read_All_Bytes (Zstd_Path));
             Streamed : constant Archive.Archives.Readers.Zip.Stream_Result :=
@@ -2264,6 +2322,52 @@ package body Archive_Suite.Core is
          end;
 
          declare
+            Encrypted_Zstd_Path : constant String :=
+              "obj/zip-stream-encrypted-zstd-payload.zip";
+            Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
+              Index_Zip (Read_All_Bytes (Encrypted_Zstd_Path));
+            Item : constant Archive.Archives.Entries.Archive_Entry :=
+              Parsed.Entries.Element (1);
+            Missing : constant Test_Stream_Result :=
+              Stream_Zip_Payload_File (Encrypted_Zstd_Path, Item);
+            Wrong : constant Test_Stream_Result :=
+              Stream_Zip_Payload_File
+                (Encrypted_Zstd_Path, Item, Password => "wrong");
+            Streamed : constant Test_Stream_Result :=
+              Stream_Zip_Payload_File
+                (Encrypted_Zstd_Path, Item, Password => "secret");
+         begin
+            Assert
+              (Parsed.Status = Archive.Archives.Errors.Ok,
+               "zip encrypted zstd method parses");
+            Assert
+              (Item.Method = Archive.Archives.Entries.Zstd_Compression,
+               "zip encrypted zstd method maps to supported compression");
+            Assert
+              (Item.Encryption =
+                 Archive.Archives.Entries.Zip_Traditional_Encryption,
+               "zip encrypted zstd retains traditional encryption");
+            Assert
+              (Missing.Status = Archive.Archives.Errors.Unsupported_Method,
+               "zip encrypted zstd requires password");
+            Assert
+              (Wrong.Status /= Archive.Archives.Errors.Ok,
+               "zip encrypted zstd rejects wrong password");
+            Assert
+              (Streamed.Status = Archive.Archives.Errors.Ok,
+               "zip encrypted zstd streams with password");
+            Assert
+              (Streamed.Integrity = Archive.Archives.Entries.Verified,
+               "zip encrypted zstd verifies with password");
+            Assert
+              (Streamed.Bytes_Written = Plain'Length,
+               "zip encrypted zstd byte count matches payload");
+            Assert
+              (Bytes_Of (Streamed) (1) = Plain (Plain'First),
+               "zip encrypted zstd plaintext prefix matches");
+         end;
+
+         declare
             Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
               Index_Zip (Read_All_Bytes (PPMd_Path));
             Streamed : constant Archive.Archives.Readers.Zip.Stream_Result :=
@@ -2282,6 +2386,52 @@ package body Archive_Suite.Core is
             Assert
               (Archive.Verification.CRC32.Final (PPMd_CRC) = CRC32_Compute (Plain),
                "zip ppmd stream bytes match expected crc");
+         end;
+
+         declare
+            Encrypted_PPMd_Path : constant String :=
+              "obj/zip-stream-encrypted-ppmd-payload.zip";
+            Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
+              Index_Zip (Read_All_Bytes (Encrypted_PPMd_Path));
+            Item : constant Archive.Archives.Entries.Archive_Entry :=
+              Parsed.Entries.Element (1);
+            Missing : constant Test_Stream_Result :=
+              Stream_Zip_Payload_File (Encrypted_PPMd_Path, Item);
+            Wrong : constant Test_Stream_Result :=
+              Stream_Zip_Payload_File
+                (Encrypted_PPMd_Path, Item, Password => "wrong");
+            Streamed : constant Test_Stream_Result :=
+              Stream_Zip_Payload_File
+                (Encrypted_PPMd_Path, Item, Password => "secret");
+         begin
+            Assert
+              (Parsed.Status = Archive.Archives.Errors.Ok,
+               "zip encrypted ppmd method parses");
+            Assert
+              (Item.Method = Archive.Archives.Entries.PPMd_Compression,
+               "zip encrypted ppmd method maps to supported compression");
+            Assert
+              (Item.Encryption =
+                 Archive.Archives.Entries.Zip_Traditional_Encryption,
+               "zip encrypted ppmd retains traditional encryption");
+            Assert
+              (Missing.Status = Archive.Archives.Errors.Unsupported_Method,
+               "zip encrypted ppmd requires password");
+            Assert
+              (Wrong.Status /= Archive.Archives.Errors.Ok,
+               "zip encrypted ppmd rejects wrong password");
+            Assert
+              (Streamed.Status = Archive.Archives.Errors.Ok,
+               "zip encrypted ppmd streams with password");
+            Assert
+              (Streamed.Integrity = Archive.Archives.Entries.Verified,
+               "zip encrypted ppmd verifies with password");
+            Assert
+              (Streamed.Bytes_Written = Plain'Length,
+               "zip encrypted ppmd byte count matches payload");
+            Assert
+              (Bytes_Of (Streamed) (1) = Plain (Plain'First),
+               "zip encrypted ppmd plaintext prefix matches");
          end;
       end;
 
