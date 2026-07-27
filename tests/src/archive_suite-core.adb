@@ -74,6 +74,9 @@ with Archive.Writes.Results;
 with Archive.Writes.Service;
 with Archive.Writes.Tar;
 with Archive.Writes.Zip;
+with CryptoLib.Ciphers;
+with CryptoLib.Errors;
+with CryptoLib.Macs;
 with Ada.Strings.Unbounded;
 with Tarlib;
 with Tarlib.Entries;
@@ -132,6 +135,7 @@ package body Archive_Suite.Core is
    use type Archive.Writes.Service.Save_Status;
    use type Ada.Streams.Stream_Element_Offset;
    use type Ada.Directories.File_Kind;
+   use type CryptoLib.Errors.Status;
    use type Archive.Types.Entry_Id;
    use type Archive.Types.Generation_Id;
    use type Archive.Types.Compressed_Size;
@@ -1487,10 +1491,14 @@ package body Archive_Suite.Core is
      (Payload : Zlib.Byte_Array;
       Method  : Natural := 0;
       Encrypted : Boolean := False;
+      AES_Encrypted : Boolean := False;
       Password  : String := "secret")
       return Zlib.Byte_Array
    is
       Name : constant String := "large.bin";
+      AES_Strength : constant Natural := 3;
+      AES_Salt_Length : constant Natural := 16;
+      AES_Key_Length : constant Natural := 32;
 
       type ZIP_Crypto_State is record
          Key0 : Interfaces.Unsigned_32 := 16#1234_5678#;
@@ -1560,6 +1568,110 @@ package body Archive_Suite.Core is
             end;
          end loop;
       end Encrypt_In_Place;
+
+      function To_Stream
+        (Bytes : Zlib.Byte_Array)
+         return Ada.Streams.Stream_Element_Array
+      is
+         Result : Ada.Streams.Stream_Element_Array
+           (1 .. Ada.Streams.Stream_Element_Offset (Bytes'Length));
+      begin
+         for Index in Bytes'Range loop
+            Result
+              (Ada.Streams.Stream_Element_Offset (Index - Bytes'First + 1)) :=
+                Ada.Streams.Stream_Element (Bytes (Index));
+         end loop;
+         return Result;
+      end To_Stream;
+
+      function To_Bytes
+        (Bytes : Ada.Streams.Stream_Element_Array)
+         return Zlib.Byte_Array
+      is
+         Result : Zlib.Byte_Array (1 .. Natural (Bytes'Length));
+      begin
+         for Index in Result'Range loop
+            Result (Index) :=
+              Zlib.Byte
+                (Bytes
+                   (Bytes'First
+                    + Ada.Streams.Stream_Element_Offset (Index - Result'First)));
+         end loop;
+         return Result;
+      end To_Bytes;
+
+      function Password_Stream return Ada.Streams.Stream_Element_Array is
+         Result : Ada.Streams.Stream_Element_Array
+           (1 .. Ada.Streams.Stream_Element_Offset (Password'Length));
+      begin
+         for Index in Password'Range loop
+            Result
+              (Ada.Streams.Stream_Element_Offset (Index - Password'First + 1)) :=
+                Ada.Streams.Stream_Element (Character'Pos (Password (Index)));
+         end loop;
+         return Result;
+      end Password_Stream;
+
+      function AES_Wire (Compressed : Zlib.Byte_Array) return Zlib.Byte_Array is
+         Salt : constant Zlib.Byte_Array (1 .. AES_Salt_Length) :=
+           [16#01#, 16#23#, 16#45#, 16#67#,
+            16#89#, 16#AB#, 16#CD#, 16#EF#,
+            16#10#, 16#32#, 16#54#, 16#76#,
+            16#98#, 16#BA#, 16#DC#, 16#FE#];
+         Password_Data : constant Ada.Streams.Stream_Element_Array :=
+           Password_Stream;
+         Salt_Data : constant Ada.Streams.Stream_Element_Array := To_Stream (Salt);
+         Derived : constant Ada.Streams.Stream_Element_Array :=
+           CryptoLib.Macs.PBKDF2_HMAC_SHA1
+             (Password_Data, Salt_Data, 1_000, AES_Key_Length * 2 + 2);
+         Ciphertext : Ada.Streams.Stream_Element_Array
+           (1 .. Ada.Streams.Stream_Element_Offset (Compressed'Length));
+         Cipher_Status : CryptoLib.Errors.Status;
+      begin
+         Cipher_Status :=
+           CryptoLib.Ciphers.Apply_ZIP_AES_CTR
+             ("aes256",
+              Derived
+                (Derived'First
+                 .. Derived'First
+                    + Ada.Streams.Stream_Element_Offset (AES_Key_Length - 1)),
+              To_Stream (Compressed),
+              Ciphertext);
+         Assert (Cipher_Status = CryptoLib.Errors.Ok,
+                 "zip aes fixture encryption succeeds");
+
+         declare
+            Auth : constant CryptoLib.Macs.HMAC_SHA1_Digest :=
+              CryptoLib.Macs.HMAC_SHA1
+                (Derived
+                   (Derived'First
+                    + Ada.Streams.Stream_Element_Offset (AES_Key_Length)
+                    .. Derived'First
+                       + Ada.Streams.Stream_Element_Offset (AES_Key_Length * 2 - 1)),
+                 Ciphertext);
+            Cipher_Bytes : constant Zlib.Byte_Array := To_Bytes (Ciphertext);
+            Result : Zlib.Byte_Array
+              (1 .. AES_Salt_Length + 2 + Cipher_Bytes'Length + 10);
+            Cursor : Natural := Result'First;
+         begin
+            for Index in Salt'Range loop
+               Result (Cursor) := Salt (Index);
+               Cursor := Cursor + 1;
+            end loop;
+            Result (Cursor) := Zlib.Byte (Derived (Derived'Last - 1));
+            Result (Cursor + 1) := Zlib.Byte (Derived (Derived'Last));
+            Cursor := Cursor + 2;
+            for Index in Cipher_Bytes'Range loop
+               Result (Cursor) := Cipher_Bytes (Index);
+               Cursor := Cursor + 1;
+            end loop;
+            for Index in 1 .. 10 loop
+               Result (Cursor) := Zlib.Byte (Auth (Index));
+               Cursor := Cursor + 1;
+            end loop;
+            return Result;
+         end;
+      end AES_Wire;
 
       function Compressed_For_Method return Zlib.Byte_Array is
          Status : Zlib.Status_Code;
@@ -1657,6 +1769,10 @@ package body Archive_Suite.Core is
       function Wire_Payload return Zlib.Byte_Array is
          Compressed : constant Zlib.Byte_Array := Compressed_For_Method;
       begin
+         if AES_Encrypted then
+            return AES_Wire (Compressed);
+         end if;
+
          if not Encrypted then
             return Compressed;
          end if;
@@ -1682,34 +1798,61 @@ package body Archive_Suite.Core is
 
       Compressed : constant Zlib.Byte_Array := Wire_Payload;
       Local_Offset : constant Natural := 0;
-      Central_Offset : constant Natural := 30 + Name'Length + Compressed'Length;
-      Central_Size : constant Natural := 46 + Name'Length;
+      Local_Extra_Length : constant Natural := (if AES_Encrypted then 11 else 0);
+      Central_Extra_Length : constant Natural := Local_Extra_Length;
+      Header_Method : constant Natural := (if AES_Encrypted then 99 else Method);
+      Header_Flags : constant Natural :=
+        (if Encrypted or else AES_Encrypted then 1 else 0);
+      Central_Offset : constant Natural :=
+        30 + Name'Length + Local_Extra_Length + Compressed'Length;
+      Central_Size : constant Natural :=
+        46 + Name'Length + Central_Extra_Length;
       EOCD_Offset : constant Natural := Central_Offset + Central_Size;
       Total : constant Natural := EOCD_Offset + 22;
       Bytes : Zlib.Byte_Array (1 .. Total) := [others => 0];
+
+      procedure Put_AES_Extra (Offset : Natural) is
+      begin
+         Put16 (Bytes, Offset, 16#9901#);
+         Put16 (Bytes, Offset + 2, 7);
+         Put16 (Bytes, Offset + 4, 1);
+         Put_Text (Bytes, Offset + 6, "AE");
+         Bytes (Bytes'First + Offset + 8) := Zlib.Byte (AES_Strength);
+         Put16 (Bytes, Offset + 9, Method);
+      end Put_AES_Extra;
    begin
       Put32 (Bytes, Local_Offset, 16#0403_4B50#);
-      Put16 (Bytes, Local_Offset + 6, (if Encrypted then 1 else 0));
-      Put16 (Bytes, Local_Offset + 8, Method);
+      Put16 (Bytes, Local_Offset + 6, Header_Flags);
+      Put16 (Bytes, Local_Offset + 8, Header_Method);
       Put32_U (Bytes, Local_Offset + 14, Interfaces.Unsigned_32 (CRC));
       Put32 (Bytes, Local_Offset + 18, Compressed'Length);
       Put32 (Bytes, Local_Offset + 22, Payload'Length);
       Put16 (Bytes, Local_Offset + 26, Name'Length);
+      Put16 (Bytes, Local_Offset + 28, Local_Extra_Length);
       Put_Text (Bytes, Local_Offset + 30, Name);
+      if AES_Encrypted then
+         Put_AES_Extra (Local_Offset + 30 + Name'Length);
+      end if;
       for Index in Compressed'Range loop
-         Bytes (Bytes'First + Local_Offset + 30 + Name'Length + Index - Compressed'First) :=
+         Bytes
+           (Bytes'First + Local_Offset + 30 + Name'Length
+            + Local_Extra_Length + Index - Compressed'First) :=
            Compressed (Index);
       end loop;
 
       Put32 (Bytes, Central_Offset, 16#0201_4B50#);
-      Put16 (Bytes, Central_Offset + 8, (if Encrypted then 1 else 0));
-      Put16 (Bytes, Central_Offset + 10, Method);
+      Put16 (Bytes, Central_Offset + 8, Header_Flags);
+      Put16 (Bytes, Central_Offset + 10, Header_Method);
       Put32_U (Bytes, Central_Offset + 16, Interfaces.Unsigned_32 (CRC));
       Put32 (Bytes, Central_Offset + 20, Compressed'Length);
       Put32 (Bytes, Central_Offset + 24, Payload'Length);
       Put16 (Bytes, Central_Offset + 28, Name'Length);
+      Put16 (Bytes, Central_Offset + 30, Central_Extra_Length);
       Put32 (Bytes, Central_Offset + 42, Local_Offset);
       Put_Text (Bytes, Central_Offset + 46, Name);
+      if AES_Encrypted then
+         Put_AES_Extra (Central_Offset + 46 + Name'Length);
+      end if;
 
       Put32 (Bytes, EOCD_Offset, 16#0605_4B50#);
       Put16 (Bytes, EOCD_Offset + 8, 1);
@@ -2151,6 +2294,81 @@ package body Archive_Suite.Core is
       end;
 
       declare
+         Bytes : constant Zlib.Byte_Array :=
+           Stored_Zip_With_Payload
+             ([1 => Zlib.Byte (Character'Pos ('a')),
+               2 => Zlib.Byte (Character'Pos ('b')),
+               3 => Zlib.Byte (Character'Pos ('c'))],
+              AES_Encrypted => True,
+              Password => "secret");
+         Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
+           Index_Zip (Bytes);
+         Item : constant Archive.Archives.Entries.Archive_Entry :=
+           Parsed.Entries.Element (1);
+         Missing : constant Test_Stream_Result :=
+           Stream_Zip_Payload (Bytes, Item);
+         Wrong : constant Test_Stream_Result :=
+           Stream_Zip_Payload (Bytes, Item, Password => "wrong");
+         Payload : constant Test_Stream_Result :=
+           Stream_Zip_Payload (Bytes, Item, Password => "secret");
+      begin
+         Assert (Parsed.Status = Archive.Archives.Errors.Ok,
+                 "zip aes stored entry indexes");
+         Assert (Item.Method = Archive.Archives.Entries.Zip_Stored,
+                 "zip aes stored maps actual method");
+         Assert (Item.Encryption = Archive.Archives.Entries.Zip_AES_Encryption,
+                 "zip aes stored encryption flag retained");
+         Assert (Missing.Status = Archive.Archives.Errors.Unsupported_Method,
+                 "zip aes stored requires password");
+         Assert (Wrong.Status = Archive.Archives.Errors.Invalid_Format,
+                 "zip aes stored rejects wrong password");
+         Assert (Payload.Status = Archive.Archives.Errors.Ok,
+                 "zip aes stored streams with password");
+         Assert (Payload.Integrity = Archive.Archives.Entries.Verified,
+                 "zip aes stored verifies with password");
+         Assert (Payload.Bytes_Written = 3, "zip aes stored byte count");
+         Assert
+           (Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('a'))
+            and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('b'))
+            and then Bytes_Of (Payload) (3) = Zlib.Byte (Character'Pos ('c')),
+            "zip aes stored plaintext matches");
+      end;
+
+      declare
+         Bytes : constant Zlib.Byte_Array :=
+           Stored_Zip_With_Payload
+             ([1 => Zlib.Byte (Character'Pos ('a')),
+               2 => Zlib.Byte (Character'Pos ('b')),
+               3 => Zlib.Byte (Character'Pos ('c'))],
+              Method => 8,
+              AES_Encrypted => True,
+              Password => "secret");
+         Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
+           Index_Zip (Bytes);
+         Item : constant Archive.Archives.Entries.Archive_Entry :=
+           Parsed.Entries.Element (1);
+         Payload : constant Test_Stream_Result :=
+           Stream_Zip_Payload (Bytes, Item, Password => "secret");
+      begin
+         Assert (Parsed.Status = Archive.Archives.Errors.Ok,
+                 "zip aes deflate entry indexes");
+         Assert (Item.Method = Archive.Archives.Entries.Zip_Deflate,
+                 "zip aes deflate maps actual method");
+         Assert (Item.Encryption = Archive.Archives.Entries.Zip_AES_Encryption,
+                 "zip aes deflate encryption flag retained");
+         Assert (Payload.Status = Archive.Archives.Errors.Ok,
+                 "zip aes deflate streams with password");
+         Assert (Payload.Integrity = Archive.Archives.Entries.Verified,
+                 "zip aes deflate verifies with password");
+         Assert (Payload.Bytes_Written = 3, "zip aes deflate byte count");
+         Assert
+           (Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('a'))
+            and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('b'))
+            and then Bytes_Of (Payload) (3) = Zlib.Byte (Character'Pos ('c')),
+            "zip aes deflate plaintext matches");
+      end;
+
+      declare
          Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
            Index_Zip (One_File_Zip (Method => 98, Encrypted => True));
          Item : constant Archive.Archives.Entries.Archive_Entry := Parsed.Entries.Element (1);
@@ -2190,10 +2408,10 @@ package body Archive_Suite.Core is
 
       declare
          Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
-           Index_Zip (One_File_Zip (Method => 99));
+           Index_Zip (One_File_Zip (Method => 97));
          Item : constant Archive.Archives.Entries.Archive_Entry := Parsed.Entries.Element (1);
          Payload : constant Test_Stream_Result :=
-           Stream_Zip_Payload (One_File_Zip (Method => 99), Item);
+           Stream_Zip_Payload (One_File_Zip (Method => 97), Item);
       begin
          Assert (Parsed.Status = Archive.Archives.Errors.Ok, "unknown zip method remains inspectable");
          Assert

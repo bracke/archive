@@ -32,6 +32,7 @@ package Archive.Archives.Entries is
      (Not_Encrypted,
       Zip_Traditional_Encryption,
       Zip_Strong_Encryption,
+      Zip_AES_Encryption,
       Encrypted,
       Unknown_Encryption);
    type Integrity_State is (Not_Checked, Verified, Failed, Not_Available);

@@ -28,10 +28,12 @@ Current V1 support:
 | ISO 9660 | supported for stored directory records and files | supported | supported | supported | supported by flat-image rewrite publication | archive ISO adapter |
 
 Recognized but unsupported in V1: RAR, non-contiguous multi-volume ZIP sets,
-ZIP strong/AES encryption, encrypted
-7z headers without a supplied password, XZ layouts outside the supported native LZMA2 layout set, unsupported CAB
-folder methods outside stored/MSZIP, unsupported non-bridge ZIP PPMd variants, and unsupported ZIP
-methods or 7z layouts outside the zlib-backed native layout set.
+ZIP strong encryption, AES-wrapped ZIP external methods, encrypted 7z headers
+without a supplied password, XZ layouts outside the supported native LZMA2
+layout set, unsupported CAB folder methods outside stored/MSZIP, unsupported
+non-bridge ZIP PPMd variants, and unsupported ZIP methods or 7z layouts outside
+the zlib-backed native layout set. ZIP traditional encryption and WinZip AES
+stored/DEFLATE entries are supported when a password is supplied in memory.
 
 ## Current Implementation Status
 

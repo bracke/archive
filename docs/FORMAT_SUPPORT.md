@@ -50,9 +50,10 @@ Recognized but unsupported:
 
 - RAR
 
-Unsupported ZIP encryption modes, including strong encryption and AES
-extra-field encryption, remain visible but unavailable until a dedicated
-decrypting backend is added.
+Unsupported ZIP encryption modes, including strong encryption and AES-wrapped
+external ZIP methods, remain visible but unavailable until a dedicated
+decrypting backend is added. WinZip AES stored and DEFLATE entries are
+supported when a password is supplied in memory.
 Unsupported ZIP methods, including non-bridge PPMd variants and non-bridge
 LZMA variants, remain visible as unsupported entries where the central
 directory can be safely parsed.

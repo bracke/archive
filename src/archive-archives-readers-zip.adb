@@ -9,6 +9,9 @@ with Archive.Archives.Streams;
 with Archive.Compression.Zlib;
 with Archive.Resource_Limits;
 with Archive.Verification.CRC32;
+with CryptoLib.Ciphers;
+with CryptoLib.Errors;
+with CryptoLib.Macs;
 
 package body Archive.Archives.Readers.Zip is
    use Ada.Strings.Unbounded;
@@ -26,6 +29,8 @@ package body Archive.Archives.Readers.Zip is
 
    EOCD_Min_Size : constant Natural := 22;
    ZIP_Traditional_Header_Length : constant Natural := 12;
+   ZIP_AES_Authentication_Length : constant Natural := 10;
+   ZIP_AES_Verifier_Length : constant Natural := 2;
    Max_EOCD_Search : constant Natural := EOCD_Min_Size + 65_535;
    Max_Zip_Record_Metadata : constant Natural :=
      Natural
@@ -275,7 +280,11 @@ package body Archive.Archives.Readers.Zip is
       Data_Descriptor : Boolean;
       Descriptor_ZIP64 : Boolean;
       Encrypted    : Boolean;
-      Method       : Interfaces.Unsigned_16)
+      Method       : Interfaces.Unsigned_16;
+      AES_Present  : Boolean := False;
+      AES_Version  : Natural := 0;
+      AES_Strength : Natural := 0;
+      AES_Method   : Interfaces.Unsigned_16 := 0)
       return String
    is
    begin
@@ -287,10 +296,23 @@ package body Archive.Archives.Readers.Zip is
         & ";zip.descriptor_zip64=" & (if Descriptor_ZIP64 then "true" else "false")
         & ";zip.zip64=" & (if Uses_ZIP64 then "true" else "false")
         & ";zip.encrypted=" & (if Encrypted then "true" else "false")
+        & (if AES_Present
+           then ";zip.aes=true;zip.aes_version=" & Image_Trimmed (AES_Version)
+             & ";zip.aes_strength=" & Image_Trimmed (AES_Strength)
+             & ";zip.aes_actual_method=" & Image_Trimmed (Natural (AES_Method))
+           else ";zip.aes=false")
         & ";zip.unicode_path=" & (if Unicode_Path then "true" else "false")
         & ";zip.utf8_name=" & (if UTF8_Name then "true" else "false")
         & ";zip.legacy_name=" & (if UTF8_Name or else Unicode_Path then "false" else "true");
    end ZIP_Metadata;
+
+   type AES_Extra_Result is record
+      Present       : Boolean := False;
+      Valid         : Boolean := True;
+      Version       : Natural := 0;
+      Strength      : Natural := 0;
+      Actual_Method : Interfaces.Unsigned_16 := 0;
+   end record;
 
    type Unicode_Path_Result is record
       Present : Boolean := False;
@@ -388,6 +410,57 @@ package body Archive.Archives.Readers.Zip is
       end loop;
       return Result;
    end Unicode_Path_From_Extra;
+
+   function AES_From_Extra
+     (Bytes  : Zlib.Byte_Array;
+      Offset : Natural;
+      Length : Natural)
+      return AES_Extra_Result
+   is
+      Cursor : Natural := Offset;
+      Result : AES_Extra_Result;
+   begin
+      while Cursor < Offset + Length loop
+         if not In_Range (Bytes, Cursor, 4) then
+            Result.Valid := False;
+            return Result;
+         end if;
+
+         declare
+            Header_Id : constant Interfaces.Unsigned_16 := U16 (Bytes, Cursor);
+            Data_Len  : constant Natural := Natural (U16 (Bytes, Cursor + 2));
+            Data_Off  : constant Natural := Cursor + 4;
+         begin
+            if Data_Off > Offset + Length
+              or else Data_Len > Offset + Length - Data_Off
+            then
+               Result.Valid := False;
+               return Result;
+            elsif Header_Id = 16#9901# then
+               Result.Present := True;
+               if Data_Len < 7
+                 or else Character'Val (Octet (Bytes, Data_Off + 2)) /= 'A'
+                 or else Character'Val (Octet (Bytes, Data_Off + 3)) /= 'E'
+               then
+                  Result.Valid := False;
+                  return Result;
+               end if;
+
+               Result.Version := Natural (U16 (Bytes, Data_Off));
+               Result.Strength := Natural (Octet (Bytes, Data_Off + 4));
+               Result.Actual_Method := U16 (Bytes, Data_Off + 5);
+               if Result.Version not in 1 | 2
+                 or else Result.Strength not in 1 | 2 | 3
+               then
+                  Result.Valid := False;
+               end if;
+               return Result;
+            end if;
+            Cursor := Data_Off + Data_Len;
+         end;
+      end loop;
+      return Result;
+   end AES_From_Extra;
 
    function ZIP64_From_Extra
      (Bytes        : Zlib.Byte_Array;
@@ -646,6 +719,248 @@ package body Archive.Archives.Readers.Zip is
       end case;
    end Map_Zlib_Status;
 
+   function Map_Crypto_Status
+     (Status : CryptoLib.Errors.Status)
+      return Archive.Archives.Errors.Error_Code
+   is
+   begin
+      case Status is
+         when CryptoLib.Errors.Ok =>
+            return Archive.Archives.Errors.Ok;
+         when CryptoLib.Errors.Unsupported_Feature =>
+            return Archive.Archives.Errors.Unsupported_Method;
+         when CryptoLib.Errors.Cancelled =>
+            return Archive.Archives.Errors.Cancelled;
+         when CryptoLib.Errors.Read_Failed =>
+            return Archive.Archives.Errors.Read_Failed;
+         when CryptoLib.Errors.Write_Failed =>
+            return Archive.Archives.Errors.Write_Failed;
+         when others =>
+            return Archive.Archives.Errors.Invalid_Format;
+      end case;
+   end Map_Crypto_Status;
+
+   function Metadata_Natural
+     (Item    : Archive.Archives.Entries.Archive_Entry;
+      Key     : String;
+      Default : Natural := 0)
+      return Natural
+   is
+      Meta    : constant String := To_String (Item.Format_Metadata);
+      Pattern : constant String := Key & "=";
+      Cursor  : Natural := Meta'First;
+   begin
+      while Cursor <= Meta'Last loop
+         declare
+            Start : constant Natural := Cursor;
+            Stop  : Natural := Cursor;
+         begin
+            while Stop <= Meta'Last and then Meta (Stop) /= ';' loop
+               Stop := Stop + 1;
+            end loop;
+
+            if Stop - Start >= Pattern'Length
+              and then Meta (Start .. Start + Pattern'Length - 1) = Pattern
+            then
+               declare
+                  Value : Natural := 0;
+               begin
+                  for Index in Start + Pattern'Length .. Stop - 1 loop
+                     if Meta (Index) not in '0' .. '9' then
+                        return Default;
+                     end if;
+                     Value :=
+                       Value * 10
+                       + Character'Pos (Meta (Index)) - Character'Pos ('0');
+                  end loop;
+                  return Value;
+               end;
+            end if;
+
+            Cursor := Stop + 1;
+         end;
+      end loop;
+      return Default;
+   exception
+      when others =>
+         return Default;
+   end Metadata_Natural;
+
+   function AES_Salt_Length (Strength : Natural) return Natural is
+   begin
+      case Strength is
+         when 1 =>
+            return 8;
+         when 2 =>
+            return 12;
+         when 3 =>
+            return 16;
+         when others =>
+            return 0;
+      end case;
+   end AES_Salt_Length;
+
+   function AES_Key_Length (Strength : Natural) return Natural is
+   begin
+      case Strength is
+         when 1 =>
+            return 16;
+         when 2 =>
+            return 24;
+         when 3 =>
+            return 32;
+         when others =>
+            return 0;
+      end case;
+   end AES_Key_Length;
+
+   function AES_Algorithm (Strength : Natural) return String is
+   begin
+      case Strength is
+         when 1 =>
+            return "aes128";
+         when 2 =>
+            return "aes192";
+         when 3 =>
+            return "aes256";
+         when others =>
+            return "";
+      end case;
+   end AES_Algorithm;
+
+   function To_Stream
+     (Bytes : Zlib.Byte_Array)
+      return Ada.Streams.Stream_Element_Array
+   is
+      Result : Ada.Streams.Stream_Element_Array
+        (1 .. Ada.Streams.Stream_Element_Offset (Bytes'Length));
+   begin
+      for Index in Bytes'Range loop
+         Result
+           (Ada.Streams.Stream_Element_Offset (Index - Bytes'First + 1)) :=
+             Ada.Streams.Stream_Element (Bytes (Index));
+      end loop;
+      return Result;
+   end To_Stream;
+
+   function To_Bytes
+     (Bytes : Ada.Streams.Stream_Element_Array)
+      return Zlib.Byte_Array
+   is
+      Result : Zlib.Byte_Array (1 .. Natural (Bytes'Length));
+   begin
+      for Index in Result'Range loop
+         Result (Index) :=
+           Zlib.Byte
+             (Bytes
+                (Bytes'First
+                 + Ada.Streams.Stream_Element_Offset (Index - Result'First)));
+      end loop;
+      return Result;
+   end To_Bytes;
+
+   function Password_Stream
+     (Password : String)
+      return Ada.Streams.Stream_Element_Array
+   is
+      Result : Ada.Streams.Stream_Element_Array
+        (1 .. Ada.Streams.Stream_Element_Offset (Password'Length));
+   begin
+      for Index in Password'Range loop
+         Result
+           (Ada.Streams.Stream_Element_Offset (Index - Password'First + 1)) :=
+             Ada.Streams.Stream_Element (Character'Pos (Password (Index)));
+      end loop;
+      return Result;
+   end Password_Stream;
+
+   function AES_Decrypt_Wire
+     (Wire     : Zlib.Byte_Array;
+      Strength : Natural;
+      Password : String;
+      Status   : out Archive.Archives.Errors.Error_Code)
+      return Zlib.Byte_Array
+   is
+      Salt_Length : constant Natural := AES_Salt_Length (Strength);
+      Key_Length  : constant Natural := AES_Key_Length (Strength);
+      Header_Length : constant Natural := Salt_Length + ZIP_AES_Verifier_Length;
+   begin
+      if Salt_Length = 0
+        or else Key_Length = 0
+        or else Wire'Length < Header_Length + ZIP_AES_Authentication_Length
+      then
+         Status := Archive.Archives.Errors.Invalid_Format;
+         return [];
+      end if;
+
+      declare
+         Cipher_Length : constant Natural :=
+           Wire'Length - Header_Length - ZIP_AES_Authentication_Length;
+         Salt : constant Ada.Streams.Stream_Element_Array :=
+           To_Stream (Wire (Wire'First .. Wire'First + Salt_Length - 1));
+         Ciphertext : constant Ada.Streams.Stream_Element_Array :=
+           To_Stream
+             (Wire
+                (Wire'First + Header_Length
+                 .. Wire'First + Header_Length + Cipher_Length - 1));
+         Password_Data : constant Ada.Streams.Stream_Element_Array :=
+           Password_Stream (Password);
+         Derived : constant Ada.Streams.Stream_Element_Array :=
+           CryptoLib.Macs.PBKDF2_HMAC_SHA1
+             (Password_Data, Salt, 1_000, Key_Length * 2 + 2);
+         Auth : constant CryptoLib.Macs.HMAC_SHA1_Digest :=
+           CryptoLib.Macs.HMAC_SHA1
+             (Derived
+                (Derived'First + Ada.Streams.Stream_Element_Offset (Key_Length)
+                 .. Derived'First
+                    + Ada.Streams.Stream_Element_Offset (Key_Length * 2 - 1)),
+              Ciphertext);
+         Plain : Ada.Streams.Stream_Element_Array
+           (1 .. Ada.Streams.Stream_Element_Offset (Cipher_Length));
+         Crypto_Status : CryptoLib.Errors.Status;
+      begin
+         if Zlib.Byte (Derived (Derived'Last - 1)) /=
+              Wire (Wire'First + Salt_Length)
+           or else Zlib.Byte (Derived (Derived'Last)) /=
+              Wire (Wire'First + Salt_Length + 1)
+         then
+            Status := Archive.Archives.Errors.Invalid_Format;
+            return [];
+         end if;
+
+         for Index in 1 .. ZIP_AES_Authentication_Length loop
+            if Zlib.Byte (Auth (Index)) /=
+              Wire (Wire'First + Header_Length + Cipher_Length + Index - 1)
+            then
+               Status := Archive.Archives.Errors.Invalid_Format;
+               return [];
+            end if;
+         end loop;
+
+         Crypto_Status :=
+           CryptoLib.Ciphers.Apply_ZIP_AES_CTR
+             (AES_Algorithm (Strength),
+              Derived
+                (Derived'First
+                 .. Derived'First
+                    + Ada.Streams.Stream_Element_Offset (Key_Length - 1)),
+              Ciphertext,
+              Plain);
+         Status := Map_Crypto_Status (Crypto_Status);
+         if Status /= Archive.Archives.Errors.Ok then
+            return [];
+         end if;
+         return To_Bytes (Plain);
+      end;
+   exception
+      when Storage_Error =>
+         Status := Archive.Archives.Errors.Limit_Exceeded;
+         return [];
+      when others =>
+         Status := Archive.Archives.Errors.Invalid_Format;
+         return [];
+   end AES_Decrypt_Wire;
+
    function Index_File (Path : String) return Zip_Index_Result is
       Size      : constant Ada.Directories.File_Size := Ada.Directories.Size (Path);
       Size_N    : Natural;
@@ -833,24 +1148,24 @@ package body Archive.Archives.Readers.Zip is
                                 U32 (Central_Header, 42);
                               Metadata_Len : constant Natural :=
                                 Name_Len + Extra_Len + Comment_Len;
-                        begin
-                           if not Within_Metadata_Limit
-                             (Metadata_Len)
-                           then
-                              return
-                                (Status  => Archive.Archives.Errors.Limit_Exceeded,
-                                 Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
-                           elsif Metadata_Len > Directory_Size - Cursor - 46
-                           then
-                              return
-                                (Status  => Archive.Archives.Errors.Invalid_Format,
-                                 Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
-                           end if;
+                           begin
+                              if not Within_Metadata_Limit
+                                (Metadata_Len)
+                              then
+                                 return
+                                   (Status  => Archive.Archives.Errors.Limit_Exceeded,
+                                    Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
+                              elsif Metadata_Len > Directory_Size - Cursor - 46
+                              then
+                                 return
+                                   (Status  => Archive.Archives.Errors.Invalid_Format,
+                                    Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
+                              end if;
 
-                           declare
-                              Central_Metadata : Zlib.Byte_Array (1 .. Metadata_Len);
-                              Metadata_Status :
-                                Archive.Archives.Errors.Error_Code;
+                              declare
+                                 Central_Metadata : Zlib.Byte_Array (1 .. Metadata_Len);
+                                 Metadata_Status :
+                                   Archive.Archives.Errors.Error_Code;
                            begin
                               Read_File_Slice
                                 (Path,
@@ -871,6 +1186,9 @@ package body Archive.Archives.Readers.Zip is
                                  Unicode_Name : constant Unicode_Path_Result :=
                                    Unicode_Path_From_Extra
                                      (Central_Metadata, Extra_Offset, Extra_Len, Name);
+                                 Central_AES : constant AES_Extra_Result :=
+                                   AES_From_Extra
+                                     (Central_Metadata, Extra_Offset, Extra_Len);
                                  ZIP64 : constant ZIP64_Extra_Result :=
                                    ZIP64_From_Extra
                                      (Central_Metadata,
@@ -894,6 +1212,10 @@ package body Archive.Archives.Readers.Zip is
                                  Item : Archive.Archives.Entries.Archive_Entry;
                            begin
                               if not Unicode_Name.Valid
+                                or else not Central_AES.Valid
+                                or else (Method = 99
+                                  and then not Central_AES.Present)
+                                or else (Central_AES.Present and then Method /= 99)
                                 or else not ZIP64.Valid
                                 or else not Fits_Natural (Comp_Size_64)
                                 or else not Fits_Natural (Uncomp_64)
@@ -983,6 +1305,11 @@ package body Archive.Archives.Readers.Zip is
                                                Need_Uncomp => Local_Uncomp_Size = 16#FFFF_FFFF#,
                                                Need_Comp   => Local_Comp_Size = 16#FFFF_FFFF#,
                                                Need_Local  => False);
+                                          Local_AES : constant AES_Extra_Result :=
+                                            AES_From_Extra
+                                              (Local_Name_Extra_Bytes,
+                                               Local_Name_Len,
+                                               Local_Extra_Len);
                                           Effective_Local_Comp : constant Interfaces.Unsigned_64 :=
                                             (if Local_Comp_Size = 16#FFFF_FFFF#
                                              then Local_ZIP64.Compressed
@@ -996,7 +1323,18 @@ package body Archive.Archives.Readers.Zip is
                                           Descriptor_Start : constant Natural := Data_Start + Comp_Size;
                                           Descriptor : Descriptor_Result := (others => <>);
                                        begin
-                                          if not Local_ZIP64.Valid then
+                                          if not Local_ZIP64.Valid
+                                            or else not Local_AES.Valid
+                                            or else Local_AES.Present /= Central_AES.Present
+                                            or else
+                                              (Central_AES.Present
+                                               and then
+                                                 (Local_AES.Version /= Central_AES.Version
+                                                  or else Local_AES.Strength /=
+                                                    Central_AES.Strength
+                                                  or else Local_AES.Actual_Method /=
+                                                    Central_AES.Actual_Method))
+                                          then
                                              return
                                                (Status  => Archive.Archives.Errors.Invalid_Format,
                                                 Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
@@ -1062,7 +1400,11 @@ package body Archive.Archives.Readers.Zip is
                                                   Uses_Data_Descriptor,
                                                   Uses_Data_Descriptor and then Descriptor.ZIP64,
                                                   (Flags and 1) /= 0,
-                                                  Method));
+                                                  Method,
+                                                  Central_AES.Present,
+                                                  Central_AES.Version,
+                                                  Central_AES.Strength,
+                                                  Central_AES.Actual_Method));
                                           Item.Data_Offset :=
                                             (Present => True,
                                              Value => Archive.Types.Source_Offset (Data_Start));
@@ -1093,10 +1435,16 @@ package body Archive.Archives.Readers.Zip is
                                 (Present => True, Value => Archive.Types.Uncompressed_Size (Comp_Size_64));
                               Item.Uncompressed :=
                                 (Present => True, Value => Archive.Types.Uncompressed_Size (Uncomp_64));
-                              Item.Method := Compression_For (Method);
+                              Item.Method :=
+                                Compression_For
+                                  ((if Central_AES.Present
+                                    then Central_AES.Actual_Method
+                                    else Method));
                               Item.Encryption :=
                                 (if (Flags and 1) = 0
                                  then Archive.Archives.Entries.Not_Encrypted
+                                 elsif Central_AES.Present
+                                 then Archive.Archives.Entries.Zip_AES_Encryption
                                  elsif (Flags and 16#40#) /= 0
                                  then Archive.Archives.Entries.Zip_Strong_Encryption
                                  else Archive.Archives.Entries.Zip_Traditional_Encryption);
@@ -1145,11 +1493,16 @@ package body Archive.Archives.Readers.Zip is
       Chunk_Size : constant Natural := 32_768;
       Traditional_Encrypted : constant Boolean :=
         Item.Encryption = Archive.Archives.Entries.Zip_Traditional_Encryption;
+      AES_Encrypted : constant Boolean :=
+        Item.Encryption = Archive.Archives.Entries.Zip_AES_Encryption;
+      AES_Strength : constant Natural :=
+        Metadata_Natural (Item, "zip.aes_strength", 0);
    begin
       if Item.Encryption = Archive.Archives.Entries.Zip_Strong_Encryption
         or else Item.Encryption = Archive.Archives.Entries.Encrypted
         or else Item.Encryption = Archive.Archives.Entries.Unknown_Encryption
         or else (Traditional_Encrypted and then Password'Length = 0)
+        or else (AES_Encrypted and then Password'Length = 0)
       then
          return (Status => Archive.Archives.Errors.Unsupported_Method,
                  Integrity => Archive.Archives.Entries.Not_Available,
@@ -1166,6 +1519,13 @@ package body Archive.Archives.Readers.Zip is
                  Bytes_Written => 0);
       elsif not Item.Data_Offset.Present or else not Item.Compressed.Present then
          return (Status => Archive.Archives.Errors.Invalid_Format,
+                 Integrity => Archive.Archives.Entries.Not_Available,
+                 Bytes_Written => 0);
+      elsif AES_Encrypted
+        and then Item.Method not in Archive.Archives.Entries.Zip_Stored
+          | Archive.Archives.Entries.Zip_Deflate
+      then
+         return (Status => Archive.Archives.Errors.Unsupported_Method,
                  Integrity => Archive.Archives.Entries.Not_Available,
                  Bytes_Written => 0);
       elsif Traditional_Encrypted
@@ -1243,6 +1603,102 @@ package body Archive.Archives.Readers.Zip is
                return (Status => Archive.Archives.Errors.Invalid_Format,
                        Integrity => Archive.Archives.Entries.Not_Available,
                        Bytes_Written => 0);
+            end if;
+
+            if AES_Encrypted then
+               declare
+                  Wire : Zlib.Byte_Array (1 .. Count);
+                  Read_Status : Archive.Archives.Errors.Error_Code;
+               begin
+                  Read_File_Slice (Path, Offset, Wire, Read_Status);
+                  if Read_Status /= Archive.Archives.Errors.Ok then
+                     return (Status => Read_Status,
+                             Integrity => Archive.Archives.Entries.Not_Available,
+                             Bytes_Written => 0);
+                  end if;
+
+                  declare
+                     Plain_Compressed : constant Zlib.Byte_Array :=
+                       AES_Decrypt_Wire (Wire, AES_Strength, Password, Read_Status);
+                     Position : Natural := Plain_Compressed'First;
+                  begin
+                     if Read_Status /= Archive.Archives.Errors.Ok then
+                        return (Status => Read_Status,
+                                Integrity => Archive.Archives.Entries.Failed,
+                                Bytes_Written => 0);
+                     end if;
+
+                     Archive.Compression.Zlib.Open
+                       (Stream,
+                        Archive.Compression.Zlib.Raw_Deflate,
+                        Limits =>
+                          (Max_Output_Bytes =>
+                             (if Item.Uncompressed.Present
+                              then Item.Uncompressed.Value
+                              else Archive.Types.Uncompressed_Size
+                                (Archive.Resource_Limits.Default_Configured
+                                   (Archive.Resource_Limits.Preview_Output_Bytes))),
+                           Max_Ratio => 1_000));
+
+                     while Position <= Plain_Compressed'Last loop
+                        declare
+                           This_Count : constant Natural :=
+                             Natural'Min
+                               (Chunk_Size,
+                                Plain_Compressed'Last - Position + 1);
+                           Emitted : constant Stream_Result := Emit
+                             (Archive.Compression.Zlib.Append_Chunks
+                                (Stream,
+                                 Plain_Compressed
+                                   (Position .. Position + This_Count - 1),
+                                 Forward_Output'Access));
+                        begin
+                           if Emitted.Status /= Archive.Archives.Errors.Ok then
+                              Close_Status := Archive.Compression.Zlib.Close (Stream);
+                              return Emitted;
+                           end if;
+                           Position := Position + This_Count;
+                        end;
+                     end loop;
+
+                     declare
+                        Finished : constant Stream_Result := Emit
+                          (Archive.Compression.Zlib.Finish_Chunks
+                             (Stream, Forward_Output'Access));
+                     begin
+                        if Finished.Status /= Archive.Archives.Errors.Ok then
+                           Close_Status := Archive.Compression.Zlib.Close (Stream);
+                           return Finished;
+                        end if;
+                     end;
+
+                     Close_Status := Archive.Compression.Zlib.Close (Stream);
+                     if Close_Status.Status /= Archive.Archives.Errors.Ok
+                       or else not Close_Status.Stream_Ended
+                     then
+                        return (Status => Archive.Archives.Errors.Invalid_Format,
+                                Integrity => Archive.Archives.Entries.Failed,
+                                Bytes_Written => Written);
+                     elsif Item.Uncompressed.Present
+                       and then Written /= Item.Uncompressed.Value
+                     then
+                        return (Status => Archive.Archives.Errors.Invalid_Format,
+                                Integrity => Archive.Archives.Entries.Failed,
+                                Bytes_Written => Written);
+                     elsif Item.CRC32.Present
+                       and then Archive.Verification.CRC32.Final (CRC) /=
+                         Item.CRC32.Value
+                     then
+                        return (Status => Archive.Archives.Errors.Invalid_Format,
+                                Integrity => Archive.Archives.Entries.Failed,
+                                Bytes_Written => Written);
+                     end if;
+
+                     return (Status => Archive.Archives.Errors.Ok,
+                             Integrity => Archive.Archives.Entries.Verified,
+                             Bytes_Written => Written);
+                  end;
+               end;
             end if;
 
             if Traditional_Encrypted then
@@ -1368,6 +1824,14 @@ package body Archive.Archives.Readers.Zip is
          end;
       end if;
 
+      if AES_Encrypted
+        and then Item.Method /= Archive.Archives.Entries.Zip_Stored
+      then
+         return (Status => Archive.Archives.Errors.Unsupported_Method,
+                 Integrity => Archive.Archives.Entries.Not_Available,
+                 Bytes_Written => 0);
+      end if;
+
       if Item.Method /= Archive.Archives.Entries.Zip_Stored then
          declare
             Size : constant Ada.Directories.File_Size := Ada.Directories.Size (Path);
@@ -1454,6 +1918,59 @@ package body Archive.Archives.Readers.Zip is
             return (Status => Archive.Archives.Errors.Invalid_Format,
                     Integrity => Archive.Archives.Entries.Not_Available,
                     Bytes_Written => 0);
+         end if;
+
+         if AES_Encrypted then
+            declare
+               Wire : Zlib.Byte_Array (1 .. Count);
+               Read_Status : Archive.Archives.Errors.Error_Code;
+            begin
+               Read_File_Slice (Path, Offset, Wire, Read_Status);
+               if Read_Status /= Archive.Archives.Errors.Ok then
+                  return (Status => Read_Status,
+                          Integrity => Archive.Archives.Entries.Not_Available,
+                          Bytes_Written => 0);
+               end if;
+
+               declare
+                  Plain : constant Zlib.Byte_Array :=
+                    AES_Decrypt_Wire (Wire, AES_Strength, Password, Read_Status);
+                  Continue : Boolean := True;
+               begin
+                  if Read_Status /= Archive.Archives.Errors.Ok then
+                     return (Status => Read_Status,
+                             Integrity => Archive.Archives.Entries.Failed,
+                             Bytes_Written => 0);
+                  end if;
+
+                  Archive.Verification.CRC32.Update (CRC, Plain);
+                  Consumer.all (Plain, Continue);
+                  Written :=
+                    Written + Archive.Types.Uncompressed_Size (Plain'Length);
+                  if not Continue then
+                     return (Status => Archive.Archives.Errors.Cancelled,
+                             Integrity => Archive.Archives.Entries.Not_Available,
+                             Bytes_Written => Written);
+                  elsif Item.Uncompressed.Present
+                    and then Written /= Item.Uncompressed.Value
+                  then
+                     return (Status => Archive.Archives.Errors.Invalid_Format,
+                             Integrity => Archive.Archives.Entries.Failed,
+                             Bytes_Written => Written);
+                  elsif Item.CRC32.Present
+                    and then Archive.Verification.CRC32.Final (CRC) /=
+                      Item.CRC32.Value
+                  then
+                     return (Status => Archive.Archives.Errors.Invalid_Format,
+                             Integrity => Archive.Archives.Entries.Failed,
+                             Bytes_Written => Written);
+                  end if;
+
+                  return (Status => Archive.Archives.Errors.Ok,
+                          Integrity => Archive.Archives.Entries.Verified,
+                          Bytes_Written => Written);
+               end;
+            end;
          end if;
 
          if Traditional_Encrypted then
