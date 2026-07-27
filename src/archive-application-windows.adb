@@ -28,11 +28,19 @@ package body Archive.Application.Windows is
    --  and re-presenting it every wake. The frame is a pure function of the model,
    --  so it is invalidated only when the async open worker publishes a change or
    --  the window is resized.
+   --  Present-grace window: after any change, keep presenting every frame for a
+   --  short spell rather than stopping the instant the frame is unchanged.
+   --  Presenting keeps us on the compositor's frame clock (which paces input at
+   --  the display rate); once we stop, the first interaction after an idle gap
+   --  stalls. ~24 frames is ~0.4s at 60fps, then a truly idle window stops.
+   Present_Grace_Frames : constant := 24;
+
    type Render_Cache is record
       Presented_Once : Boolean := False;
       Frame_Valid    : Boolean := False;
       Last_Width     : Natural := 0;
       Last_Height    : Natural := 0;
+      Present_Grace  : Natural := 0;
       Cached_Frame   : Archive.GUI_Frame.Frame;
    end record;
 
@@ -157,10 +165,20 @@ package body Archive.Application.Windows is
          Rebuilt := True;
       end if;
 
-      --  Present gate: an unchanged frame is already on screen, so skip the whole
-      --  resize/build/submit/present path. Force keeps the smoke presenting every
-      --  frame so its present counts are unchanged.
-      if Cache.Presented_Once and then not Rebuilt and then not Force then
+      --  A change opens the grace window; we keep presenting through it so input
+      --  stays paced to the compositor's frame clock.
+      if Rebuilt then
+         Cache.Present_Grace := Present_Grace_Frames;
+      end if;
+
+      --  Present gate: an unchanged, out-of-grace frame is already on screen, so
+      --  skip the whole resize/build/submit/present path. Force keeps the smoke
+      --  presenting every frame so its present counts are unchanged.
+      if Cache.Presented_Once
+        and then not Rebuilt
+        and then Cache.Present_Grace = 0
+        and then not Force
+      then
          Status := Guikit.Vulkan.Vulkan_Present_Skipped;
          return;
       end if;
@@ -190,6 +208,12 @@ package body Archive.Application.Windows is
             Height   => Natural (Height));
       end;
       Cache.Presented_Once := True;
+
+      --  Burn down one frame of the grace window; it is refilled above on any
+      --  change, so it only reaches zero after a genuine idle gap.
+      if Cache.Present_Grace > 0 then
+         Cache.Present_Grace := Cache.Present_Grace - 1;
+      end if;
    end Render_Once;
 
    function Live_Smoke (Plan : Live_Smoke_Plan := Default_Live_Smoke_Plan) return Live_Smoke_Result is
