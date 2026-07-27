@@ -3182,6 +3182,30 @@ package body Archive_Suite.Core is
       Seven_Status : Zlib.Status_Code;
       Seven : constant Zlib.Byte_Array :=
         Zlib.Seven_Zip_Stored (Plain, "payload.bin", Seven_Status);
+      Seven_LZMA_Status : Zlib.Status_Code;
+      Seven_LZMA : constant Zlib.Byte_Array :=
+        Zlib.Seven_Zip_LZMA (Plain, "payload.bin", Seven_LZMA_Status);
+      Seven_LZMA2_Status : Zlib.Status_Code;
+      Seven_LZMA2 : constant Zlib.Byte_Array :=
+        Zlib.Seven_Zip_LZMA2 (Plain, "payload.bin", Seven_LZMA2_Status);
+      Seven_PPMd_Status : Zlib.Status_Code;
+      Seven_PPMd : constant Zlib.Byte_Array :=
+        Zlib.Seven_Zip_PPMd (Plain, "payload.bin", Seven_PPMd_Status);
+      Seven_Filtered_Status : Zlib.Status_Code;
+      Seven_Filtered : constant Zlib.Byte_Array :=
+        Zlib.Seven_Zip_Filtered
+          (Plain,
+           "payload.bin",
+           Zlib.Seven_Zip_Filter_Delta,
+           Zlib.Seven_Zip_Codec_LZMA2,
+           Seven_Filtered_Status);
+      Seven_BCJ2_Status : Zlib.Status_Code;
+      Seven_BCJ2 : constant Zlib.Byte_Array :=
+        Zlib.Seven_Zip_BCJ2 (Plain, "payload.bin", Seven_BCJ2_Status);
+      Seven_Encrypted_Status : Zlib.Status_Code;
+      Seven_Encrypted : constant Zlib.Byte_Array :=
+        Zlib.Seven_Zip_LZMA_Encrypted
+          (Plain, "payload.bin", "secret", Seven_Encrypted_Status);
       Bzip2 : constant Zlib.Byte_Array :=
         Encoded_By_File_Encoder (Plain, "dispatch-bzip2", Zlib.BZip2_File'Access);
       Zstd : constant Zlib.Byte_Array :=
@@ -3224,10 +3248,53 @@ package body Archive_Suite.Core is
          Write_Bytes (Base & ".z02", Second);
          Write_Bytes (Base & ".zip", Last);
       end Write_Split_Zip_Set;
+
+      procedure Assert_Seven_Zip_Dispatch
+        (Label    : String;
+         Bytes    : Zlib.Byte_Array;
+         Password : String := "")
+      is
+         Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+           Open_Dispatch (Bytes, Source_Name => Label & ".7z");
+         Item : constant Archive.Archives.Entries.Archive_Entry :=
+           (if Opened.Status = Archive.Archives.Errors.Ok
+            then Archive.Archives.Index.Entry_For (Opened.Index, 2)
+            else (others => <>));
+         Payload : constant Test_Stream_Result :=
+           (if Opened.Status = Archive.Archives.Errors.Ok
+            then Stream_Dispatch_Payload
+              (Bytes, Label & ".7z", Item, Password => Password)
+            else
+              (Status => Opened.Status,
+               Integrity => Archive.Archives.Entries.Not_Available,
+               Bytes_Written => 0,
+               Prefix_Length => 0,
+               Bytes => [others => 0]));
+      begin
+         Assert
+           (Opened.Status = Archive.Archives.Errors.Ok
+            and then Opened.Format = Archive.Archives.Formats.Seven_Zip_Format
+            and then Archive.Archives.Index.Physical_Count (Opened.Index) = 1,
+            "7z " & Label & " dispatch indexes supported zlib layout");
+         Assert
+           (Payload.Status = Archive.Archives.Errors.Ok
+            and then Payload.Integrity = Archive.Archives.Entries.Verified
+            and then Payload.Bytes_Written = 3
+            and then Bytes_Of (Payload) (1) = Zlib.Byte (Character'Pos ('a'))
+            and then Bytes_Of (Payload) (2) = Zlib.Byte (Character'Pos ('b'))
+            and then Bytes_Of (Payload) (3) = Zlib.Byte (Character'Pos ('c')),
+            "7z " & Label & " dispatch streams verified payload");
+      end Assert_Seven_Zip_Dispatch;
    begin
       Assert (Status = Zlib.Ok, "dispatch gzip fixture builds");
       Assert (Tar_Gz_Status = Zlib.Ok, "dispatch tar.gz fixture builds");
       Assert (Seven_Status = Zlib.Ok, "dispatch 7z fixture builds");
+      Assert (Seven_LZMA_Status = Zlib.Ok, "dispatch 7z lzma fixture builds");
+      Assert (Seven_LZMA2_Status = Zlib.Ok, "dispatch 7z lzma2 fixture builds");
+      Assert (Seven_PPMd_Status = Zlib.Ok, "dispatch 7z ppmd fixture builds");
+      Assert (Seven_Filtered_Status = Zlib.Ok, "dispatch 7z filtered fixture builds");
+      Assert (Seven_BCJ2_Status = Zlib.Ok, "dispatch 7z bcj2 fixture builds");
+      Assert (Seven_Encrypted_Status = Zlib.Ok, "dispatch 7z encrypted fixture builds");
 
       declare
          Decoded_Status : Zlib.Status_Code;
@@ -3510,25 +3577,35 @@ package body Archive_Suite.Core is
       end;
 
       declare
-         Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
-           Open_Dispatch (Seven, Source_Name => "sample.7z");
-         Item : constant Archive.Archives.Entries.Archive_Entry :=
-           Archive.Archives.Index.Entry_For (Opened.Index, 2);
-         Payload : constant Test_Stream_Result :=
-           Stream_Dispatch_Payload (Seven, "sample.7z", Item);
+         Encrypted_Opened : constant Archive.Archives.Readers.Dispatch.Open_Result :=
+           Open_Dispatch (Seven_Encrypted, Source_Name => "encrypted.7z");
+         Encrypted_Item : constant Archive.Archives.Entries.Archive_Entry :=
+           (if Encrypted_Opened.Status = Archive.Archives.Errors.Ok
+            then Archive.Archives.Index.Entry_For (Encrypted_Opened.Index, 2)
+            else (others => <>));
+         Wrong_Password : constant Test_Stream_Result :=
+           (if Encrypted_Opened.Status = Archive.Archives.Errors.Ok
+            then Stream_Dispatch_Payload
+              (Seven_Encrypted, "encrypted.7z", Encrypted_Item,
+               Password => "wrong")
+            else
+              (Status => Encrypted_Opened.Status,
+               Integrity => Archive.Archives.Entries.Not_Available,
+               Bytes_Written => 0,
+               Prefix_Length => 0,
+               Bytes => [others => 0]));
       begin
-         Assert (Opened.Status = Archive.Archives.Errors.Ok,
-                 "7z dispatch succeeds through zlib native reader");
-         Assert (Opened.Format = Archive.Archives.Formats.Seven_Zip_Format,
-                 "7z dispatch records format");
-         Assert (Archive.Archives.Index.Physical_Count (Opened.Index) = 1,
-                 "7z dispatch publishes physical entry");
+         Assert_Seven_Zip_Dispatch ("stored", Seven);
+         Assert_Seven_Zip_Dispatch ("lzma", Seven_LZMA);
+         Assert_Seven_Zip_Dispatch ("lzma2", Seven_LZMA2);
+         Assert_Seven_Zip_Dispatch ("ppmd", Seven_PPMd);
+         Assert_Seven_Zip_Dispatch ("filtered", Seven_Filtered);
+         Assert_Seven_Zip_Dispatch ("bcj2", Seven_BCJ2);
+         Assert_Seven_Zip_Dispatch ("encrypted", Seven_Encrypted, Password => "secret");
          Assert
-           (Payload.Status = Archive.Archives.Errors.Ok
-            and then Payload.Integrity = Archive.Archives.Entries.Verified
-            and then Payload.Bytes_Written = 3
-            and then Bytes_Of (Payload) (3) = Zlib.Byte (Character'Pos ('c')),
-            "7z dispatch payload reads through zlib");
+           (Wrong_Password.Status /= Archive.Archives.Errors.Ok
+            and then Wrong_Password.Integrity /= Archive.Archives.Entries.Verified,
+            "7z encrypted dispatch rejects wrong password");
       end;
 
       declare

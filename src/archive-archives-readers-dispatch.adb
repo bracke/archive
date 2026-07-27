@@ -667,9 +667,11 @@ package body Archive.Archives.Readers.Dispatch is
                Payload : constant Archive.Archives.Readers.Seven_Zip.Stream_Result :=
                  (if Looks_Like_Seven_Zip_First_Volume (Native_Name)
                   then Archive.Archives.Readers.Seven_Zip.Stream_Payload_Volume_File
-                    (Path, 256 * 1_024 * 1_024, Item, Forward'Access)
+                    (Path, 256 * 1_024 * 1_024, Item, Forward'Access,
+                     Password => Password)
                   else Archive.Archives.Readers.Seven_Zip.Stream_Payload_File
-                    (Path, 256 * 1_024 * 1_024, Item, Forward'Access));
+                    (Path, 256 * 1_024 * 1_024, Item, Forward'Access,
+                     Password => Password));
             begin
                return (Status => Payload.Status,
                        Integrity => Payload.Integrity,

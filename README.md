@@ -18,7 +18,7 @@ Current V1 support:
 | ZIP BZip2 / LZMA / Zstandard | supported | supported | supported | supported | supported for host-file publication | archive ZIP adapter + `zlib` |
 | split ZIP / spanning ZIP | supported by bounded numbered-volume reassembly | supported | supported | supported | save as non-split ZIP | archive ZIP adapter |
 | gzip | supported | supported | supported | supported | supported single-file replacement | `zlib` |
-| 7z | supported for native zlib-backed layouts | supported | supported | supported | supported by stored file-list publication | `zlib` |
+| 7z | supported for native zlib-backed Copy, Deflate, BZip2, LZMA, LZMA2, PPMd, filtered, BCJ2, solid-substream, and bounded multi-volume layouts | supported, including password-backed AES payload extraction | supported | supported when required passwords are supplied in memory | supported by stored file-list publication | `zlib` |
 | bzip2 | supported as one logical file | supported | supported | supported | supported single-file replacement | `zlib` |
 | Zstandard | supported as one logical file | supported | supported | supported | supported single-file replacement | `zlib` |
 | XZ | supported as one logical file for one-block LZMA2 streams | supported | supported | supported | supported single-file replacement | `zlib` |
@@ -29,9 +29,9 @@ Current V1 support:
 
 Recognized but unsupported in V1: RAR, non-contiguous multi-volume ZIP sets,
 ZIP strong/AES encryption and encrypted external-method ZIP entries, encrypted
-entries outside supported 7z layouts, unsupported XZ layouts, unsupported CAB
+7z headers without a supplied password, unsupported XZ layouts, unsupported CAB
 folder methods, unsupported non-bridge ZIP PPMd variants, and unsupported ZIP
-methods or 7z layouts.
+methods or 7z layouts outside the zlib-backed native layout set.
 
 ## Current Implementation Status
 

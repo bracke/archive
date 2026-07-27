@@ -32,7 +32,8 @@ package Archive.Archives.Readers.Seven_Zip is
       Item      : Archive.Archives.Entries.Archive_Entry;
       Consumer  : not null access procedure
         (Bytes : Zlib.Byte_Array;
-         Continue : in out Boolean))
+         Continue : in out Boolean);
+      Password  : String := "")
       return Stream_Result;
 
    function Stream_Payload_Volume_File
@@ -41,6 +42,7 @@ package Archive.Archives.Readers.Seven_Zip is
       Item              : Archive.Archives.Entries.Archive_Entry;
       Consumer          : not null access procedure
         (Bytes : Zlib.Byte_Array;
-         Continue : in out Boolean))
+         Continue : in out Boolean);
+      Password          : String := "")
       return Stream_Result;
 end Archive.Archives.Readers.Seven_Zip;

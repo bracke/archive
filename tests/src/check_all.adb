@@ -913,7 +913,8 @@ procedure Check_All is
         ("docs/FORMAT_SUPPORT.md",
          "ZIP traditional encrypted stored/DEFLATE password-backed payload streaming");
       Require_Document_Text
-        ("README.md", "supported for native zlib-backed layouts");
+        ("README.md",
+         "supported for native zlib-backed Copy, Deflate, BZip2, LZMA, LZMA2, PPMd");
       Require_Document_Text
         ("README.md", "ISO 9660");
       Require_Document_Text

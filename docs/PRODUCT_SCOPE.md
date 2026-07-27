@@ -59,6 +59,7 @@ Required V1 read workflows:
 | ZIP BZip2 / LZMA / Zstandard | supported | supported | supported | supported | archive ZIP adapter + `zlib` |
 | split ZIP / spanning ZIP | supported through bounded numbered-volume reassembly | supported | supported | supported | archive ZIP adapter |
 | gzip | required | required | required | required | `zlib` |
+| 7z | supported for native zlib-backed Copy, Deflate, BZip2, LZMA, LZMA2, PPMd, filtered, BCJ2, solid-substream, and bounded multi-volume layouts | supported, including password-backed AES payload extraction | supported | supported when required passwords are supplied in memory | `zlib` |
 | XZ | supported | supported | supported | supported, including single-file replacement | `zlib` |
 | AR | supported | supported | supported | supported | archive AR adapter |
 | CPIO newc | supported | supported | supported | supported | archive CPIO adapter |
@@ -74,7 +75,7 @@ Required V1 write workflows:
 | ZIP stored | required | required | required by save-in-place/save-as publication | required by save-in-place/save-as publication | archive ZIP adapter |
 | ZIP DEFLATE | required | required | required by save-in-place/save-as publication | required by save-in-place/save-as publication | archive ZIP adapter + `zlib` |
 | gzip | required single-file | replace logical file | not applicable | required logical name | `zlib` |
-| 7z | required for supported zlib-backed layouts | required | required by save-in-place/save-as publication | required by save-in-place/save-as publication | `zlib` |
+| 7z | required for supported zlib-backed layouts | required for supported unencrypted publication layouts | required by save-in-place/save-as publication | required by save-in-place/save-as publication | `zlib` |
 | XZ | supported single-file | replace logical file | not applicable | required logical name | `zlib` |
 | AR | supported | supported by stored-member rewrite publication | supported by stored-member rewrite publication | supported by stored-member rewrite publication | archive AR adapter |
 | CPIO newc | supported | supported by newc rewrite publication | supported by newc rewrite publication | supported by newc rewrite publication | archive CPIO adapter |
@@ -176,9 +177,9 @@ settings snapshot for menu construction.
 
 Recognized unsupported formats include RAR, multi-volume ZIP sets with missing
 or non-contiguous numbered segments, ZIP strong/AES encryption and encrypted
-external-method ZIP entries, encrypted entries outside supported 7z layouts, unsupported XZ layouts,
+external-method ZIP entries, encrypted 7z headers without a supplied password, unsupported XZ layouts,
 unsupported CAB folder methods, unsupported non-bridge ZIP PPMd variants, and
-unsupported ZIP methods or 7z layouts. 7z first-volume sources (`.7z.001`) are
+unsupported ZIP methods or 7z layouts outside the zlib-backed native layout set. 7z first-volume sources (`.7z.001`) are
 supported only for bounded volume sets whose joined archive image remains
 within the configured reader limit and whose native 7z layout is accepted by
 `zlib`.

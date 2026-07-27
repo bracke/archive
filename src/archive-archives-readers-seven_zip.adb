@@ -271,7 +271,8 @@ package body Archive.Archives.Readers.Seven_Zip is
       Item          : Archive.Archives.Entries.Archive_Entry;
       Consumer      : not null access procedure
         (Bytes : Zlib.Byte_Array;
-         Continue : in out Boolean))
+         Continue : in out Boolean);
+      Password      : String := "")
       return Stream_Result
    is
       Status : Zlib.Status_Code := Zlib.Ok;
@@ -291,8 +292,11 @@ package body Archive.Archives.Readers.Seven_Zip is
 
       declare
          Payload : constant Zlib.Byte_Array :=
-           Zlib.Extract_Seven_Zip
-             (Archive_Image, To_String (Item.Original_Path), Status);
+           (if Password'Length > 0
+            then Zlib.Extract_Seven_Zip
+              (Archive_Image, To_String (Item.Original_Path), Password, Status)
+            else Zlib.Extract_Seven_Zip
+              (Archive_Image, To_String (Item.Original_Path), Status));
       begin
          if Status /= Zlib.Ok then
             return
@@ -321,7 +325,8 @@ package body Archive.Archives.Readers.Seven_Zip is
       Item      : Archive.Archives.Entries.Archive_Entry;
       Consumer  : not null access procedure
         (Bytes : Zlib.Byte_Array;
-         Continue : in out Boolean))
+         Continue : in out Boolean);
+      Password  : String := "")
       return Stream_Result
    is
       Load_Status : Archive.Archives.Errors.Error_Code;
@@ -335,7 +340,7 @@ package body Archive.Archives.Readers.Seven_Zip is
             Bytes_Written => 0);
       end if;
 
-      return Stream_Payload_Image (Image, Item, Consumer);
+      return Stream_Payload_Image (Image, Item, Consumer, Password => Password);
    exception
       when Storage_Error =>
          return
@@ -355,7 +360,8 @@ package body Archive.Archives.Readers.Seven_Zip is
       Item              : Archive.Archives.Entries.Archive_Entry;
       Consumer          : not null access procedure
         (Bytes : Zlib.Byte_Array;
-         Continue : in out Boolean))
+         Continue : in out Boolean);
+      Password          : String := "")
       return Stream_Result
    is
       Load_Status : Archive.Archives.Errors.Error_Code;
@@ -369,7 +375,7 @@ package body Archive.Archives.Readers.Seven_Zip is
             Bytes_Written => 0);
       end if;
 
-      return Stream_Payload_Image (Image, Item, Consumer);
+      return Stream_Payload_Image (Image, Item, Consumer, Password => Password);
    exception
       when Storage_Error =>
          return
