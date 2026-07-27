@@ -55,7 +55,7 @@ Required V1 read workflows:
 | TAR.GZ / TGZ | required | required | required | required | `zlib` + `tarlib` |
 | ZIP stored | required | required | required | required | archive ZIP adapter |
 | ZIP DEFLATE | required | required | required | required | archive ZIP adapter + `zlib` |
-| ZIP traditional encryption | supported for stored/DEFLATE entries | required with caller-supplied in-memory password | required over decrypted payload | required where extraction caller supplies password | archive ZIP adapter |
+| ZIP traditional encryption | supported for stored/DEFLATE/zlib-backed external-method entries | required with caller-supplied in-memory password | required over decrypted payload | required where extraction caller supplies password | archive ZIP adapter + `zlib` |
 | ZIP BZip2 / LZMA / Zstandard | supported | supported | supported | supported | archive ZIP adapter + `zlib` |
 | split ZIP / spanning ZIP | supported through bounded numbered-volume reassembly | supported | supported | supported | archive ZIP adapter |
 | gzip | required | required | required | required | `zlib` |
@@ -176,8 +176,8 @@ and shell snapshots expose the recent count and ordered path list through the
 settings snapshot for menu construction.
 
 Recognized unsupported formats include RAR, multi-volume ZIP sets with missing
-or non-contiguous numbered segments, ZIP strong/AES encryption and encrypted
-external-method ZIP entries, encrypted 7z headers without a supplied password, XZ layouts outside the supported native LZMA2 layout set,
+or non-contiguous numbered segments, ZIP strong/AES encryption, encrypted
+7z headers without a supplied password, XZ layouts outside the supported native LZMA2 layout set,
 unsupported CAB folder methods outside stored/MSZIP, unsupported non-bridge ZIP PPMd variants, and
 unsupported ZIP methods or 7z layouts outside the zlib-backed native layout set. 7z first-volume sources (`.7z.001`) are
 supported only for bounded volume sets whose joined archive image remains

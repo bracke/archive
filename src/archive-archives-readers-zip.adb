@@ -1164,13 +1164,6 @@ package body Archive.Archives.Readers.Zip is
          return (Status => Archive.Archives.Errors.Unsupported_Method,
                  Integrity => Archive.Archives.Entries.Not_Available,
                  Bytes_Written => 0);
-      elsif Traditional_Encrypted
-        and then Item.Method not in Archive.Archives.Entries.Zip_Stored
-          | Archive.Archives.Entries.Zip_Deflate
-      then
-         return (Status => Archive.Archives.Errors.Unsupported_Method,
-                 Integrity => Archive.Archives.Entries.Not_Available,
-                 Bytes_Written => 0);
       elsif not Item.Data_Offset.Present or else not Item.Compressed.Present then
          return (Status => Archive.Archives.Errors.Invalid_Format,
                  Integrity => Archive.Archives.Entries.Not_Available,
@@ -1405,7 +1398,7 @@ package body Archive.Archives.Readers.Zip is
             declare
                Payload : constant Zlib.Byte_Array :=
                  Zlib.Extract_ZIP_External_Entry
-                   (Source.Bytes, To_String (Item.Original_Path), "", Status);
+                   (Source.Bytes, To_String (Item.Original_Path), Password, Status);
                Continue : Boolean := True;
                CRC : Archive.Verification.CRC32.CRC32_State :=
                  Archive.Verification.CRC32.Initial;

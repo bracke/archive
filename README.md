@@ -14,7 +14,7 @@ Current V1 support:
 | TAR.GZ / TGZ | supported | supported | supported | supported | supported by save-in-place and save-as publication | `zlib` + `tarlib` |
 | ZIP stored | supported | supported | supported | supported | supported by save-in-place and save-as publication | archive ZIP adapter |
 | ZIP DEFLATE | supported | supported | supported | supported | supported by save-in-place and save-as publication | archive ZIP adapter + `zlib` |
-| ZIP traditional encryption | supported for stored/DEFLATE entries | supported with caller-supplied in-memory password | supported by decrypted CRC-32 | supported by password-backed extraction callers | writes unencrypted output only | archive ZIP adapter |
+| ZIP traditional encryption | supported for stored/DEFLATE/zlib-backed external-method entries | supported with caller-supplied in-memory password | supported by decrypted CRC-32 | supported by password-backed extraction callers | writes unencrypted output only | archive ZIP adapter + `zlib` |
 | ZIP BZip2 / LZMA / Zstandard | supported | supported | supported | supported | supported for host-file publication | archive ZIP adapter + `zlib` |
 | split ZIP / spanning ZIP | supported by bounded numbered-volume reassembly | supported | supported | supported | save as non-split ZIP | archive ZIP adapter |
 | gzip | supported | supported | supported | supported | supported single-file replacement | `zlib` |
@@ -28,7 +28,7 @@ Current V1 support:
 | ISO 9660 | supported for stored directory records and files | supported | supported | supported | supported by flat-image rewrite publication | archive ISO adapter |
 
 Recognized but unsupported in V1: RAR, non-contiguous multi-volume ZIP sets,
-ZIP strong/AES encryption and encrypted external-method ZIP entries, encrypted
+ZIP strong/AES encryption, encrypted
 7z headers without a supplied password, XZ layouts outside the supported native LZMA2 layout set, unsupported CAB
 folder methods outside stored/MSZIP, unsupported non-bridge ZIP PPMd variants, and unsupported ZIP
 methods or 7z layouts outside the zlib-backed native layout set.

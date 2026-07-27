@@ -1485,10 +1485,81 @@ package body Archive_Suite.Core is
 
    function Stored_Zip_With_Payload
      (Payload : Zlib.Byte_Array;
-      Method  : Natural := 0)
+      Method  : Natural := 0;
+      Encrypted : Boolean := False;
+      Password  : String := "secret")
       return Zlib.Byte_Array
    is
       Name : constant String := "large.bin";
+
+      type ZIP_Crypto_State is record
+         Key0 : Interfaces.Unsigned_32 := 16#1234_5678#;
+         Key1 : Interfaces.Unsigned_32 := 16#2345_6789#;
+         Key2 : Interfaces.Unsigned_32 := 16#3456_7890#;
+      end record;
+
+      function CRC32_Update
+        (Current : Interfaces.Unsigned_32;
+         Byte    : Zlib.Byte)
+         return Interfaces.Unsigned_32
+      is
+         C : Interfaces.Unsigned_32 := Current xor Interfaces.Unsigned_32 (Byte);
+      begin
+         for Bit in 1 .. 8 loop
+            if (C and 1) = 1 then
+               C := Interfaces.Shift_Right (C, 1) xor 16#EDB8_8320#;
+            else
+               C := Interfaces.Shift_Right (C, 1);
+            end if;
+         end loop;
+         return C;
+      end CRC32_Update;
+
+      procedure Update_Crypto_Key
+        (State : in out ZIP_Crypto_State;
+         Plain_Byte : Zlib.Byte)
+      is
+      begin
+         State.Key0 := CRC32_Update (State.Key0, Plain_Byte);
+         State.Key1 :=
+           (State.Key1 + (State.Key0 and 16#FF#)) * 134_775_813 + 1;
+         State.Key2 :=
+           CRC32_Update
+             (State.Key2,
+              Zlib.Byte (Interfaces.Shift_Right (State.Key1, 24) and 16#FF#));
+      end Update_Crypto_Key;
+
+      function Initialized_Crypto return ZIP_Crypto_State is
+         State : ZIP_Crypto_State;
+      begin
+         for Ch of Password loop
+            Update_Crypto_Key (State, Zlib.Byte (Character'Pos (Ch)));
+         end loop;
+         return State;
+      end Initialized_Crypto;
+
+      function Crypto_Byte (State : ZIP_Crypto_State) return Zlib.Byte is
+         Temp : constant Interfaces.Unsigned_32 := State.Key2 or 2;
+      begin
+         return Zlib.Byte
+           (Interfaces.Shift_Right ((Temp * (Temp xor 1)), 8) and 16#FF#);
+      end Crypto_Byte;
+
+      procedure Encrypt_In_Place
+        (State : in out ZIP_Crypto_State;
+         Bytes : in out Zlib.Byte_Array)
+      is
+      begin
+         for Index in Bytes'Range loop
+            declare
+               Plain_Byte  : constant Zlib.Byte := Bytes (Index);
+               Cipher_Byte : constant Zlib.Byte := Plain_Byte xor Crypto_Byte (State);
+            begin
+               Bytes (Index) := Cipher_Byte;
+               Update_Crypto_Key (State, Plain_Byte);
+            end;
+         end loop;
+      end Encrypt_In_Place;
 
       function Compressed_For_Method return Zlib.Byte_Array is
          Status : Zlib.Status_Code;
@@ -1582,16 +1653,43 @@ package body Archive_Suite.Core is
          end case;
       end Compressed_For_Method;
 
-      Compressed : constant Zlib.Byte_Array := Compressed_For_Method;
+      CRC   : constant Archive.Types.CRC32_Value := CRC32_Compute (Payload);
+      function Wire_Payload return Zlib.Byte_Array is
+         Compressed : constant Zlib.Byte_Array := Compressed_For_Method;
+      begin
+         if not Encrypted then
+            return Compressed;
+         end if;
+
+         declare
+            Result : Zlib.Byte_Array (1 .. Compressed'Length + 12);
+            State  : ZIP_Crypto_State := Initialized_Crypto;
+         begin
+            for Index in 1 .. 11 loop
+               Result (Index) := Zlib.Byte (Index);
+            end loop;
+            Result (12) :=
+              Zlib.Byte
+                (Interfaces.Shift_Right (Interfaces.Unsigned_32 (CRC), 24)
+                 and 16#FF#);
+            for Index in Compressed'Range loop
+               Result (12 + Index - Compressed'First + 1) := Compressed (Index);
+            end loop;
+            Encrypt_In_Place (State, Result);
+            return Result;
+         end;
+      end Wire_Payload;
+
+      Compressed : constant Zlib.Byte_Array := Wire_Payload;
       Local_Offset : constant Natural := 0;
       Central_Offset : constant Natural := 30 + Name'Length + Compressed'Length;
       Central_Size : constant Natural := 46 + Name'Length;
       EOCD_Offset : constant Natural := Central_Offset + Central_Size;
       Total : constant Natural := EOCD_Offset + 22;
       Bytes : Zlib.Byte_Array (1 .. Total) := [others => 0];
-      CRC   : constant Archive.Types.CRC32_Value := CRC32_Compute (Payload);
    begin
       Put32 (Bytes, Local_Offset, 16#0403_4B50#);
+      Put16 (Bytes, Local_Offset + 6, (if Encrypted then 1 else 0));
       Put16 (Bytes, Local_Offset + 8, Method);
       Put32_U (Bytes, Local_Offset + 14, Interfaces.Unsigned_32 (CRC));
       Put32 (Bytes, Local_Offset + 18, Compressed'Length);
@@ -1604,6 +1702,7 @@ package body Archive_Suite.Core is
       end loop;
 
       Put32 (Bytes, Central_Offset, 16#0201_4B50#);
+      Put16 (Bytes, Central_Offset + 8, (if Encrypted then 1 else 0));
       Put16 (Bytes, Central_Offset + 10, Method);
       Put32_U (Bytes, Central_Offset + 16, Interfaces.Unsigned_32 (CRC));
       Put32 (Bytes, Central_Offset + 20, Compressed'Length);
@@ -1815,6 +1914,10 @@ package body Archive_Suite.Core is
          Write_Bytes (Path, Stored_Zip_With_Payload (Plain));
          Write_Bytes (Deflate_Path, Stored_Zip_With_Payload (Plain, Method => 8));
          Write_Bytes (Bzip2_Path, Stored_Zip_With_Payload (Plain, Method => 12));
+         Write_Bytes
+           ("obj/zip-stream-encrypted-bzip2-payload.zip",
+            Stored_Zip_With_Payload
+              (Plain, Method => 12, Encrypted => True, Password => "secret"));
          Write_Bytes ("obj/zip-stream-lzma-payload.zip",
                       Stored_Zip_With_Payload (Plain, Method => 14));
          Write_Bytes (Zstd_Path, Stored_Zip_With_Payload (Plain, Method => 20));
@@ -1877,6 +1980,52 @@ package body Archive_Suite.Core is
             Assert
               (Archive.Verification.CRC32.Final (Bzip2_CRC) = CRC32_Compute (Plain),
                "zip bzip2 stream bytes match expected crc");
+         end;
+
+         declare
+            Encrypted_Bzip2_Path : constant String :=
+              "obj/zip-stream-encrypted-bzip2-payload.zip";
+            Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
+              Index_Zip (Read_All_Bytes (Encrypted_Bzip2_Path));
+            Item : constant Archive.Archives.Entries.Archive_Entry :=
+              Parsed.Entries.Element (1);
+            Missing : constant Test_Stream_Result :=
+              Stream_Zip_Payload_File (Encrypted_Bzip2_Path, Item);
+            Wrong : constant Test_Stream_Result :=
+              Stream_Zip_Payload_File
+                (Encrypted_Bzip2_Path, Item, Password => "wrong");
+            Streamed : constant Test_Stream_Result :=
+              Stream_Zip_Payload_File
+                (Encrypted_Bzip2_Path, Item, Password => "secret");
+         begin
+            Assert
+              (Parsed.Status = Archive.Archives.Errors.Ok,
+               "zip encrypted bzip2 method parses");
+            Assert
+              (Item.Method = Archive.Archives.Entries.BZip2_Compression,
+               "zip encrypted bzip2 method maps to supported compression");
+            Assert
+              (Item.Encryption =
+                 Archive.Archives.Entries.Zip_Traditional_Encryption,
+               "zip encrypted bzip2 retains traditional encryption");
+            Assert
+              (Missing.Status = Archive.Archives.Errors.Unsupported_Method,
+               "zip encrypted bzip2 requires password");
+            Assert
+              (Wrong.Status /= Archive.Archives.Errors.Ok,
+               "zip encrypted bzip2 rejects wrong password");
+            Assert
+              (Streamed.Status = Archive.Archives.Errors.Ok,
+               "zip encrypted bzip2 streams with password");
+            Assert
+              (Streamed.Integrity = Archive.Archives.Entries.Verified,
+               "zip encrypted bzip2 verifies with password");
+            Assert
+              (Streamed.Bytes_Written = Plain'Length,
+               "zip encrypted bzip2 byte count matches payload");
+            Assert
+              (Bytes_Of (Streamed) (1) = Plain (Plain'First),
+               "zip encrypted bzip2 plaintext prefix matches");
          end;
 
          declare

@@ -911,7 +911,7 @@ procedure Check_All is
         ("docs/FORMAT_SUPPORT.md", "supported ZIP PPMd method 98 bridge decoding and publication");
       Require_Document_Text
         ("docs/FORMAT_SUPPORT.md",
-         "ZIP traditional encrypted stored/DEFLATE password-backed payload streaming");
+         "ZIP traditional encrypted stored/DEFLATE/zlib-backed external-method password-backed payload streaming");
       Require_Document_Text
         ("README.md",
          "supported for native zlib-backed Copy, Deflate, BZip2, LZMA, LZMA2, PPMd");
