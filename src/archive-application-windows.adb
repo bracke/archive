@@ -17,10 +17,12 @@ package body Archive.Application.Windows is
    use type Archive.Operations.Opening.Operation_Status;
 
    Event_Wait_Timeout : constant Duration := 0.016;
-   --  When no archive-open is in flight the loop sleeps this long between events
-   --  instead of spinning at Event_Wait_Timeout; a real window event still wakes
-   --  it immediately, and the async open worker only needs ticking while running.
-   Idle_Wait_Timeout : constant Duration := 1.0;
+   --  The loop always waits just a frame's worth: the Render_Cache below already
+   --  skips the build/submit/present path for unchanged frames, so idle CPU stays
+   --  near zero regardless. A short wait keeps input prompt (once we stop
+   --  presenting the compositor stops waking us, so a long block genuinely delays
+   --  keystrokes) and also lets the async open worker -- which signals internally,
+   --  not through a window event -- be polled while it runs.
 
    --  Lets Render_Once leave an unchanged frame on screen instead of rebuilding
    --  and re-presenting it every wake. The frame is a pure function of the model,
@@ -310,13 +312,11 @@ package body Archive.Application.Windows is
       while not Glfw.Windows.Should_Close (As_Window (Handle)) loop
          Render_Once (Runtime, As_Window (Handle), Vulkan, Cache,
                       Force => False, Status => Status);
-         --  Spin only while a background archive-open is running (the worker
-         --  signals internally, not through a window event); otherwise sleep and
-         --  let real window events wake the loop.
-         Guikit.Vulkan.Wait_For_Events
-           (if Archive.GUI_Runtime.Open_Operation_Status (Runtime)
-                 = Archive.Operations.Opening.Operation_Running
-            then Event_Wait_Timeout else Idle_Wait_Timeout);
+         --  Wait a frame's worth so input stays prompt and a running archive-open
+         --  (which signals internally, not through a window event) keeps ticking.
+         --  The Render_Cache skips presenting unchanged frames, so this does not
+         --  cost idle CPU.
+         Guikit.Vulkan.Wait_For_Events (Event_Wait_Timeout);
       end loop;
 
       Guikit.Vulkan.Shutdown (Vulkan);
