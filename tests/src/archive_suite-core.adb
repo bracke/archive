@@ -2061,6 +2061,10 @@ package body Archive_Suite.Core is
            ("obj/zip-stream-encrypted-bzip2-payload.zip",
             Stored_Zip_With_Payload
               (Plain, Method => 12, Encrypted => True, Password => "secret"));
+         Write_Bytes
+           ("obj/zip-stream-aes-bzip2-payload.zip",
+            Stored_Zip_With_Payload
+              (Plain, Method => 12, AES_Encrypted => True, Password => "secret"));
          Write_Bytes ("obj/zip-stream-lzma-payload.zip",
                       Stored_Zip_With_Payload (Plain, Method => 14));
          Write_Bytes (Zstd_Path, Stored_Zip_With_Payload (Plain, Method => 20));
@@ -2169,6 +2173,51 @@ package body Archive_Suite.Core is
             Assert
               (Bytes_Of (Streamed) (1) = Plain (Plain'First),
                "zip encrypted bzip2 plaintext prefix matches");
+         end;
+
+         declare
+            AES_Bzip2_Path : constant String :=
+              "obj/zip-stream-aes-bzip2-payload.zip";
+            Parsed : constant Archive.Archives.Readers.Zip.Zip_Index_Result :=
+              Index_Zip (Read_All_Bytes (AES_Bzip2_Path));
+            Item : constant Archive.Archives.Entries.Archive_Entry :=
+              Parsed.Entries.Element (1);
+            Missing : constant Test_Stream_Result :=
+              Stream_Zip_Payload_File (AES_Bzip2_Path, Item);
+            Wrong : constant Test_Stream_Result :=
+              Stream_Zip_Payload_File
+                (AES_Bzip2_Path, Item, Password => "wrong");
+            Streamed : constant Test_Stream_Result :=
+              Stream_Zip_Payload_File
+                (AES_Bzip2_Path, Item, Password => "secret");
+         begin
+            Assert
+              (Parsed.Status = Archive.Archives.Errors.Ok,
+               "zip aes bzip2 method parses");
+            Assert
+              (Item.Method = Archive.Archives.Entries.BZip2_Compression,
+               "zip aes bzip2 method maps actual method");
+            Assert
+              (Item.Encryption = Archive.Archives.Entries.Zip_AES_Encryption,
+               "zip aes bzip2 retains AES encryption");
+            Assert
+              (Missing.Status = Archive.Archives.Errors.Unsupported_Method,
+               "zip aes bzip2 requires password");
+            Assert
+              (Wrong.Status /= Archive.Archives.Errors.Ok,
+               "zip aes bzip2 rejects wrong password");
+            Assert
+              (Streamed.Status = Archive.Archives.Errors.Ok,
+               "zip aes bzip2 streams with password");
+            Assert
+              (Streamed.Integrity = Archive.Archives.Entries.Verified,
+               "zip aes bzip2 verifies with password");
+            Assert
+              (Streamed.Bytes_Written = Plain'Length,
+               "zip aes bzip2 byte count matches payload");
+            Assert
+              (Bytes_Of (Streamed) (1) = Plain (Plain'First),
+               "zip aes bzip2 plaintext prefix matches");
          end;
 
          declare

@@ -2340,7 +2340,7 @@ procedure Check_All is
       elsif Id = "zip-unicode-path-bad-version" then
          return Generated_Zip_Unicode_Path (Bad_Version => True);
       elsif Id = "zip-unsupported-method" then
-         return Generated_Zip (Method => 99);
+         return Generated_Zip (Method => 97);
       elsif Id = "zip-ppmd" then
          return Generated_Zip (Method => 98);
       elsif Id = "zip-encrypted" then

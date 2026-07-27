@@ -624,7 +624,7 @@ procedure Release_Report is
          elsif Id = "zip-unicode-path-bad-version" then
             return (True, 131, "001789A9");
          elsif Id = "zip-unsupported-method" then
-            return (True, 111, "D97324F5");
+            return (True, 111, "69A25ADB");
          elsif Id = "zip-ppmd" then
             return (True, 111, "811B9BE2");
          elsif Id = "zip-encrypted" then

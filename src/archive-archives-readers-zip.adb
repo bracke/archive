@@ -212,6 +212,44 @@ package body Archive.Archives.Readers.Zip is
         or Interfaces.Shift_Left (Interfaces.Unsigned_64 (U32 (Bytes, Offset + 4)), 32);
    end U64;
 
+   procedure Put16
+     (Bytes  : in out Zlib.Byte_Array;
+      Offset : Natural;
+      Value  : Interfaces.Unsigned_16)
+   is
+   begin
+      Bytes (Bytes'First + Offset) := Zlib.Byte (Value and 16#FF#);
+      Bytes (Bytes'First + Offset + 1) :=
+        Zlib.Byte (Interfaces.Shift_Right (Value, 8) and 16#FF#);
+   end Put16;
+
+   procedure Put32
+     (Bytes  : in out Zlib.Byte_Array;
+      Offset : Natural;
+      Value  : Interfaces.Unsigned_32)
+   is
+   begin
+      Bytes (Bytes'First + Offset) := Zlib.Byte (Value and 16#FF#);
+      Bytes (Bytes'First + Offset + 1) :=
+        Zlib.Byte (Interfaces.Shift_Right (Value, 8) and 16#FF#);
+      Bytes (Bytes'First + Offset + 2) :=
+        Zlib.Byte (Interfaces.Shift_Right (Value, 16) and 16#FF#);
+      Bytes (Bytes'First + Offset + 3) :=
+        Zlib.Byte (Interfaces.Shift_Right (Value, 24) and 16#FF#);
+   end Put32;
+
+   procedure Put_Name
+     (Bytes  : in out Zlib.Byte_Array;
+      Offset : Natural;
+      Name   : String)
+   is
+   begin
+      for Index in Name'Range loop
+         Bytes (Bytes'First + Offset + Index - Name'First) :=
+           Zlib.Byte (Character'Pos (Name (Index)));
+      end loop;
+   end Put_Name;
+
    function Signature (Bytes : Zlib.Byte_Array; Offset : Natural) return Interfaces.Unsigned_32 is
    begin
       if not In_Range (Bytes, Offset, 4) then
@@ -961,6 +999,60 @@ package body Archive.Archives.Readers.Zip is
          return [];
    end AES_Decrypt_Wire;
 
+   function Synthetic_ZIP_External_Image
+     (Entry_Name   : String;
+      Method       : Interfaces.Unsigned_16;
+      Payload      : Zlib.Byte_Array;
+      CRC          : Interfaces.Unsigned_32;
+      Uncompressed : Natural)
+      return Zlib.Byte_Array
+   is
+      Central_Offset : constant Natural := 30 + Entry_Name'Length + Payload'Length;
+      Central_Size   : constant Natural := 46 + Entry_Name'Length;
+      EOCD_Offset    : constant Natural := Central_Offset + Central_Size;
+      Total          : constant Natural := EOCD_Offset + 22;
+      Result         : Zlib.Byte_Array (1 .. Total) := [others => 0];
+   begin
+      Put32 (Result, 0, 16#0403_4B50#);
+      Put16 (Result, 4, 20);
+      Put16 (Result, 6, 0);
+      Put16 (Result, 8, Method);
+      Put32 (Result, 14, CRC);
+      Put32 (Result, 18, Interfaces.Unsigned_32 (Payload'Length));
+      Put32 (Result, 22, Interfaces.Unsigned_32 (Uncompressed));
+      Put16 (Result, 26, Interfaces.Unsigned_16 (Entry_Name'Length));
+      Put16 (Result, 28, 0);
+      Put_Name (Result, 30, Entry_Name);
+      for Index in Payload'Range loop
+         Result
+           (Result'First + 30 + Entry_Name'Length + Index - Payload'First) :=
+           Payload (Index);
+      end loop;
+
+      Put32 (Result, Central_Offset, 16#0201_4B50#);
+      Put16 (Result, Central_Offset + 4, 20);
+      Put16 (Result, Central_Offset + 6, 20);
+      Put16 (Result, Central_Offset + 8, 0);
+      Put16 (Result, Central_Offset + 10, Method);
+      Put32 (Result, Central_Offset + 16, CRC);
+      Put32
+        (Result, Central_Offset + 20, Interfaces.Unsigned_32 (Payload'Length));
+      Put32
+        (Result, Central_Offset + 24, Interfaces.Unsigned_32 (Uncompressed));
+      Put16
+        (Result, Central_Offset + 28,
+         Interfaces.Unsigned_16 (Entry_Name'Length));
+      Put32 (Result, Central_Offset + 42, 0);
+      Put_Name (Result, Central_Offset + 46, Entry_Name);
+
+      Put32 (Result, EOCD_Offset, 16#0605_4B50#);
+      Put16 (Result, EOCD_Offset + 8, 1);
+      Put16 (Result, EOCD_Offset + 10, 1);
+      Put32 (Result, EOCD_Offset + 12, Interfaces.Unsigned_32 (Central_Size));
+      Put32 (Result, EOCD_Offset + 16, Interfaces.Unsigned_32 (Central_Offset));
+      return Result;
+   end Synthetic_ZIP_External_Image;
+
    function Index_File (Path : String) return Zip_Index_Result is
       Size      : constant Ada.Directories.File_Size := Ada.Directories.Size (Path);
       Size_N    : Natural;
@@ -1521,13 +1613,6 @@ package body Archive.Archives.Readers.Zip is
          return (Status => Archive.Archives.Errors.Invalid_Format,
                  Integrity => Archive.Archives.Entries.Not_Available,
                  Bytes_Written => 0);
-      elsif AES_Encrypted
-        and then Item.Method not in Archive.Archives.Entries.Zip_Stored
-          | Archive.Archives.Entries.Zip_Deflate
-      then
-         return (Status => Archive.Archives.Errors.Unsupported_Method,
-                 Integrity => Archive.Archives.Entries.Not_Available,
-                 Bytes_Written => 0);
       elsif Traditional_Encrypted
         and then Item.Compressed.Value <
           Archive.Types.Uncompressed_Size (ZIP_Traditional_Header_Length)
@@ -1824,15 +1909,112 @@ package body Archive.Archives.Readers.Zip is
          end;
       end if;
 
-      if AES_Encrypted
-        and then Item.Method /= Archive.Archives.Entries.Zip_Stored
-      then
-         return (Status => Archive.Archives.Errors.Unsupported_Method,
-                 Integrity => Archive.Archives.Entries.Not_Available,
-                 Bytes_Written => 0);
-      end if;
-
       if Item.Method /= Archive.Archives.Entries.Zip_Stored then
+         if AES_Encrypted then
+            declare
+               Offset : constant Natural := Natural (Item.Data_Offset.Value);
+               Count  : constant Natural := Natural (Item.Compressed.Value);
+               Source_Size : constant Ada.Directories.File_Size :=
+                 Ada.Directories.Size (Path);
+               Wire : Zlib.Byte_Array (1 .. Count);
+               Read_Status : Archive.Archives.Errors.Error_Code;
+               Z_Status : Zlib.Status_Code := Zlib.Ok;
+            begin
+               if Ada.Directories.File_Size (Offset) > Source_Size
+                 or else Ada.Directories.File_Size (Count) >
+                   Source_Size - Ada.Directories.File_Size (Offset)
+               then
+                  return (Status => Archive.Archives.Errors.Invalid_Format,
+                          Integrity => Archive.Archives.Entries.Not_Available,
+                          Bytes_Written => 0);
+               elsif not Item.CRC32.Present
+                 or else not Item.Uncompressed.Present
+                 or else Item.Uncompressed.Value >
+                   Archive.Types.Uncompressed_Size (Natural'Last)
+               then
+                  return (Status => Archive.Archives.Errors.Invalid_Format,
+                          Integrity => Archive.Archives.Entries.Failed,
+                          Bytes_Written => 0);
+               end if;
+
+               Read_File_Slice (Path, Offset, Wire, Read_Status);
+               if Read_Status /= Archive.Archives.Errors.Ok then
+                  return (Status => Read_Status,
+                          Integrity => Archive.Archives.Entries.Not_Available,
+                          Bytes_Written => 0);
+               end if;
+
+               declare
+                  Plain_Compressed : constant Zlib.Byte_Array :=
+                    AES_Decrypt_Wire (Wire, AES_Strength, Password, Read_Status);
+               begin
+                  if Read_Status /= Archive.Archives.Errors.Ok then
+                     return (Status => Read_Status,
+                             Integrity => Archive.Archives.Entries.Failed,
+                             Bytes_Written => 0);
+                  end if;
+
+                  declare
+                     Synthetic : constant Zlib.Byte_Array :=
+                       Synthetic_ZIP_External_Image
+                         (To_String (Item.Original_Path),
+                          Interfaces.Unsigned_16
+                            (Metadata_Natural
+                               (Item, "zip.aes_actual_method", 0)),
+                          Plain_Compressed,
+                          Interfaces.Unsigned_32 (Item.CRC32.Value),
+                          Natural (Item.Uncompressed.Value));
+                     Payload : constant Zlib.Byte_Array :=
+                       Zlib.Extract_ZIP_External_Entry
+                         (Synthetic,
+                          To_String (Item.Original_Path),
+                          "",
+                          Z_Status);
+                     Continue : Boolean := True;
+                     CRC : Archive.Verification.CRC32.CRC32_State :=
+                       Archive.Verification.CRC32.Initial;
+                  begin
+                     if Z_Status /= Zlib.Ok then
+                        return (Status => Map_Zlib_Status (Z_Status),
+                                Integrity => Archive.Archives.Entries.Failed,
+                                Bytes_Written => 0);
+                     elsif Archive.Types.Uncompressed_Size (Payload'Length) /=
+                       Item.Uncompressed.Value
+                     then
+                        return
+                          (Status => Archive.Archives.Errors.Invalid_Format,
+                           Integrity => Archive.Archives.Entries.Failed,
+                           Bytes_Written =>
+                             Archive.Types.Uncompressed_Size (Payload'Length));
+                     end if;
+
+                     Archive.Verification.CRC32.Update (CRC, Payload);
+                     if Archive.Verification.CRC32.Final (CRC) /= Item.CRC32.Value
+                     then
+                        return
+                          (Status => Archive.Archives.Errors.Invalid_Format,
+                           Integrity => Archive.Archives.Entries.Failed,
+                           Bytes_Written =>
+                             Archive.Types.Uncompressed_Size (Payload'Length));
+                     end if;
+
+                     Consumer.all (Payload, Continue);
+                     return
+                       (Status =>
+                          (if Continue
+                           then Archive.Archives.Errors.Ok
+                           else Archive.Archives.Errors.Cancelled),
+                        Integrity =>
+                          (if Continue
+                           then Archive.Archives.Entries.Verified
+                           else Archive.Archives.Entries.Not_Available),
+                        Bytes_Written =>
+                          Archive.Types.Uncompressed_Size (Payload'Length));
+                  end;
+               end;
+            end;
+         end if;
+
          declare
             Size : constant Ada.Directories.File_Size := Ada.Directories.Size (Path);
          begin
