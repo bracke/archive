@@ -2820,12 +2820,52 @@ package body Archive_Suite.Core is
               (Step.Status = Archive.Archives.Errors.Ok
                and then Step.Stream_Ended
                and then Step.Input_Bytes = Raw'Length
+               and then Step.Unused_Input_Bytes = 3
                and then With_Trailing'Length - Step.Input_Bytes = 3,
-               "stateful inflate preserves caller-owned trailing bytes");
+               "stateful inflate reports and preserves caller-owned trailing bytes");
             Assert
               (Closed.Status = Archive.Archives.Errors.Ok
                and then Closed.Close_Status = Archive.Compression.Zlib.Close_Ok,
                "stateful inflate closes completed stream");
+         end;
+      end;
+
+      declare
+         Stream : Archive.Compression.Zlib.Inflate_Stream;
+         First_Input : Zlib.Byte_Array (1 .. Raw'Length);
+         Extra_Input : constant Zlib.Byte_Array :=
+           [1 => 16#D1#, 2 => 16#D2#, 3 => 16#D3#, 4 => 16#D4#];
+      begin
+         for Index in Raw'Range loop
+            First_Input (Index - Raw'First + 1) := Raw (Index);
+         end loop;
+
+         Archive.Compression.Zlib.Open
+           (Stream,
+            Archive.Compression.Zlib.Raw_Deflate,
+            Output_Chunk_Bytes => 1);
+
+         declare
+            First : constant Archive.Compression.Zlib.Stream_Step_Result :=
+              Archive.Compression.Zlib.Append (Stream, First_Input);
+            Extra : constant Archive.Compression.Zlib.Stream_Step_Result :=
+              Archive.Compression.Zlib.Append (Stream, Extra_Input);
+            Closed : constant Archive.Compression.Zlib.Stream_Close_Result :=
+              Archive.Compression.Zlib.Close (Stream);
+         begin
+            Assert
+              (First.Status = Archive.Archives.Errors.Ok
+               and then First.Stream_Ended
+               and then First.Unused_Input_Bytes = 0,
+               "stateful inflate reports no unused bytes for exact stream input");
+            Assert
+              (Extra.Status = Archive.Archives.Errors.Ok
+               and then Extra.Input_Bytes = 0
+               and then Extra.Unused_Input_Bytes = Extra_Input'Length,
+               "stateful inflate reports all appended bytes unused after stream end");
+            Assert
+              (Closed.Status = Archive.Archives.Errors.Ok,
+               "stateful inflate closes after unused trailing append");
          end;
       end;
 

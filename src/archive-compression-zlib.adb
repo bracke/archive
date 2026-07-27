@@ -98,7 +98,8 @@ package body Archive.Compression.Zlib is
       Output_Limited     : Boolean;
       Ratio_Limited      : Boolean;
       Cancelled          : Boolean;
-      Bytes              : Byte_Vectors.Vector)
+      Bytes              : Byte_Vectors.Vector;
+      Unused_Input_Bytes : Natural := 0)
       return Stream_Step_Result
    is
    begin
@@ -106,6 +107,7 @@ package body Archive.Compression.Zlib is
         (Length             => Natural (Bytes.Length),
          Status             => Status,
          Input_Bytes        => Input_Bytes,
+         Unused_Input_Bytes => Unused_Input_Bytes,
          Output_Bytes       => Output_Bytes,
          Total_Input_Bytes  => Total_Input_Bytes,
          Total_Output_Bytes => Total_Output_Bytes,
@@ -265,7 +267,11 @@ package body Archive.Compression.Zlib is
       return Step_Result
         (Archive.Archives.Errors.Ok, Consumed_Total, Produced_Total,
          Natural (Stream.Compressed), Natural (Stream.Uncompressed),
-         Standard.Zlib.Stream_End (Stream.Filter), False, False, False, Output);
+         Standard.Zlib.Stream_End (Stream.Filter), False, False, False, Output,
+         Unused_Input_Bytes =>
+           (if Standard.Zlib.Stream_End (Stream.Filter)
+            then Input'Length - Consumed_Total
+            else 0));
    exception
       when Standard.Zlib.Zlib_Error =>
          return Step_Result
@@ -414,7 +420,11 @@ package body Archive.Compression.Zlib is
       return Step_Result
         (Archive.Archives.Errors.Ok, Consumed_Total, Produced_Total,
          Natural (Stream.Compressed), Natural (Stream.Uncompressed),
-         Standard.Zlib.Stream_End (Stream.Filter), False, False, False, Empty);
+         Standard.Zlib.Stream_End (Stream.Filter), False, False, False, Empty,
+         Unused_Input_Bytes =>
+           (if Standard.Zlib.Stream_End (Stream.Filter)
+            then Input'Length - Consumed_Total
+            else 0));
    exception
       when Standard.Zlib.Zlib_Error =>
          return Step_Result

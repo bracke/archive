@@ -23,6 +23,7 @@ package Archive.Compression.Zlib is
    type Stream_Step_Result (Length : Natural := 0) is record
       Status : Archive.Archives.Errors.Error_Code := Archive.Archives.Errors.Ok;
       Input_Bytes        : Natural := 0;
+      Unused_Input_Bytes : Natural := 0;
       Output_Bytes       : Natural := 0;
       Total_Input_Bytes  : Natural := 0;
       Total_Output_Bytes : Natural := 0;
