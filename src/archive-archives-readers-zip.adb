@@ -759,6 +759,11 @@ package body Archive.Archives.Readers.Zip is
             --  zlib-layer failure rather than blaming the input as truncated or
             --  corrupt (which zlib's own documentation warns against).
             return Archive.Archives.Errors.Zlib_Failed;
+         when Zlib.Password_Required | Zlib.Invalid_Password =>
+            --  Encrypted member: no password path here yet, so report a zlib-layer
+            --  failure rather than Unsupported_Method (the format is supported).
+            --  Give these dedicated codes when archive grows a password prompt.
+            return Archive.Archives.Errors.Zlib_Failed;
       end case;
    end Map_Zlib_Status;
 

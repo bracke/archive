@@ -38,6 +38,11 @@ package body Archive.Archives.Readers.Xz is
             --  zlib-layer failure rather than blaming the input as truncated or
             --  corrupt (which zlib's own documentation warns against).
             return Archive.Archives.Errors.Zlib_Failed;
+         when Zlib.Password_Required | Zlib.Invalid_Password =>
+            --  Encrypted member: this reader has no password path yet, so report a
+            --  zlib-layer failure rather than Unsupported_Method (the format is
+            --  supported). Give these dedicated codes when archive grows a prompt.
+            return Archive.Archives.Errors.Zlib_Failed;
       end case;
    end Map_Status;
 

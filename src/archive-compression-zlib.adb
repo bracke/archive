@@ -75,6 +75,11 @@ package body Archive.Compression.Zlib is
             --  it as a zlib-layer failure rather than blaming the input as
             --  truncated or corrupt (which zlib's own documentation warns against).
             return Archive.Archives.Errors.Zlib_Failed;
+         when Standard.Zlib.Password_Required | Standard.Zlib.Invalid_Password =>
+            --  Encrypted stream: no password path here yet, so report a zlib-layer
+            --  failure rather than Unsupported_Method (the format is supported).
+            --  Give these dedicated codes when archive grows a password prompt.
+            return Archive.Archives.Errors.Zlib_Failed;
       end case;
    end Map_Status;
 
