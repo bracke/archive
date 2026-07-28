@@ -46,6 +46,11 @@ package body Archive.GUI_Runtime is
       return Runtime.App_Model;
    end Model;
 
+   function Revision (Runtime : Runtime_State) return Archive.Types.Generation_Id is
+   begin
+      return Archive.Model.Revision (Runtime.App_Model);
+   end Revision;
+
    procedure Start_Open_Archive
      (Runtime : in out Runtime_State;
       Path    : String)

@@ -27,6 +27,9 @@ package Archive.GUI_Runtime is
    function Snapshot (Runtime : Runtime_State) return Archive.UI.Shell_Snapshot;
    function Render_Frame (Runtime : Runtime_State) return Archive.GUI_Frame.Frame;
    function Model (Runtime : Runtime_State) return Archive.Model.Application_Model;
+   --  The model's change revision, read without copying the whole model, so the
+   --  render loop can cheaply detect any state change per frame.
+   function Revision (Runtime : Runtime_State) return Archive.Types.Generation_Id;
    procedure Start_Open_Archive
      (Runtime : in out Runtime_State;
       Path    : String);

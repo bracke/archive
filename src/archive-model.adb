@@ -59,6 +59,9 @@ package body Archive.Model is
 
    function Lifecycle (Model : Application_Model) return Lifecycle_State is (Model.State);
 
+   function Revision (Model : Application_Model) return Archive.Types.Generation_Id is
+     (Model.Revision);
+
    function Has_Open_Archive (Model : Application_Model) return Boolean is
    begin
       return Model.State in Archive_Ready | Archive_Dirty | Saving_Archive | Archive_Save_Failed | Archive_Warnings;

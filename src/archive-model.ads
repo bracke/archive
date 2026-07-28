@@ -94,6 +94,10 @@ package Archive.Model is
    procedure Initialize (Model : out Application_Model);
    function Lifecycle (Model : Application_Model) return Lifecycle_State;
    function Has_Open_Archive (Model : Application_Model) return Boolean;
+   --  The model's monotonic change revision, bumped by every mutator via Touch.
+   --  The render layer compares it against the revision it last built a frame at
+   --  to decide whether the cached frame is still current.
+   function Revision (Model : Application_Model) return Archive.Types.Generation_Id;
    procedure Publish_Archive (Model : in out Application_Model; Source_Path : String);
    procedure Create_New_Archive (Model : in out Application_Model);
    function Begin_Open (Model : in out Application_Model) return Archive.Types.Generation_Id;

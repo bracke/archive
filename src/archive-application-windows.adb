@@ -15,6 +15,7 @@ package body Archive.Application.Windows is
    use type Glfw.Size;
    use type Guikit.Vulkan.Vulkan_Status;
    use type Archive.Operations.Opening.Operation_Status;
+   use type Archive.Types.Generation_Id;
 
    Event_Wait_Timeout : constant Duration := 0.016;
    --  The loop always waits just a frame's worth: the Render_Cache below already
@@ -42,6 +43,10 @@ package body Archive.Application.Windows is
       Last_Height    : Natural := 0;
       Present_Grace  : Natural := 0;
       Cached_Frame   : Archive.GUI_Frame.Frame;
+      --  Model revision Cached_Frame was built at. Any model mutation bumps the
+      --  revision (via Touch), so comparing it makes frame invalidation automatic
+      --  rather than relying on every mutation site to signal a change.
+      Cached_Revision : Archive.Types.Generation_Id := 0;
    end record;
 
    type Desktop_Window is new Glfw.Windows.Window with null record;
@@ -146,9 +151,9 @@ package body Archive.Application.Windows is
          return;
       end if;
 
-      --  Pump the async open worker every frame; a published change or any
-      --  dequeued event invalidates the cached frame. This is the sole per-loop
-      --  model-mutation point, so it is the only place that needs to invalidate.
+      --  Pump the async open worker every frame. A dequeued event with no model
+      --  change (Event_Seen without Applied) still needs a rebuild, so signal it
+      --  explicitly; an applied change is also caught by the revision check below.
       declare
          Drain : constant Archive.Operations.Opening.Drain_Result :=
            Archive.GUI_Runtime.Drain_Operations (Runtime);
@@ -157,6 +162,14 @@ package body Archive.Application.Windows is
             Cache.Frame_Valid := False;
          end if;
       end;
+
+      --  Any model mutation -- the async worker above, or (once wired) keyboard
+      --  and mouse input -- bumps the model revision via Touch, so a changed
+      --  revision invalidates the cached frame automatically, with no per-site
+      --  signalling to remember.
+      if Archive.GUI_Runtime.Revision (Runtime) /= Cache.Cached_Revision then
+         Cache.Frame_Valid := False;
+      end if;
 
       if not Cache.Frame_Valid
         or else Cache.Last_Width /= Natural (Width)
@@ -195,6 +208,7 @@ package body Archive.Application.Windows is
       Cache.Cached_Frame := Archive.GUI_Runtime.Render_Frame (Runtime);
       Cache.Last_Width := Natural (Width);
       Cache.Last_Height := Natural (Height);
+      Cache.Cached_Revision := Archive.GUI_Runtime.Revision (Runtime);
       Cache.Frame_Valid := True;
 
       declare
