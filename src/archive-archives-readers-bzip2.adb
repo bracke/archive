@@ -33,6 +33,11 @@ package body Archive.Archives.Readers.BZip2 is
             return Archive.Archives.Errors.Read_Failed;
          when Zlib.Output_File_Error =>
             return Archive.Archives.Errors.Write_Failed;
+         when Zlib.Insufficient_Memory =>
+            --  zlib ran out of memory holding the decoded payload; report it as a
+            --  zlib-layer failure rather than blaming the input as truncated or
+            --  corrupt (which zlib's own documentation warns against).
+            return Archive.Archives.Errors.Zlib_Failed;
       end case;
    end Map_Status;
 

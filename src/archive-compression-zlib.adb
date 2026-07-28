@@ -70,6 +70,11 @@ package body Archive.Compression.Zlib is
             return Archive.Archives.Errors.Read_Failed;
          when Standard.Zlib.Output_File_Error =>
             return Archive.Archives.Errors.Write_Failed;
+         when Standard.Zlib.Insufficient_Memory =>
+            --  zlib ran out of memory holding the (de)compressed payload; report
+            --  it as a zlib-layer failure rather than blaming the input as
+            --  truncated or corrupt (which zlib's own documentation warns against).
+            return Archive.Archives.Errors.Zlib_Failed;
       end case;
    end Map_Status;
 
