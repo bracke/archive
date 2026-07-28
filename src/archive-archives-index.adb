@@ -203,15 +203,22 @@ package body Archive.Archives.Index is
    function Physical_Count (Index : Archive_Index) return Natural is (Index.Physicals);
    function Synthetic_Count (Index : Archive_Index) return Natural is (Index.Synthetics);
 
+   --  Entries are only ever appended, in id order (Append_Entry after
+   --  Id := Next_Id = Length + 1), and never removed or reordered, so an
+   --  entry's Id is exactly its 1-based position in Index.Entries. Both lookups
+   --  therefore index directly in O(1) instead of scanning the whole vector --
+   --  which matters because an index can hold up to a million entries and these
+   --  helpers are called per row and per sort comparison. The Item.Id = Id guard
+   --  keeps the result correct (and surfaces the bug rather than returning a
+   --  wrong entry) should that append-only invariant ever be broken.
+   function In_Range
+     (Index : Archive_Index;
+      Id    : Archive.Types.Entry_Id)
+      return Boolean is
+     (Id >= 1 and then Id <= Archive.Types.Entry_Id (Index.Entries.Length));
+
    function Contains (Index : Archive_Index; Id : Archive.Types.Entry_Id) return Boolean is
-   begin
-      for Item of Index.Entries loop
-         if Item.Id = Id then
-            return True;
-         end if;
-      end loop;
-      return False;
-   end Contains;
+     (In_Range (Index, Id) and then Index.Entries (Positive (Id)).Id = Id);
 
    function Entry_For
      (Index : Archive_Index;
@@ -219,11 +226,11 @@ package body Archive.Archives.Index is
       return Archive.Archives.Entries.Archive_Entry
    is
    begin
-      for Item of Index.Entries loop
-         if Item.Id = Id then
-            return Item;
-         end if;
-      end loop;
+      if In_Range (Index, Id)
+        and then Index.Entries (Positive (Id)).Id = Id
+      then
+         return Index.Entries (Positive (Id));
+      end if;
       return (others => <>);
    end Entry_For;
 
