@@ -1,6 +1,7 @@
 with Ada.Containers;
 with Ada.Direct_IO;
 with Ada.Directories;
+with Ada.Text_IO;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
 with Ada.Strings.Fixed;
@@ -1992,6 +1993,11 @@ package body Archive.Writes.Execution is
          Finish_Status := Finish_Tar_Gzip_Sink (Sink);
       end if;
       Ada.Streams.Stream_IO.Close (Sink.File);
+      Ada.Text_IO.Put_Line
+        (Ada.Text_IO.Standard_Error,
+         "DBG tar.gz build=" & Build_Status'Image
+         & " finish=" & Finish_Status'Image
+         & " sink.failed=" & Sink.Failed'Image);
 
       if Ada.Directories.Exists (Source_Tar) then
          Ada.Directories.Delete_File (Source_Tar);
