@@ -22,7 +22,11 @@ package body Archive.Archives.Readers.Seven_Zip is
       case Status is
          when Zlib.Ok =>
             return Archive.Archives.Errors.Ok;
-         when Zlib.Unsupported_Method =>
+         when Zlib.Unsupported_Method | Zlib.Password_Required =>
+            --  A password-protected 7z whose password we do not hold is, from
+            --  the reader's contract, a method it cannot apply -- archive's
+            --  Error_Code has no dedicated "encrypted" value, and the corpus
+            --  expects Unsupported_Method for it.
             return Archive.Archives.Errors.Unsupported_Method;
          when Zlib.Unexpected_End_Of_Input | Zlib.Invalid_Header
             | Zlib.Invalid_Block_Type | Zlib.Invalid_Checksum =>
