@@ -1474,7 +1474,8 @@ package body Archive.Archives.Readers.Zip is
                                                       if Descriptor_Status /= Archive.Archives.Errors.Ok then
                                                          return
                                                            (Status  => Descriptor_Status,
-                                                            Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
+                                                            Entries =>
+                                                              Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
                                                       end if;
                                                       Descriptor :=
                                                         Descriptor_At
@@ -1489,7 +1490,8 @@ package body Archive.Archives.Readers.Zip is
                                                    then
                                                       return
                                                         (Status  => Archive.Archives.Errors.Invalid_Format,
-                                                         Entries => Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
+                                                         Entries =>
+                                                           Archive.Archives.Entries.Entry_Vectors.Empty_Vector);
                                                    end if;
                                                 end if;
 
