@@ -71,22 +71,17 @@ package body Archive.Archives.Readers.Dispatch is
    end Looks_Like_Zip_Split_Volume;
 
    function Tar_Backing_Path (Path : String) return String is
-      Size_Image : constant String := Ada.Directories.File_Size'Image (Ada.Directories.Size (Path));
-      Hash       : Natural := 0;
    begin
-      for C of Path loop
-         Hash := (Hash * 131 + Character'Pos (C)) mod 1_000_000_007;
-      end loop;
-
-      return "/tmp/archive-open-tar-"
-        & (if Size_Image (Size_Image'First) = ' '
-           then Size_Image (Size_Image'First + 1 .. Size_Image'Last)
-           else Size_Image)
-        & "-" & Natural'Image (Hash)
-        & ".tmp";
+      --  Stage the decompressed tar beside the source rather than in a
+      --  hardcoded /tmp: /tmp does not exist on Windows, so opening a .tar.gz
+      --  there raised Name_Error. Fresh_Sibling_Path yields a unique, portable
+      --  temp path in the source's own directory (the same helper the writer
+      --  uses).
+      return Archive.Temporary_Resources.Fresh_Sibling_Path
+        (Ada.Directories.Containing_Directory (Path), Path, "open-tar");
    exception
       when others =>
-         return "/tmp/archive-open-tar.tmp";
+         return Path & ".open-tar.tmp";
    end Tar_Backing_Path;
 
    function Split_Zip_Base (Path : String) return String is

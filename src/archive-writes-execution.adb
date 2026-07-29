@@ -1,8 +1,6 @@
 with Ada.Containers;
 with Ada.Direct_IO;
 with Ada.Directories;
-with Ada.Exceptions;
-with Ada.Text_IO;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
 with Ada.Strings.Fixed;
@@ -1706,9 +1704,6 @@ package body Archive.Writes.Execution is
                begin
                   pragma Unreferenced (Closed);
                end;
-               Ada.Text_IO.Put_Line
-                 (Ada.Text_IO.Standard_Error,
-                  "DBG stage_gzip APPEND failed: " & Step.Status'Image);
                return Step.Status;
             end if;
             Write_Output (Step.Bytes);
@@ -1736,9 +1731,6 @@ package body Archive.Writes.Execution is
          if Final.Status /= Archive.Archives.Errors.Ok then
             Ada.Streams.Stream_IO.Close (Output);
             Closed := Archive.Compression.Zlib.Close (Stream);
-            Ada.Text_IO.Put_Line
-              (Ada.Text_IO.Standard_Error,
-               "DBG stage_gzip FINISH failed: " & Final.Status'Image);
             return Final.Status;
          end if;
          Write_Output (Final.Bytes);
@@ -1753,10 +1745,7 @@ package body Archive.Writes.Execution is
          end if;
       end;
    exception
-      when E : others =>
-         Ada.Text_IO.Put_Line
-           (Ada.Text_IO.Standard_Error,
-            "DBG stage_gzip RAISED: " & Ada.Exceptions.Exception_Information (E));
+      when others =>
          if Ada.Streams.Stream_IO.Is_Open (Input) then
             Ada.Streams.Stream_IO.Close (Input);
          end if;
@@ -2003,11 +1992,6 @@ package body Archive.Writes.Execution is
          Finish_Status := Finish_Tar_Gzip_Sink (Sink);
       end if;
       Ada.Streams.Stream_IO.Close (Sink.File);
-      Ada.Text_IO.Put_Line
-        (Ada.Text_IO.Standard_Error,
-         "DBG tar.gz build=" & Build_Status'Image
-         & " finish=" & Finish_Status'Image
-         & " sink.failed=" & Sink.Failed'Image);
 
       if Ada.Directories.Exists (Source_Tar) then
          Ada.Directories.Delete_File (Source_Tar);
