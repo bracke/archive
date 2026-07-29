@@ -1,6 +1,7 @@
 with Ada.Containers;
 with Ada.Direct_IO;
 with Ada.Directories;
+with Ada.Exceptions;
 with Ada.Text_IO;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
@@ -1705,6 +1706,9 @@ package body Archive.Writes.Execution is
                begin
                   pragma Unreferenced (Closed);
                end;
+               Ada.Text_IO.Put_Line
+                 (Ada.Text_IO.Standard_Error,
+                  "DBG stage_gzip APPEND failed: " & Step.Status'Image);
                return Step.Status;
             end if;
             Write_Output (Step.Bytes);
@@ -1732,6 +1736,9 @@ package body Archive.Writes.Execution is
          if Final.Status /= Archive.Archives.Errors.Ok then
             Ada.Streams.Stream_IO.Close (Output);
             Closed := Archive.Compression.Zlib.Close (Stream);
+            Ada.Text_IO.Put_Line
+              (Ada.Text_IO.Standard_Error,
+               "DBG stage_gzip FINISH failed: " & Final.Status'Image);
             return Final.Status;
          end if;
          Write_Output (Final.Bytes);
@@ -1746,7 +1753,10 @@ package body Archive.Writes.Execution is
          end if;
       end;
    exception
-      when others =>
+      when E : others =>
+         Ada.Text_IO.Put_Line
+           (Ada.Text_IO.Standard_Error,
+            "DBG stage_gzip RAISED: " & Ada.Exceptions.Exception_Information (E));
          if Ada.Streams.Stream_IO.Is_Open (Input) then
             Ada.Streams.Stream_IO.Close (Input);
          end if;
