@@ -1,5 +1,8 @@
 with Ada.Directories;
+with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded;
+
+with Hostkit.Fs;
 
 with Archive.Archives.Readers.Ar;
 with Archive.Archives.Readers.BZip2;
@@ -71,17 +74,29 @@ package body Archive.Archives.Readers.Dispatch is
    end Looks_Like_Zip_Split_Volume;
 
    function Tar_Backing_Path (Path : String) return String is
+      function Trim (S : String) return String is
+        (Ada.Strings.Fixed.Trim (S, Ada.Strings.Both));
+      Size_N : constant String :=
+        Trim (Ada.Directories.File_Size'Image (Ada.Directories.Size (Path)));
+      Hash   : Natural := 0;
    begin
-      --  Stage the decompressed tar beside the source rather than in a
+      --  Stage the decompressed tar in the host's temp directory, not a
       --  hardcoded /tmp: /tmp does not exist on Windows, so opening a .tar.gz
-      --  there raised Name_Error. Fresh_Sibling_Path yields a unique, portable
-      --  temp path in the source's own directory (the same helper the writer
-      --  uses).
-      return Archive.Temporary_Resources.Fresh_Sibling_Path
-        (Ada.Directories.Containing_Directory (Path), Path, "open-tar");
+      --  there raised Name_Error. Hostkit.Fs.Temp_Directory resolves the
+      --  per-OS scratch location ($TMPDIR/tmp on POSIX, GetTempPathA on
+      --  Windows); the size+path hash keeps distinct archives from colliding.
+      for C of Path loop
+         Hash := (Hash * 131 + Character'Pos (C)) mod 1_000_000_007;
+      end loop;
+
+      return Ada.Directories.Compose
+        (Hostkit.Fs.Temp_Directory,
+         "archive-open-tar-" & Size_N & "-" & Trim (Natural'Image (Hash)),
+         "tmp");
    exception
       when others =>
-         return Path & ".open-tar.tmp";
+         return Ada.Directories.Compose
+           (Hostkit.Fs.Temp_Directory, "archive-open-tar", "tmp");
    end Tar_Backing_Path;
 
    function Split_Zip_Base (Path : String) return String is
