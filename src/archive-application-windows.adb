@@ -1,6 +1,11 @@
 with Ada.Environment_Variables;
 with Ada.Unchecked_Deallocation;
 
+with Guikit.Draw;
+with Guikit.Text;
+
+with Archive.Fonts;
+
 with Glfw;
 with Glfw.Windows;
 with Glfw.Windows.Vulkan;
@@ -48,6 +53,53 @@ package body Archive.Application.Windows is
       --  rather than relying on every mutation site to signal a change.
       Cached_Revision : Archive.Types.Generation_Id := 0;
    end record;
+
+   --  One text renderer for the process, brought up the first time a frame is
+   --  drawn. It holds the font, its fallbacks and the glyph atlas, all of which
+   --  outlive any single frame, and Guikit.Text.Renderer is limited, so it
+   --  cannot live in the per-window cache record that gets copied about.
+   --  What a frame carries when there is no font: the same thing the structural
+   --  checks use, so the window falls back to exactly its old behaviour.
+   function Unrendered_Text return Guikit.Draw.Text_Render_Result is
+      Result : Guikit.Draw.Text_Render_Result;
+   begin
+      Result.Status := Guikit.Draw.Text_Render_Font_Not_Loaded;
+      return Result;
+   end Unrendered_Text;
+
+   Text_Renderer : Guikit.Text.Renderer;
+   Text_Ready    : Boolean := False;
+   Text_Tried    : Boolean := False;
+
+   --  Load the font once. A machine with no font it can read is not an error
+   --  worth refusing to start over: the window still draws, without text, which
+   --  is what it did before there was a renderer at all.
+   procedure Ensure_Text_Ready;
+
+   procedure Ensure_Text_Ready is
+      use type Guikit.Draw.Text_Render_Status;
+   begin
+      if Text_Tried then
+         return;
+      end if;
+
+      Text_Tried := True;
+
+      if Archive.Fonts.Primary = "" then
+         return;
+      end if;
+
+      Text_Ready :=
+        Guikit.Text.Initialize
+          (R              => Text_Renderer,
+           Font_Path      => Archive.Fonts.Primary,
+           Fallback_Paths => Archive.Fonts.Fallbacks,
+           Pixel_Size     => 14,
+           Cell_Width     => 8,
+           Cell_Height    => 18,
+           Atlas_Width    => 1024,
+           Atlas_Height   => 1024) = Guikit.Draw.Text_Render_Success;
+   end Ensure_Text_Ready;
 
    type Desktop_Window is new Glfw.Windows.Window with null record;
    type Window_Access is access all Desktop_Window;
@@ -211,9 +263,18 @@ package body Archive.Application.Windows is
       Cache.Cached_Revision := Archive.GUI_Runtime.Revision (Runtime);
       Cache.Frame_Valid := True;
 
+      Ensure_Text_Ready;
+
       declare
+         Glyphs : constant Guikit.Draw.Text_Render_Result :=
+           (if Text_Ready
+            then Guikit.Text.Build_Glyphs
+                   (Text_Renderer,
+                    Cache.Cached_Frame.Text,
+                    Cache.Cached_Frame.Overlay_Text)
+            else Unrendered_Text);
          Batch : constant Guikit.Vulkan.Submission_Batch :=
-           Archive.GUI_Frame.To_Submission (Cache.Cached_Frame);
+           Archive.GUI_Frame.To_Submission (Cache.Cached_Frame, Glyphs);
       begin
          Status := Guikit.Vulkan.Present_Frame
            (Renderer => Vulkan,

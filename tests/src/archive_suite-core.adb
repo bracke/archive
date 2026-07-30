@@ -10,6 +10,9 @@ with Ada.Streams.Stream_IO;
 with Interfaces;
 with Guikit.Input;
 with Guikit.Vulkan;
+with Archive.Fonts;
+with Guikit.Draw;
+with Guikit.Text;
 with Archive.Application;
 with Archive.Application.Windows;
 with Archive.Archives.Capabilities;
@@ -364,6 +367,70 @@ package body Archive_Suite.Core is
    procedure Test_Live_Runtime (T : in out AUnit.Test_Cases.Test_Case'Class);
    procedure Test_Settings (T : in out AUnit.Test_Cases.Test_Case'Class);
    procedure Test_Resource_Limits (T : in out AUnit.Test_Cases.Test_Case'Class);
+   --  The frame's text reaches the GPU as glyphs.
+   --
+   --  It did not until the window grew a text renderer: the frame carried its
+   --  text commands, the submission was built with no font loaded, and the
+   --  window drew rectangles and icons over an empty space where the words go.
+   --  So this measures the thing that was zero -- glyph vertices -- against the
+   --  same frame submitted both ways.
+   --
+   --  Skipped where the machine has no font this can read.
+   procedure Test_Frame_Text_Rasterizes (T : in out AUnit.Test_Cases.Test_Case'Class) is
+      pragma Unreferenced (T);
+      use type Guikit.Draw.Text_Render_Status;
+
+      Model    : Archive.Model.Application_Model;
+      Config   : constant Archive.UI.Shell_Configuration :=
+        (Width       => 1280,
+         Height      => 800,
+         Locale      => To_Unbounded_String ("en"),
+         Line_Height => 20);
+      Renderer : Guikit.Text.Renderer;
+   begin
+      if Archive.Fonts.Primary = "" then
+         return;
+      end if;
+
+      Archive.Model.Initialize (Model);
+
+      Assert
+        (Guikit.Text.Initialize
+           (Renderer,
+            Archive.Fonts.Primary,
+            Archive.Fonts.Fallbacks,
+            14, 8, 18, 1024, 1024) = Guikit.Draw.Text_Render_Success,
+         "the application's own font chain initialises");
+
+      declare
+         Shell  : constant Archive.UI.Shell_Snapshot := Archive.UI.Build_Shell (Model, Config);
+         Frame  : constant Archive.GUI_Frame.Frame := Archive.GUI_Frame.Build (Shell);
+         Glyphs : constant Guikit.Draw.Text_Render_Result :=
+           Guikit.Text.Build_Glyphs (Renderer, Frame.Text, Frame.Overlay_Text);
+         Drawn  : constant Guikit.Vulkan.Submission_Batch :=
+           Archive.GUI_Frame.To_Submission (Frame, Glyphs);
+         Blank  : constant Guikit.Vulkan.Submission_Batch :=
+           Archive.GUI_Frame.To_Submission (Frame);
+      begin
+         Assert (Natural (Frame.Text.Length) > 0,
+                 "the frame carries text to draw");
+         Assert (Natural (Glyphs.Glyphs.Length) > 0,
+                 "which becomes glyphs, got"
+                 & Natural'Image (Natural (Glyphs.Glyphs.Length)));
+         Assert (Glyphs.Missing_Glyph_Count = 0,
+                 "none of them missing, got"
+                 & Natural'Image (Glyphs.Missing_Glyph_Count));
+         Assert (Drawn.Glyph_Vertex_Count > 0,
+                 "and reaches the submission as vertices, got"
+                 & Natural'Image (Drawn.Glyph_Vertex_Count));
+
+         --  The other half of the point: without a renderer there is nothing
+         --  there, which is what the window used to submit every frame.
+         Assert (Blank.Glyph_Vertex_Count = 0,
+                 "while the text-less submission draws no glyphs at all");
+      end;
+   end Test_Frame_Text_Rasterizes;
+
    procedure Test_Localization (T : in out AUnit.Test_Cases.Test_Case'Class);
 
    overriding function Name (T : Core_Test_Case) return AUnit.Message_String is
@@ -503,6 +570,8 @@ package body Archive_Suite.Core is
       AUnit.Test_Cases.Registration.Register_Routine (T, Test_Settings'Access, "settings defaults");
       AUnit.Test_Cases.Registration.Register_Routine (T, Test_Resource_Limits'Access, "resource limits");
       AUnit.Test_Cases.Registration.Register_Routine (T, Test_Localization'Access, "localization facade");
+      AUnit.Test_Cases.Registration.Register_Routine
+        (T, Test_Frame_Text_Rasterizes'Access, "frame text rasterizes into glyph vertices");
    end Register_Tests;
 
    procedure Test_Format_Detection (T : in out AUnit.Test_Cases.Test_Case'Class) is

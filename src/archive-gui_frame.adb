@@ -544,6 +544,13 @@ package body Archive.GUI_Frame is
       Text : Guikit.Draw.Text_Render_Result;
    begin
       Text.Status := Guikit.Draw.Text_Render_Font_Not_Loaded;
+      return To_Submission (Rendered, Text);
+   end To_Submission;
+
+   function To_Submission
+     (Rendered : Frame;
+      Text     : Guikit.Draw.Text_Render_Result) return Guikit.Vulkan.Submission_Batch is
+   begin
       return Guikit.Vulkan.Build_Submission
         (Rendered.Rectangles, Rendered.Triangles, Rendered.Icons,
          Rendered.Overlay_Rectangles, Rendered.Layout, Guikit.Draw.Theme_Dark, Text);

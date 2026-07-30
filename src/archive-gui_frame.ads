@@ -25,5 +25,18 @@ package Archive.GUI_Frame is
 
    function Build (Shell : Archive.UI.Shell_Snapshot) return Frame;
    function To_Submission (Rendered : Frame) return Guikit.Vulkan.Submission_Batch;
+
+   --  The same, with the frame's text rasterized.
+   --
+   --  The version above draws no text: it exists for the structural checks,
+   --  which run with no font loaded and only look at geometry. A window has a
+   --  renderer and passes the glyphs it built here.
+   --
+   --  @param Rendered The frame to submit.
+   --  @param Text Glyphs built from the frame's text commands.
+   --  @return Submission batch including the text.
+   function To_Submission
+     (Rendered : Frame;
+      Text     : Guikit.Draw.Text_Render_Result) return Guikit.Vulkan.Submission_Batch;
    function Validate (Rendered : Frame) return Frame_Validation;
 end Archive.GUI_Frame;
