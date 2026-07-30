@@ -1,33 +1,28 @@
-with CryptoLib.Checksums;
-with Interfaces;
+with Ada.Streams;
 
 package body Archive.Verification.CRC32 is
-   use type Interfaces.Unsigned_32;
 
    function Initial return CRC32_State is
+      State : CRC32_State;
    begin
-      return (Value => 16#FFFF_FFFF#);
+      CryptoLib.Checksums.CRC32_Reset (State.Inner);
+      return State;
    end Initial;
 
    procedure Update (State : in out CRC32_State; Bytes : Zlib.Byte_Array) is
-      C : Interfaces.Unsigned_32;
    begin
+      --  Byte at a time so an arbitrarily large chunk needs no temporary copy;
+      --  CryptoLib.Checksums drives the standard reflected CRC-32 table.
       for Byte of Bytes loop
-         C := State.Value xor Interfaces.Unsigned_32 (Byte);
-         for Bit in 1 .. 8 loop
-            if (C and 1) = 1 then
-               C := Interfaces.Shift_Right (C, 1) xor 16#EDB8_8320#;
-            else
-               C := Interfaces.Shift_Right (C, 1);
-            end if;
-         end loop;
-         State.Value := C;
+         CryptoLib.Checksums.CRC32_Update
+           (State.Inner, Ada.Streams.Stream_Element (Byte));
       end loop;
    end Update;
 
    function Final (State : CRC32_State) return Archive.Types.CRC32_Value is
    begin
-      return Archive.Types.CRC32_Value (State.Value xor 16#FFFF_FFFF#);
+      return Archive.Types.CRC32_Value
+        (CryptoLib.Checksums.CRC32_Value (State.Inner));
    end Final;
 
 end Archive.Verification.CRC32;
