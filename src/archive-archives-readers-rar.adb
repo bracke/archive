@@ -26,7 +26,12 @@ package body Archive.Archives.Readers.Rar is
          Items : constant Zlib.Archive_Entry_Array :=
            Zlib.List_Rar_File_Entries (Path, Status);
       begin
-         Result.Status := Bridge.To_Error (Status);
+         --  At listing time zlib reports Unsupported_Method only for a
+         --  non-RAR4 marker (e.g. RAR5); the app calls that Unsupported_Format.
+         Result.Status :=
+           (if Status = Zlib.Unsupported_Method
+            then Archive.Archives.Errors.Unsupported_Format
+            else Bridge.To_Error (Status));
          if Status /= Zlib.Ok then
             return Result;
          end if;

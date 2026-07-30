@@ -182,10 +182,19 @@ procedure Check_All is
          Fail (Path & ": inflate operations must go through Archive.Compression.Zlib");
       end if;
 
+      --  Deflate/gzip *output* must go through Archive.Compression.Zlib, so
+      --  the zlib compressor entry points are forbidden in app sources. The
+      --  gzip *reader* legitimately consults zlib to parse a header
+      --  (Zlib.Read_GZip_Header / Zlib.GZip_Metadata), which is not output --
+      --  hence the entry points are named explicitly rather than matching a
+      --  bare " Zlib.GZip".
       if Contains (Path, "/archive/src/")
         and then not Ends_With (Path, "/archive-compression-zlib.adb")
         and then
-          (Contains (Content, " Zlib.GZip")
+          (Contains (Content, " Zlib.GZip (")
+           or else Contains (Content, " Zlib.GZip_File")
+           or else Contains (Content, " Zlib.GZip_Members")
+           or else Contains (Content, " Zlib.GZip_Bound")
            or else Contains (Content, " Zlib.Deflate")
            or else Contains (Content, "Deflate_Raw"))
       then
