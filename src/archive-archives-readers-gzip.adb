@@ -19,10 +19,14 @@ package body Archive.Archives.Readers.Gzip is
    use type Archive.Compression.Zlib.Stream_Close_Status;
    use type Archive.Types.CRC32_Value;
    use type Archive.Types.Uncompressed_Size;
-   use type Zlib.Byte;
+   use type Zlib.Status_Code;
 
    Max_Header_Probe : constant Natural := 16_384;
    Max_Gzip_Field_Metadata : constant Natural := 4_096;
+
+   --  The gzip header is parsed by Zlib.Read_GZip_Header; this body keeps the
+   --  app-domain glue: the ISIZE/CRC trailer, the ".gz" name derivation, and
+   --  the streaming gunzip that verifies the payload.
 
    procedure Read_File_Slice
      (Path   : String;
@@ -76,35 +80,20 @@ package body Archive.Archives.Readers.Gzip is
          Status := Archive.Archives.Errors.Read_Failed;
    end Read_File_Slice;
 
-   function In_Range
-     (Bytes  : Zlib.Byte_Array;
-      Offset : Natural;
-      Count  : Natural)
-      return Boolean
+   function U32 (Bytes : Zlib.Byte_Array; Offset : Natural)
+      return Archive.Types.CRC32_Value
    is
+      function Octet (K : Natural) return Archive.Types.CRC32_Value is
+        (Archive.Types.CRC32_Value (Bytes (Bytes'First + K)));
    begin
-      return Count <= Bytes'Length
-        and then Offset <= Bytes'Length - Count;
-   end In_Range;
-
-   function Octet (Bytes : Zlib.Byte_Array; Offset : Natural) return Zlib.Byte is
-   begin
-      return Bytes (Bytes'First + Offset);
-   end Octet;
-
-   function U32 (Bytes : Zlib.Byte_Array; Offset : Natural) return Archive.Types.CRC32_Value is
-   begin
-      return Archive.Types.CRC32_Value (Octet (Bytes, Offset))
-        or Archive.Types.CRC32_Value (Interfaces.Shift_Left (Interfaces.Unsigned_32 (Octet (Bytes, Offset + 1)), 8))
-        or Archive.Types.CRC32_Value (Interfaces.Shift_Left (Interfaces.Unsigned_32 (Octet (Bytes, Offset + 2)), 16))
-        or Archive.Types.CRC32_Value (Interfaces.Shift_Left (Interfaces.Unsigned_32 (Octet (Bytes, Offset + 3)), 24));
+      return Octet (Offset)
+        or Archive.Types.CRC32_Value
+             (Interfaces.Shift_Left (Interfaces.Unsigned_32 (Octet (Offset + 1)), 8))
+        or Archive.Types.CRC32_Value
+             (Interfaces.Shift_Left (Interfaces.Unsigned_32 (Octet (Offset + 2)), 16))
+        or Archive.Types.CRC32_Value
+             (Interfaces.Shift_Left (Interfaces.Unsigned_32 (Octet (Offset + 3)), 24));
    end U32;
-
-   function U16 (Bytes : Zlib.Byte_Array; Offset : Natural) return Natural is
-   begin
-      return Natural (Octet (Bytes, Offset))
-        + Natural (Octet (Bytes, Offset + 1)) * 256;
-   end U16;
 
    function Has_Suffix (Value : String; Suffix : String) return Boolean is
    begin
@@ -134,168 +123,15 @@ package body Archive.Archives.Readers.Gzip is
       return "";
    end Safe_Name;
 
-   type Parsed_Header is record
-      Status : Archive.Archives.Errors.Error_Code := Archive.Archives.Errors.Ok;
-      Info   : Gzip_Header_Info;
-      Name   : Unbounded_String;
-   end record;
-
-   function Parse_Header (Bytes : Zlib.Byte_Array) return Parsed_Header is
-      FTEXT    : constant Zlib.Byte := 16#01#;
-      FHCRC    : constant Zlib.Byte := 16#02#;
-      FEXTRA   : constant Zlib.Byte := 16#04#;
-      FNAME    : constant Zlib.Byte := 16#08#;
-      FCOMMENT : constant Zlib.Byte := 16#10#;
-      Reserved : constant Zlib.Byte := 16#E0#;
-      Pos      : Natural := 10;
-      FLG      : Zlib.Byte;
-      Info     : Gzip_Header_Info;
-      pragma Unreferenced (FTEXT);
-   begin
-      if Bytes'Length < 18
-        or else Octet (Bytes, 0) /= 16#1F#
-        or else Octet (Bytes, 1) /= 16#8B#
-        or else Octet (Bytes, 2) /= 16#08#
-      then
-         return (Status => Archive.Archives.Errors.Invalid_Format,
-                 Info => <>,
-                 Name => Null_Unbounded_String);
-      end if;
-
-      FLG := Octet (Bytes, 3);
-      if (FLG and Reserved) /= 0 then
-         return (Status => Archive.Archives.Errors.Invalid_Format,
-                 Info => <>,
-                 Name => Null_Unbounded_String);
-      end if;
-
-      if (FLG and FEXTRA) /= 0 then
-         if not In_Range (Bytes, Pos, 2) then
-            return (Status => Archive.Archives.Errors.Invalid_Format,
-                    Info => <>,
-                    Name => Null_Unbounded_String);
-         end if;
-
-         declare
-            Len : constant Natural := U16 (Bytes, Pos);
-         begin
-            if Len > Max_Gzip_Field_Metadata then
-               return (Status => Archive.Archives.Errors.Limit_Exceeded,
-                       Info => <>,
-                       Name => Null_Unbounded_String);
-            elsif not In_Range (Bytes, Pos + 2, Len) then
-               return (Status => Archive.Archives.Errors.Invalid_Format,
-                       Info => <>,
-                       Name => Null_Unbounded_String);
-            end if;
-            Info.Extra_Length := Len;
-            Pos := Pos + 2 + Len;
-         end;
-      end if;
-
-      declare
-         Raw_Name : Unbounded_String;
-      begin
-         if (FLG and FNAME) /= 0 then
-            declare
-               Start : constant Natural := Pos;
-            begin
-               while Pos < Bytes'Length and then Octet (Bytes, Pos) /= 0 loop
-                  if Pos - Start >= Max_Gzip_Field_Metadata then
-                     return (Status => Archive.Archives.Errors.Limit_Exceeded,
-                             Info => <>,
-                             Name => Null_Unbounded_String);
-                  end if;
-                  Append (Raw_Name, Character'Val (Octet (Bytes, Pos)));
-                  Pos := Pos + 1;
-               end loop;
-               if Pos >= Bytes'Length then
-                  return (Status => Archive.Archives.Errors.Invalid_Format,
-                          Info => <>,
-                          Name => Null_Unbounded_String);
-               end if;
-               Info.Has_Name := True;
-               Pos := Pos + 1;
-            end;
-         end if;
-
-         if (FLG and FCOMMENT) /= 0 then
-            declare
-               Start : constant Natural := Pos;
-            begin
-               while Pos < Bytes'Length and then Octet (Bytes, Pos) /= 0 loop
-                  if Pos - Start >= Max_Gzip_Field_Metadata then
-                     return (Status => Archive.Archives.Errors.Limit_Exceeded,
-                             Info => <>,
-                             Name => Null_Unbounded_String);
-                  end if;
-                  Pos := Pos + 1;
-               end loop;
-               if Pos >= Bytes'Length then
-                  return (Status => Archive.Archives.Errors.Invalid_Format,
-                          Info => <>,
-                          Name => Null_Unbounded_String);
-               end if;
-               Info.Has_Comment := True;
-               Pos := Pos + 1;
-            end;
-         end if;
-
-         if (FLG and FHCRC) /= 0 then
-            if not In_Range (Bytes, Pos, 2) then
-               return (Status => Archive.Archives.Errors.Invalid_Format,
-                       Info => <>,
-                       Name => Null_Unbounded_String);
-            end if;
-
-            declare
-               Header_Bytes : Zlib.Byte_Array (1 .. Pos);
-               Expected     : constant Natural := U16 (Bytes, Pos);
-               State        : Archive.Verification.CRC32.CRC32_State :=
-                 Archive.Verification.CRC32.Initial;
-               Actual       : Archive.Types.CRC32_Value;
-            begin
-               for Index in Header_Bytes'Range loop
-                  Header_Bytes (Index) := Octet (Bytes, Index - 1);
-               end loop;
-               Archive.Verification.CRC32.Update (State, Header_Bytes);
-               Actual := Archive.Verification.CRC32.Final (State);
-               if Natural (Actual mod 65_536) /= Expected then
-                  return (Status => Archive.Archives.Errors.Invalid_Format,
-                          Info => <>,
-                          Name => Null_Unbounded_String);
-               end if;
-            end;
-            Info.Has_Header_CRC := True;
-            Pos := Pos + 2;
-         end if;
-
-         if Pos > Bytes'Length - 8 then
-            return (Status => Archive.Archives.Errors.Invalid_Format,
-                    Info => <>,
-                    Name => Null_Unbounded_String);
-         end if;
-
-         Info.Header_Length := Pos;
-         declare
-            Safe : constant String := Safe_Name (To_String (Raw_Name));
-         begin
-            return (Status => Archive.Archives.Errors.Ok,
-                    Info => Info,
-                    Name => To_Unbounded_String (Safe));
-         end;
-      end;
-   end Parse_Header;
-
    function Logical_Name
-     (Header     : Parsed_Header;
+     (Embedded    : String;
       Source_Name : String)
       return String
    is
       From_Source : constant String := Safe_Name (Strip_Gz (Source_Name));
    begin
-      if Length (Header.Name) > 0 then
-         return To_String (Header.Name);
+      if Embedded'Length > 0 then
+         return Embedded;
       elsif From_Source /= "" then
          return From_Source;
       else
@@ -341,34 +177,70 @@ package body Archive.Archives.Readers.Gzip is
          end if;
 
          declare
-            Header : constant Parsed_Header := Parse_Header (Header_Bytes);
-            Result : Gzip_Index_Result;
-            Name   : constant String :=
-              Logical_Name
-                (Header,
-                 (if Source_Name'Length > 0 then Source_Name else Path));
+            Md      : Zlib.GZip_Metadata;
+            HStatus : Zlib.Status_Code;
+            Result  : Gzip_Index_Result;
          begin
-            if Header.Status /= Archive.Archives.Errors.Ok then
-               Result.Status := Header.Status;
+            Zlib.Read_GZip_Header (Header_Bytes, Md, HStatus);
+            if HStatus /= Zlib.Ok then
+               Result.Status :=
+                 (if HStatus = Zlib.Insufficient_Memory
+                  then Archive.Archives.Errors.Limit_Exceeded
+                  else Archive.Archives.Errors.Invalid_Format);
                return Result;
             end if;
 
-            Result.Item.Original_Path := To_Unbounded_String (Name);
-            Result.Item.Display_Name := To_Unbounded_String (Name);
-            Result.Item.Kind := Archive.Archives.Entries.Regular_File;
-            Result.Item.Method := Archive.Archives.Entries.GZip_Deflate;
-            Result.Item.Encryption := Archive.Archives.Entries.Not_Encrypted;
-            Result.Item.Integrity := Archive.Archives.Entries.Not_Checked;
-            Result.Item.Safety := Archive.Archives.Paths.Normalize (Name).Safety;
-            Result.Item.CRC32 := (Present => True, Value => U32 (Trailer_Bytes, 0));
-            Result.Item.Uncompressed :=
-              (Present => True,
-               Value => Archive.Types.Uncompressed_Size (U32 (Trailer_Bytes, 4)));
-            Result.Item.Compressed :=
-              (Present => True,
-               Value => Archive.Types.Uncompressed_Size (Size_N));
-            Result.Header := Header.Info;
-            return Result;
+            declare
+               Embedded : constant String :=
+                 (if Zlib.Has_Name (Md) then Safe_Name (Zlib.Name (Md)) else "");
+               Extra_Len : constant Natural := Zlib.Extra (Md)'Length;
+            begin
+               --  Preserve the app's field-size ceiling: an oversized FEXTRA,
+               --  FNAME, or FCOMMENT is refused rather than surfaced.
+               if Extra_Len > Max_Gzip_Field_Metadata
+                 or else (Zlib.Has_Name (Md)
+                          and then Zlib.Name (Md)'Length > Max_Gzip_Field_Metadata)
+                 or else (Zlib.Has_Comment (Md)
+                          and then Zlib.Comment (Md)'Length
+                                   > Max_Gzip_Field_Metadata)
+               then
+                  Result.Status := Archive.Archives.Errors.Limit_Exceeded;
+                  return Result;
+               end if;
+
+               declare
+                  Name : constant String :=
+                    Logical_Name
+                      (Embedded,
+                       (if Source_Name'Length > 0 then Source_Name else Path));
+               begin
+                  Result.Item.Original_Path := To_Unbounded_String (Name);
+                  Result.Item.Display_Name := To_Unbounded_String (Name);
+                  Result.Item.Kind := Archive.Archives.Entries.Regular_File;
+                  Result.Item.Method := Archive.Archives.Entries.GZip_Deflate;
+                  Result.Item.Encryption :=
+                    Archive.Archives.Entries.Not_Encrypted;
+                  Result.Item.Integrity := Archive.Archives.Entries.Not_Checked;
+                  Result.Item.Safety :=
+                    Archive.Archives.Paths.Normalize (Name).Safety;
+                  Result.Item.CRC32 :=
+                    (Present => True, Value => U32 (Trailer_Bytes, 0));
+                  Result.Item.Uncompressed :=
+                    (Present => True,
+                     Value =>
+                       Archive.Types.Uncompressed_Size (U32 (Trailer_Bytes, 4)));
+                  Result.Item.Compressed :=
+                    (Present => True,
+                     Value => Archive.Types.Uncompressed_Size (Size_N));
+                  Result.Header :=
+                    (Header_Length  => Zlib.Header_Length (Md),
+                     Extra_Length   => Extra_Len,
+                     Has_Name       => Zlib.Has_Name (Md),
+                     Has_Comment    => Zlib.Has_Comment (Md),
+                     Has_Header_CRC => Zlib.Has_Header_CRC (Md));
+                  return Result;
+               end;
+            end;
          end;
       end;
    exception
