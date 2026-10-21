@@ -246,6 +246,20 @@ package Archive.Model is
      (Model : in out Application_Model;
       Text  : String);
 
+   --  How many rows the palette's highlight has moved from its first result
+   --  (negative moves up, wrapping). Opening the palette or changing its filter
+   --  puts it back on the first result.
+   function Command_Palette_Selection (Model : Application_Model) return Integer;
+   procedure Move_Command_Palette_Selection
+     (Model : in out Application_Model;
+      Rows  : Integer);
+
+   --  The path typed into the open dialog's field; opening a dialog clears it.
+   function Dialog_Text (Model : Application_Model) return String;
+   procedure Set_Dialog_Text
+     (Model : in out Application_Model;
+      Text  : String);
+
    function Active_Dialog (Model : Application_Model) return Dialog_Kind;
    function Notification (Model : Application_Model) return Notification_Severity;
    function Notification_Key (Model : Application_Model) return String;
@@ -413,7 +427,9 @@ private
       Overlay        : Overlay_Kind := No_Overlay;
       Focus          : Focus_Region := Content_Focus;
       Palette_Filter : UString;
+      Palette_Moves  : Integer := 0;
       Dialog         : Dialog_Kind := No_Dialog;
+      Dialog_Input   : UString;
       Notice         : Notification_Severity := No_Notification;
       Notice_Key     : UString;
       Selection      : Archive.Selection.Selection_Model;

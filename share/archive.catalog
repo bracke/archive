@@ -169,6 +169,7 @@ en.entry.kind.metadata = Metadata
 en.entry.kind.unknown = Unknown
 en.ui.dialog.none = No dialog
 en.ui.dialog.open_archive = Open archive
+en.ui.dialog.path_hint = Enter confirms, Esc cancels.
 en.ui.dialog.add_files = Add files
 en.ui.dialog.add_directory = Add directory
 en.ui.dialog.replace_file = Replace file

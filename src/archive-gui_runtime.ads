@@ -100,6 +100,26 @@ package Archive.GUI_Runtime is
       Check_Identity   : Boolean := True)
       return Archive.Extraction.Service.Extract_Result;
 
+   --  Window input, in the order it arrived. A path dialog takes typed text,
+   --  Backspace and Enter; the command palette takes typed text, Backspace,
+   --  Up/Down and Enter; anything else goes to Dispatch_Shortcut (Escape,
+   --  Tab focus, content navigation, command shortcuts).
+   procedure Key_Pressed
+     (Runtime   : in out Runtime_State;
+      Key       : Guikit.Input.Key_Code;
+      Modifiers : Guikit.Input.Modifier_Set);
+
+   --  Text typed into whatever field has the keyboard (UTF-8).
+   procedure Text_Typed
+     (Runtime : in out Runtime_State;
+      Text    : String);
+
+   --  A left click at a window position: a toolbar button runs its command;
+   --  a palette row runs its command.
+   procedure Clicked
+     (Runtime : in out Runtime_State;
+      X, Y    : Integer);
+
    procedure Request_Close (Runtime : in out Runtime_State);
    function Runtime_Report (Runtime : Runtime_State) return String;
 

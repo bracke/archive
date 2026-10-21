@@ -364,6 +364,7 @@ package body Archive_Suite.Core is
    procedure Test_UI_Shell (T : in out AUnit.Test_Cases.Test_Case'Class);
    procedure Test_GUI_Frame (T : in out AUnit.Test_Cases.Test_Case'Class);
    procedure Test_GUI_Runtime (T : in out AUnit.Test_Cases.Test_Case'Class);
+   procedure Test_GUI_Input (T : in out AUnit.Test_Cases.Test_Case'Class);
    procedure Test_Live_Runtime (T : in out AUnit.Test_Cases.Test_Case'Class);
    procedure Test_Settings (T : in out AUnit.Test_Cases.Test_Case'Class);
    procedure Test_Resource_Limits (T : in out AUnit.Test_Cases.Test_Case'Class);
@@ -566,6 +567,7 @@ package body Archive_Suite.Core is
       AUnit.Test_Cases.Registration.Register_Routine (T, Test_UI_Shell'Access, "ui shell snapshot");
       AUnit.Test_Cases.Registration.Register_Routine (T, Test_GUI_Frame'Access, "gui frame renderer");
       AUnit.Test_Cases.Registration.Register_Routine (T, Test_GUI_Runtime'Access, "gui runtime shell");
+      AUnit.Test_Cases.Registration.Register_Routine (T, Test_GUI_Input'Access, "gui window input");
       AUnit.Test_Cases.Registration.Register_Routine (T, Test_Live_Runtime'Access, "live desktop runtime");
       AUnit.Test_Cases.Registration.Register_Routine (T, Test_Settings'Access, "settings defaults");
       AUnit.Test_Cases.Registration.Register_Routine (T, Test_Resource_Limits'Access, "resource limits");
@@ -13875,6 +13877,87 @@ package body Archive_Suite.Core is
                  "gui frame emits overlay text for dialogs");
       end;
    end Test_GUI_Frame;
+
+   --  Window input as the window delivers it: a toolbar click, typed text,
+   --  Backspace, Enter and Escape in a path dialog, and the command palette
+   --  driven by typing, arrows and Enter.
+   procedure Test_GUI_Input (T : in out AUnit.Test_Cases.Test_Case'Class) is
+      pragma Unreferenced (T);
+      Runtime  : Archive.GUI_Runtime.Runtime_State;
+      Root     : constant String := "obj/gui-input-test";
+      Zip_Path : constant String := Root & "/sample.zip";
+      None     : constant Guikit.Input.Modifier_Set := Guikit.Input.No_Modifiers;
+
+      function Dialog return Archive.Model.Dialog_Kind is
+        (Archive.GUI_Runtime.Snapshot (Runtime).Dialog.Active);
+
+      procedure Click_Toolbar (Command : Archive.Commands.Command_Id) is
+         Found : Boolean := False;
+      begin
+         for Button of Archive.GUI_Frame.Toolbar_Buttons (Archive.GUI_Runtime.Snapshot (Runtime), 1024) loop
+            if Button.Command = Command then
+               Archive.GUI_Runtime.Clicked (Runtime, Button.X + Button.Width / 2, Button.Y + Button.Height / 2);
+               Found := True;
+               exit;
+            end if;
+         end loop;
+         Assert (Found, "the toolbar shows " & Command'Image);
+      end Click_Toolbar;
+   begin
+      if not Ada.Directories.Exists (Root) then
+         Ada.Directories.Create_Path (Root);
+      end if;
+      Write_Bytes (Zip_Path, One_File_Zip);
+      Archive.GUI_Runtime.Initialize (Runtime, Locale => "en", Width => 1024, Height => 720);
+
+      --  A click between buttons does nothing; one on Open archive opens its dialog.
+      Archive.GUI_Runtime.Clicked (Runtime, 5, 5);
+      Assert (Dialog = Archive.Model.No_Dialog, "a click off the toolbar buttons opens nothing");
+      Click_Toolbar (Archive.Commands.Open_Archive_Command);
+      Assert (Dialog = Archive.Model.Open_Archive_Dialog, "clicking Open archive opens its dialog");
+      Assert (Archive.GUI_Runtime.Snapshot (Runtime).Dialog.Takes_Path, "the open dialog asks for a path");
+
+      Archive.GUI_Runtime.Text_Typed (Runtime, "abc");
+      Archive.GUI_Runtime.Key_Pressed (Runtime, Guikit.Input.Key_Backspace, None);
+      Assert (To_String (Archive.GUI_Runtime.Snapshot (Runtime).Dialog.Text) = "ab",
+              "typing fills the field and Backspace takes the last character");
+      Archive.GUI_Runtime.Key_Pressed (Runtime, Guikit.Input.Key_Escape, None);
+      Assert (Dialog = Archive.Model.No_Dialog, "Escape cancels the dialog");
+
+      Click_Toolbar (Archive.Commands.Open_Archive_Command);
+      Assert (To_String (Archive.GUI_Runtime.Snapshot (Runtime).Dialog.Text) = "",
+              "a reopened dialog starts empty");
+      Archive.GUI_Runtime.Text_Typed (Runtime, Zip_Path);
+      Archive.GUI_Runtime.Key_Pressed (Runtime, Guikit.Input.Key_Return, None);
+      Assert (Dialog = Archive.Model.No_Dialog, "Enter answers the dialog");
+      Assert (Archive.GUI_Runtime.Open_Operation_Status (Runtime) /= Archive.Operations.Opening.Operation_Idle,
+              "and opens the typed archive");
+      for Attempt in 1 .. 10_000 loop
+         exit when Archive.GUI_Runtime.Drain_Operations (Runtime).Event_Seen;
+      end loop;
+
+      --  The palette: typing filters it, Enter runs the highlighted command.
+      declare
+         Ignored : constant Archive.UI.Dispatch_Result :=
+           Archive.GUI_Runtime.Dispatch_Command
+             (Runtime, Archive.Commands.Open_Command_Palette_Command, Archive.UI.Shortcut_Source);
+      begin
+         Assert (Archive.GUI_Runtime.Snapshot (Runtime).Overlay.Active = Archive.Model.Command_Palette_Overlay,
+                 "the palette opens");
+      end;
+      Archive.GUI_Runtime.Text_Typed (Runtime, "Open archiveX");
+      Archive.GUI_Runtime.Key_Pressed (Runtime, Guikit.Input.Key_Backspace, None);
+      Assert (To_String (Archive.GUI_Runtime.Snapshot (Runtime).Command_Palette_Filter) = "Open archive",
+              "typing filters the palette and Backspace edits the query");
+      Archive.GUI_Runtime.Key_Pressed (Runtime, Guikit.Input.Key_Down, None);
+      Archive.GUI_Runtime.Key_Pressed (Runtime, Guikit.Input.Key_Up, None);
+      Assert (Archive.GUI_Runtime.Snapshot (Runtime).Command_Palette_Moves = 0,
+              "Down then Up returns to the first result");
+      Archive.GUI_Runtime.Key_Pressed (Runtime, Guikit.Input.Key_Return, None);
+      Assert (Dialog = Archive.Model.Open_Archive_Dialog,
+              "Enter runs the highlighted command (Open archive)");
+      Archive.GUI_Runtime.Key_Pressed (Runtime, Guikit.Input.Key_Escape, None);
+   end Test_GUI_Input;
 
    procedure Test_GUI_Runtime (T : in out AUnit.Test_Cases.Test_Case'Class) is
       pragma Unreferenced (T);

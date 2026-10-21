@@ -1,6 +1,11 @@
+with Ada.Containers.Vectors;
+
+with Guikit.Command_Palette;
 with Guikit.Draw;
 with Guikit.Vulkan;
 
+with Archive.Commands;
+with Archive.Types;
 with Archive.UI;
 
 package Archive.GUI_Frame is
@@ -24,6 +29,35 @@ package Archive.GUI_Frame is
    end record;
 
    function Build (Shell : Archive.UI.Shell_Snapshot) return Frame;
+
+   --  One toolbar button where the frame draws it. Drawing and click
+   --  hit-testing both come from Toolbar_Buttons, so they cannot disagree.
+   type Toolbar_Button is record
+      X, Y, Width, Height : Natural := 0;
+      Command : Archive.Commands.Command_Id := Archive.Commands.No_Command;
+      Enabled : Boolean := False;
+      Label   : Archive.Types.UString;
+   end record;
+
+   package Toolbar_Button_Vectors is new Ada.Containers.Vectors
+     (Index_Type   => Positive,
+      Element_Type => Toolbar_Button);
+
+   --  The toolbar's buttons, each as wide as its label, left to right; those
+   --  that do not fit a window Width wide are left out.
+   function Toolbar_Buttons
+     (Shell : Archive.UI.Shell_Snapshot;
+      Width : Natural)
+      return Toolbar_Button_Vectors.Vector;
+
+   --  The command palette as the frame draws it -- its rows, typed query and
+   --  highlighted row -- so input reads the same result the user sees.
+   function Command_Palette_For (Shell : Archive.UI.Shell_Snapshot) return Guikit.Command_Palette.Palette;
+
+   --  Where the palette is drawn in a Width x Height window.
+   procedure Command_Palette_Box
+     (Width, Height : Natural;
+      X, Y, W, H    : out Natural);
    function To_Submission (Rendered : Frame) return Guikit.Vulkan.Submission_Batch;
 
    --  The same, with the frame's text rasterized.

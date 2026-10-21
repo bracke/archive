@@ -1,10 +1,16 @@
+with Ada.Directories;
 with Ada.Strings.Unbounded;
+
+with Guikit.Command_Palette;
+with Guikit.Draw;
 
 with Archive.Localization;
 
 package body Archive.GUI_Runtime is
    use Ada.Strings.Unbounded;
    use type Archive.Commands.Command_Id;
+   use type Archive.Model.Dialog_Kind;
+   use type Archive.Model.Overlay_Kind;
    use type Archive.Extraction.Service.Extract_Status;
    use type Archive.Writes.Service.Save_Status;
 
@@ -252,6 +258,197 @@ package body Archive.GUI_Runtime is
       end if;
       return Result;
    end Complete_Extraction_Dialog;
+
+   --  Text without its last UTF-8 character.
+   function Without_Last (Text : String) return String is
+      Last : Natural := Text'Last;
+   begin
+      if Text'Length = 0 then
+         return Text;
+      end if;
+      while Last > Text'First
+        and then Character'Pos (Text (Last)) in 16#80# .. 16#BF#
+      loop
+         Last := Last - 1;
+      end loop;
+      return Text (Text'First .. Last - 1);
+   end Without_Last;
+
+   --  Answer the open path dialog with the typed path.
+   procedure Commit_Dialog (Runtime : in out Runtime_State) is
+      Path : constant String := Archive.Model.Dialog_Text (Runtime.App_Model);
+
+      function Leaf return String is
+        (if Ada.Directories.Simple_Name (Path) = "" then Path else Ada.Directories.Simple_Name (Path));
+   begin
+      if Path = "" then
+         return;
+      end if;
+      case Archive.Model.Active_Dialog (Runtime.App_Model) is
+         when Archive.Model.Open_Archive_Dialog =>
+            Complete_Open_Dialog (Runtime, Path);
+         when Archive.Model.Add_Files_Dialog =>
+            Complete_Add_File_Dialog (Runtime, Path, Leaf);
+         when Archive.Model.Add_Directory_Dialog =>
+            Complete_Add_Directory_Dialog (Runtime, Path, Leaf);
+         when Archive.Model.Replace_File_Dialog =>
+            Complete_Replace_File_Dialog (Runtime, Path);
+         when Archive.Model.Rename_Entry_Dialog =>
+            Complete_Rename_Dialog (Runtime, Path);
+         when Archive.Model.Extract_Destination_Dialog =>
+            declare
+               Ignored : constant Archive.Extraction.Service.Extract_Result :=
+                 Complete_Extraction_Dialog (Runtime, Path);
+            begin
+               null;  --  the model reports how it went
+            end;
+         when Archive.Model.Save_As_Dialog =>
+            declare
+               Ignored : constant Archive.Writes.Service.Save_Result :=
+                 Complete_Save_As_Dialog (Runtime, Path);
+            begin
+               null;  --  the model reports how it went
+            end;
+         when others =>
+            null;
+      end case;
+   exception
+      when Ada.Directories.Name_Error =>
+         null;  --  not a path at all; the dialog stays open to be corrected
+   end Commit_Dialog;
+
+   --  Run the palette's highlighted command, as the frame shows it.
+   procedure Run_Palette_Selection (Runtime : in out Runtime_State) is
+      Palette : constant Guikit.Command_Palette.Palette :=
+        Archive.GUI_Frame.Command_Palette_For (Snapshot (Runtime));
+      Results : constant Guikit.Command_Palette.Command_Vectors.Vector :=
+        Guikit.Command_Palette.Results (Palette);
+      Index   : constant Natural := Guikit.Command_Palette.Selected_Index (Palette);
+   begin
+      if Index in 1 .. Natural (Results.Length) then
+         declare
+            Ignored : constant Archive.UI.Dispatch_Result :=
+              Execute_Palette_Command (Runtime, To_String (Results.Element (Index).Identifier));
+         begin
+            null;
+         end;
+      end if;
+   end Run_Palette_Selection;
+
+   procedure Key_Pressed
+     (Runtime   : in out Runtime_State;
+      Key       : Guikit.Input.Key_Code;
+      Modifiers : Guikit.Input.Modifier_Set)
+   is
+      use type Guikit.Input.Key_Code;
+      use type Guikit.Input.Modifier_Set;
+      Plain   : constant Boolean := Modifiers = Guikit.Input.No_Modifiers;
+      Ignored : Archive.UI.Dispatch_Result;
+   begin
+      if Archive.UI.Dialog_Takes_Path (Archive.Model.Active_Dialog (Runtime.App_Model)) and then Plain then
+         if Key = Guikit.Input.Key_Backspace then
+            Archive.Model.Set_Dialog_Text
+              (Runtime.App_Model, Without_Last (Archive.Model.Dialog_Text (Runtime.App_Model)));
+            return;
+         elsif Key = Guikit.Input.Key_Return then
+            Commit_Dialog (Runtime);
+            return;
+         end if;
+      elsif Archive.Model.Active_Overlay (Runtime.App_Model) = Archive.Model.Command_Palette_Overlay
+        and then Plain
+      then
+         case Key is
+            when Guikit.Input.Key_Backspace =>
+               Archive.Model.Set_Command_Palette_Filter
+                 (Runtime.App_Model, Without_Last (Archive.Model.Command_Palette_Filter (Runtime.App_Model)));
+               return;
+            when Guikit.Input.Key_Up =>
+               Archive.Model.Move_Command_Palette_Selection (Runtime.App_Model, -1);
+               return;
+            when Guikit.Input.Key_Down =>
+               Archive.Model.Move_Command_Palette_Selection (Runtime.App_Model, 1);
+               return;
+            when Guikit.Input.Key_Return =>
+               Run_Palette_Selection (Runtime);
+               return;
+            when others =>
+               null;
+         end case;
+      end if;
+      Ignored := Dispatch_Shortcut (Runtime, Key, Modifiers);
+   end Key_Pressed;
+
+   procedure Text_Typed
+     (Runtime : in out Runtime_State;
+      Text    : String) is
+   begin
+      if Archive.UI.Dialog_Takes_Path (Archive.Model.Active_Dialog (Runtime.App_Model)) then
+         Archive.Model.Set_Dialog_Text (Runtime.App_Model, Archive.Model.Dialog_Text (Runtime.App_Model) & Text);
+      elsif Archive.Model.Active_Overlay (Runtime.App_Model) = Archive.Model.Command_Palette_Overlay then
+         Archive.Model.Set_Command_Palette_Filter
+           (Runtime.App_Model, Archive.Model.Command_Palette_Filter (Runtime.App_Model) & Text);
+      end if;
+   end Text_Typed;
+
+   procedure Clicked
+     (Runtime : in out Runtime_State;
+      X, Y    : Integer)
+   is
+      Shell : constant Archive.UI.Shell_Snapshot := Snapshot (Runtime);
+   begin
+      if Archive.Model.Active_Dialog (Runtime.App_Model) /= Archive.Model.No_Dialog then
+         return;  --  a modal dialog answers to the keyboard
+      elsif Archive.Model.Active_Overlay (Runtime.App_Model) = Archive.Model.Command_Palette_Overlay then
+         declare
+            Palette : Guikit.Command_Palette.Palette := Archive.GUI_Frame.Command_Palette_For (Shell);
+            Rects   : Guikit.Draw.Rectangle_Command_Vectors.Vector;
+            Text    : Guikit.Draw.Text_Command_Vectors.Vector;
+            Icons   : Guikit.Draw.Icon_Command_Vectors.Vector;
+            Nodes   : Guikit.Draw.Accessibility_Node_Vectors.Vector;
+            Box_X, Box_Y, Box_W, Box_H : Natural;
+         begin
+            --  Lay the palette out as drawn, then let it hit-test the click.
+            Archive.GUI_Frame.Command_Palette_Box
+              (Runtime.Config.Width, Runtime.Config.Height, Box_X, Box_Y, Box_W, Box_H);
+            Guikit.Command_Palette.Build_Frame
+              (Palette, Box_X, Box_Y, Box_W, Box_H, Runtime.Config.Width, Runtime.Config.Height,
+               True, -1, -1, Rects, Text, Icons, Nodes);
+            if Guikit.Command_Palette.Click (Palette, X, Y) then
+               declare
+                  Results : constant Guikit.Command_Palette.Command_Vectors.Vector :=
+                    Guikit.Command_Palette.Results (Palette);
+                  Index   : constant Natural := Guikit.Command_Palette.Selected_Index (Palette);
+               begin
+                  if Index in 1 .. Natural (Results.Length) then
+                     declare
+                        Ignored : constant Archive.UI.Dispatch_Result :=
+                          Execute_Palette_Command (Runtime, To_String (Results.Element (Index).Identifier));
+                     begin
+                        null;
+                     end;
+                  end if;
+               end;
+            end if;
+         end;
+         return;
+      end if;
+
+      for Button of Archive.GUI_Frame.Toolbar_Buttons (Shell, Runtime.Config.Width) loop
+         if X >= Button.X and then X < Button.X + Button.Width
+           and then Y >= Button.Y and then Y < Button.Y + Button.Height
+         then
+            if Button.Enabled then
+               declare
+                  Ignored : constant Archive.UI.Dispatch_Result :=
+                    Dispatch_Command (Runtime, Button.Command, Archive.UI.Toolbar_Source);
+               begin
+                  null;
+               end;
+            end if;
+            return;
+         end if;
+      end loop;
+   end Clicked;
 
    procedure Request_Close (Runtime : in out Runtime_State) is
    begin

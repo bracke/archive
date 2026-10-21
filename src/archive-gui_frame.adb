@@ -1,6 +1,5 @@
 with Ada.Strings.Unbounded;
 
-with Guikit.Command_Palette;
 with Guikit.Item_Grid;
 with Guikit.Layout;
 with Guikit.List_Panel;
@@ -8,13 +7,41 @@ with Guikit.Settings_Panel;
 with Guikit.Widgets;
 
 with Archive.Archives.Entries;
-with Archive.Commands;
 with Archive.Model;
 with Archive.Settings;
-with Archive.Types;
 
 package body Archive.GUI_Frame is
    use Ada.Strings.Unbounded;
+
+   Toolbar_Button_Padding : constant Natural := 8;
+
+   function Toolbar_Buttons
+     (Shell : Archive.UI.Shell_Snapshot;
+      Width : Natural)
+      return Toolbar_Button_Vectors.Vector
+   is
+      Advance : constant Positive := Guikit.Layout.Caret_Advance_Width (Archive.UI.Default_Line_Height);
+      Gap     : constant Natural := 4;
+      Result  : Toolbar_Button_Vectors.Vector;
+      X       : Natural := 260;
+   begin
+      --  Each button is as wide as its label, measured with the advance the
+      --  renderer draws at; buttons that no longer fit the window are left out
+      --  rather than drawn clipped.
+      for Command of Shell.Toolbar.Commands loop
+         declare
+            Button_W : constant Natural :=
+              Guikit.Layout.Label_Pixel_Width (To_String (Command.Name), Advance) + 2 * Toolbar_Button_Padding;
+         begin
+            exit when X + Button_W > Width;
+            Result.Append
+              (Toolbar_Button'(X => X, Y => 8, Width => Button_W, Height => 28,
+                Command => Command.Id, Enabled => Command.Enabled, Label => Command.Name));
+            X := X + Button_W + Gap;
+         end;
+      end loop;
+      return Result;
+   end Toolbar_Buttons;
    use type Archive.Archives.Entries.Entry_Kind;
    use type Archive.Model.Focus_Region;
    use type Archive.Model.Overlay_Kind;
@@ -194,18 +221,9 @@ package body Archive.GUI_Frame is
       end loop;
    end Draw_Content;
 
-   procedure Draw_Command_Palette
-     (Result : in out Frame;
-      Shell  : Archive.UI.Shell_Snapshot;
-      W      : Natural;
-      H      : Natural)
-   is
-      Palette : Guikit.Command_Palette.Palette;
+   function Command_Palette_For (Shell : Archive.UI.Shell_Snapshot) return Guikit.Command_Palette.Palette is
+      Palette  : Guikit.Command_Palette.Palette;
       Commands : Guikit.Command_Palette.Command_Vectors.Vector;
-      Rects : Guikit.Draw.Rectangle_Command_Vectors.Vector;
-      Text  : Guikit.Draw.Text_Command_Vectors.Vector;
-      Icons : Guikit.Draw.Icon_Command_Vectors.Vector;
-      Nodes : Guikit.Draw.Accessibility_Node_Vectors.Vector;
    begin
       for Row of Shell.Command_Palette.Rows loop
          Commands.Append
@@ -230,8 +248,38 @@ package body Archive.GUI_Frame is
           Empty_State    => Shell.Status_Text,
           Title          => Shell.Command_Palette_Label));
       Guikit.Command_Palette.Set_Commands (Palette, Commands);
+      Guikit.Command_Palette.Set_Query (Palette, To_String (Shell.Command_Palette_Filter));
+      Guikit.Command_Palette.Select_First (Palette);
+      Guikit.Command_Palette.Move_Selection (Palette, Shell.Command_Palette_Moves);
+      return Palette;
+   end Command_Palette_For;
+
+   procedure Command_Palette_Box
+     (Width, Height : Natural;
+      X, Y, W, H    : out Natural) is
+   begin
+      X := Width / 5;
+      Y := Height / 5;
+      W := (Width * 3) / 5;
+      H := (Height * 3) / 5;
+   end Command_Palette_Box;
+
+   procedure Draw_Command_Palette
+     (Result : in out Frame;
+      Shell  : Archive.UI.Shell_Snapshot;
+      W      : Natural;
+      H      : Natural)
+   is
+      Palette : Guikit.Command_Palette.Palette := Command_Palette_For (Shell);
+      Rects : Guikit.Draw.Rectangle_Command_Vectors.Vector;
+      Text  : Guikit.Draw.Text_Command_Vectors.Vector;
+      Icons : Guikit.Draw.Icon_Command_Vectors.Vector;
+      Nodes : Guikit.Draw.Accessibility_Node_Vectors.Vector;
+      Box_X, Box_Y, Box_W, Box_H : Natural;
+   begin
+      Command_Palette_Box (W, H, Box_X, Box_Y, Box_W, Box_H);
       Guikit.Command_Palette.Build_Frame
-        (Palette, W / 5, H / 5, (W * 3) / 5, (H * 3) / 5, W, H,
+        (Palette, Box_X, Box_Y, Box_W, Box_H, W, H,
          Shell.Focus.Region = Archive.Model.Command_Palette_Focus, -1, -1,
          Rects, Text, Icons, Nodes);
       for Rect of Rects loop
@@ -491,41 +539,47 @@ package body Archive.GUI_Frame is
          Draw_Preview_Panel (Result, Shell, W, H);
       end if;
 
-      declare
-         Line_H       : constant Positive := Archive.UI.Default_Line_Height;
-         Advance      : constant Positive := Guikit.Layout.Caret_Advance_Width (Line_H);
-         Padding      : constant Natural := 8;
-         Gap          : constant Natural := 4;
-         Button_Count : constant Natural := Natural (Shell.Toolbar.Commands.Length);
-         Max_Buttons  : constant Natural := Natural'Min (Button_Count, 8);
-         X            : Natural := 260;
-      begin
-         --  Each button is as wide as its label, measured with the advance the
-         --  renderer draws at; buttons that no longer fit the window are left out
-         --  rather than drawn clipped.
-         for Index in 1 .. Max_Buttons loop
-            declare
-               Label   : constant Archive.Types.UString := Shell.Toolbar.Commands.Element (Index).Name;
-               Width   : constant Natural :=
-                 Guikit.Layout.Label_Pixel_Width (To_String (Label), Advance) + 2 * Padding;
-            begin
-               exit when X + Width > W;
-               Guikit.Widgets.Draw_Button
-                 (Result.Rectangles, Result.Text, W, H, X, 8, Width, 28,
-                  Guikit.Draw.Input_Color, Guikit.Draw.Border_Color, Padding,
-                  Label, False, Line_H, Guikit.Draw.Text_Color);
-               Add_Accessibility
-                 (Result.Accessibility, Guikit.Draw.Role_Button, X, 8, Width, 28, Label);
-               X := X + Width + Gap;
-            end;
-         end loop;
-      end;
+      for Button of Toolbar_Buttons (Shell, W) loop
+         Guikit.Widgets.Draw_Button
+           (Result.Rectangles, Result.Text, W, H, Button.X, Button.Y, Button.Width, Button.Height,
+            Guikit.Draw.Input_Color, Guikit.Draw.Border_Color, Toolbar_Button_Padding,
+            Button.Label, False, Archive.UI.Default_Line_Height,
+            (if Button.Enabled then Guikit.Draw.Text_Color else Guikit.Draw.Disabled_Text_Color));
+         Add_Accessibility
+           (Result.Accessibility, Guikit.Draw.Role_Button, Button.X, Button.Y, Button.Width, Button.Height,
+            Button.Label);
+      end loop;
 
       if Shell.Dialog.Visible then
          Guikit.Widgets.Draw_Menu_Panel
            (Result.Overlay_Rectangles, W, H, W / 4, H / 4, W / 2, H / 4,
             Guikit.Draw.Overlay_Color, Guikit.Draw.Border_Color);
          Add_Text (Result.Overlay_Text, W / 4 + 16, H / 4 + 16, W / 2 - 32, 24, Shell.Dialog.Title);
+         if Shell.Dialog.Takes_Path then
+            --  The dialog's one field: the typed path with a caret after it,
+            --  and what to do with it underneath.
+            declare
+               Line_H  : constant Positive := Archive.UI.Default_Line_Height;
+               Field_X : constant Natural := W / 4 + 16;
+               Field_Y : constant Natural := H / 4 + 56;
+               Field_W : constant Natural := (if W / 2 > 32 then W / 2 - 32 else 0);
+               Field_H : constant Natural := Line_H + 8;
+               Typed_W : constant Natural :=
+                 Guikit.Layout.Label_Pixel_Width
+                   (To_String (Shell.Dialog.Text), Guikit.Layout.Caret_Advance_Width (Line_H));
+            begin
+               Guikit.Widgets.Draw_Input_Field
+                 (Result.Overlay_Rectangles, W, H, Field_X, Field_Y, Field_W, Field_H,
+                  Guikit.Draw.Input_Color, Guikit.Draw.Selection_Color);
+               Add_Text (Result.Overlay_Text, Field_X + 6, Field_Y + 4, Field_W - 12, Line_H, Shell.Dialog.Text);
+               Guikit.Widgets.Draw_Caret
+                 (Result.Overlay_Rectangles, W, H, Natural'Min (Field_X + 6 + Typed_W, Field_X + Field_W - 4),
+                  Field_Y + 4, 2, Line_H, Guikit.Draw.Text_Color);
+               Add_Text
+                 (Result.Overlay_Text, Field_X, Field_Y + Field_H + 8, Field_W, Line_H, Shell.Dialog.Hint,
+                  Guikit.Draw.Muted_Text_Color);
+            end;
+         end if;
          Add_Accessibility
            (Result.Accessibility, Guikit.Draw.Role_Dialog, W / 4, H / 4, W / 2, H / 4,
             Shell.Dialog.Accessible_Name);

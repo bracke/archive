@@ -642,6 +642,7 @@ package body Archive.Model is
 
    procedure Open_Command_Palette (Model : in out Application_Model) is
    begin
+      Model.Palette_Moves := 0;
       Model.Overlay := Command_Palette_Overlay;
       Model.Focus := Command_Palette_Focus;
       Touch (Model);
@@ -673,8 +674,31 @@ package body Archive.Model is
    is
    begin
       Model.Palette_Filter := To_Unbounded_String (Text);
+      Model.Palette_Moves := 0;
       Touch (Model);
    end Set_Command_Palette_Filter;
+
+   function Command_Palette_Selection (Model : Application_Model) return Integer is (Model.Palette_Moves);
+
+   procedure Move_Command_Palette_Selection
+     (Model : in out Application_Model;
+      Rows  : Integer)
+   is
+   begin
+      Model.Palette_Moves := Model.Palette_Moves + Rows;
+      Touch (Model);
+   end Move_Command_Palette_Selection;
+
+   function Dialog_Text (Model : Application_Model) return String is (To_String (Model.Dialog_Input));
+
+   procedure Set_Dialog_Text
+     (Model : in out Application_Model;
+      Text  : String)
+   is
+   begin
+      Model.Dialog_Input := To_Unbounded_String (Text);
+      Touch (Model);
+   end Set_Dialog_Text;
 
    function Active_Dialog (Model : Application_Model) return Dialog_Kind is (Model.Dialog);
 
@@ -685,6 +709,7 @@ package body Archive.Model is
    procedure Open_Dialog (Model : in out Application_Model; Dialog : Dialog_Kind) is
    begin
       Model.Dialog := Dialog;
+      Model.Dialog_Input := Null_Unbounded_String;
       Model.Overlay := No_Overlay;
       Model.Focus := Content_Focus;
       Touch (Model);

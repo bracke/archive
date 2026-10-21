@@ -40,6 +40,10 @@ package Archive.Application.Windows is
       Resize_Applied   : Boolean := False;
       Runtime_Validated : Boolean := False;
       Closed_Cleanly   : Boolean := False;
+      Input_Driven     : Boolean := False;
+      --  True when a click on the toolbar's Open archive button and typed text,
+      --  queued as the window's callbacks queue them, opened its dialog with
+      --  the text in its field.
       Skipped_By_Plan  : Boolean := True;
       Last_Status      : Guikit.Vulkan.Vulkan_Status :=
         Guikit.Vulkan.Vulkan_Not_Initialized;

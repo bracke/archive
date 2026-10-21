@@ -1,13 +1,19 @@
+with Ada.Containers.Vectors;
 with Ada.Environment_Variables;
 with Ada.Unchecked_Deallocation;
 
 with Guikit.Draw;
+with Guikit.Input;
 with Guikit.Layout;
 with Guikit.Text;
+with Guikit.Utf8;
 
+with Archive.Commands;
 with Archive.Fonts;
 
 with Glfw;
+with Glfw.Input.Keys;
+with Glfw.Input.Mouse;
 with Glfw.Windows;
 with Glfw.Windows.Vulkan;
 
@@ -22,6 +28,7 @@ package body Archive.Application.Windows is
    use type Glfw.Size;
    use type Guikit.Vulkan.Vulkan_Status;
    use type Archive.Operations.Opening.Operation_Status;
+   use type Archive.Commands.Command_Id;
    use type Archive.Types.Generation_Id;
 
    Event_Wait_Timeout : constant Duration := 0.016;
@@ -105,8 +112,164 @@ package body Archive.Application.Windows is
            Atlas_Height   => 1024) = Guikit.Draw.Text_Render_Success;
    end Ensure_Text_Ready;
 
-   type Desktop_Window is new Glfw.Windows.Window with null record;
+   --  Window input in arrival order: the callbacks only queue it, and the
+   --  render loop hands each event to the runtime between frames.
+   type Input_Kind is (Key_Input, Text_Input, Click_Input);
+
+   type Input_Event is record
+      Kind      : Input_Kind := Text_Input;
+      Key       : Guikit.Input.Key_Code := Guikit.Input.Key_Unknown;
+      Modifiers : Guikit.Input.Modifier_Set := Guikit.Input.No_Modifiers;
+      Text      : Unbounded_String;
+      X, Y      : Integer := 0;
+   end record;
+
+   package Input_Event_Vectors is new Ada.Containers.Vectors
+     (Index_Type   => Positive,
+      Element_Type => Input_Event);
+
+   --  A mouse whose switch bounces reports a second press microseconds after
+   --  the real one; presses closer together than this are one click.
+   Click_Bounce : constant Glfw.Seconds := 0.04;
+
+   type Desktop_Window is new Glfw.Windows.Window with record
+      Pending     : Input_Event_Vectors.Vector;
+      Mouse_X     : Integer := 0;
+      Mouse_Y     : Integer := 0;
+      Have_Press  : Boolean := False;
+      Last_Press  : Glfw.Seconds := 0.0;
+   end record;
    type Window_Access is access all Desktop_Window;
+
+   overriding procedure Character_Entered
+     (Object : not null access Desktop_Window;
+      Char   : Wide_Wide_Character);
+   overriding procedure Key_Changed
+     (Object   : not null access Desktop_Window;
+      Key      : Glfw.Input.Keys.Key;
+      Scancode : Glfw.Input.Keys.Scancode;
+      Action   : Glfw.Input.Keys.Action;
+      Mods     : Glfw.Input.Keys.Modifiers);
+   overriding procedure Mouse_Button_Changed
+     (Object : not null access Desktop_Window;
+      Button : Glfw.Input.Mouse.Button;
+      State  : Glfw.Input.Button_State;
+      Mods   : Glfw.Input.Keys.Modifiers);
+   overriding procedure Mouse_Position_Changed
+     (Object : not null access Desktop_Window;
+      X      : Glfw.Input.Mouse.Coordinate;
+      Y      : Glfw.Input.Mouse.Coordinate);
+
+   --  The guikit key for a GLFW key. The two enumerations name the keys alike
+   --  ("A" / "Key_A", "Key_End" / "Key_End"); Enter is guikit's Return.
+   function To_Key_Code (Key : Glfw.Input.Keys.Key) return Guikit.Input.Key_Code is
+      use type Glfw.Input.Keys.Key;
+      Name : constant String := Glfw.Input.Keys.Key'Image (Key);
+   begin
+      if Key = Glfw.Input.Keys.Enter or else Key = Glfw.Input.Keys.Numpad_Enter then
+         return Guikit.Input.Key_Return;
+      end if;
+      begin
+         return Guikit.Input.Key_Code'Value (Name);
+      exception
+         when Constraint_Error =>
+            return Guikit.Input.Key_Code'Value ("KEY_" & Name);
+      end;
+   exception
+      when Constraint_Error =>
+         return Guikit.Input.Key_Unknown;
+   end To_Key_Code;
+
+   overriding procedure Character_Entered
+     (Object : not null access Desktop_Window;
+      Char   : Wide_Wide_Character)
+   is
+      Code : constant Natural := Wide_Wide_Character'Pos (Char);
+   begin
+      if Code >= Character'Pos (' ') then
+         Object.Pending.Append
+           (Input_Event'(Kind => Text_Input, Text => To_Unbounded_String (Guikit.Utf8.Encode (Code)), others => <>));
+      end if;
+   end Character_Entered;
+
+   overriding procedure Key_Changed
+     (Object   : not null access Desktop_Window;
+      Key      : Glfw.Input.Keys.Key;
+      Scancode : Glfw.Input.Keys.Scancode;
+      Action   : Glfw.Input.Keys.Action;
+      Mods     : Glfw.Input.Keys.Modifiers)
+   is
+      use type Glfw.Input.Keys.Action;
+      use type Guikit.Input.Key_Code;
+      pragma Unreferenced (Scancode);
+      Code : constant Guikit.Input.Key_Code := To_Key_Code (Key);
+   begin
+      if Action = Glfw.Input.Keys.Release or else Code = Guikit.Input.Key_Unknown then
+         return;
+      end if;
+      Object.Pending.Append
+        (Input_Event'
+           (Kind      => Key_Input,
+            Key       => Code,
+            Modifiers =>
+              [Guikit.Input.Shift_Key   => Mods.Shift,
+               Guikit.Input.Control_Key => Mods.Control,
+               Guikit.Input.Alt_Key     => Mods.Alt,
+               Guikit.Input.Meta_Key    => Mods.Super],
+            others    => <>));
+   end Key_Changed;
+
+   overriding procedure Mouse_Button_Changed
+     (Object : not null access Desktop_Window;
+      Button : Glfw.Input.Mouse.Button;
+      State  : Glfw.Input.Button_State;
+      Mods   : Glfw.Input.Keys.Modifiers)
+   is
+      use type Glfw.Input.Mouse.Button;
+      use type Glfw.Input.Button_State;
+      use type Glfw.Seconds;
+      pragma Unreferenced (Mods);
+      Now : constant Glfw.Seconds := Glfw.Time;
+   begin
+      if Button = Glfw.Input.Mouse.Left_Button and then State = Glfw.Input.Pressed then
+         if Object.Have_Press and then Now - Object.Last_Press < Click_Bounce then
+            return;
+         end if;
+         Object.Have_Press := True;
+         Object.Last_Press := Now;
+         Object.Pending.Append
+           (Input_Event'(Kind => Click_Input, X => Object.Mouse_X, Y => Object.Mouse_Y, others => <>));
+      end if;
+   end Mouse_Button_Changed;
+
+   overriding procedure Mouse_Position_Changed
+     (Object : not null access Desktop_Window;
+      X      : Glfw.Input.Mouse.Coordinate;
+      Y      : Glfw.Input.Mouse.Coordinate) is
+   begin
+      Object.Mouse_X := Integer (X);
+      Object.Mouse_Y := Integer (Y);
+   end Mouse_Position_Changed;
+
+   --  Hand the window's queued input to the runtime, in arrival order.
+   procedure Drain_Input
+     (Handle  : not null access Desktop_Window;
+      Runtime : in out Archive.GUI_Runtime.Runtime_State)
+   is
+      Events : constant Input_Event_Vectors.Vector := Handle.Pending;
+   begin
+      Handle.Pending.Clear;
+      for Event of Events loop
+         case Event.Kind is
+            when Key_Input =>
+               Archive.GUI_Runtime.Key_Pressed (Runtime, Event.Key, Event.Modifiers);
+            when Text_Input =>
+               Archive.GUI_Runtime.Text_Typed (Runtime, To_String (Event.Text));
+            when Click_Input =>
+               Archive.GUI_Runtime.Clicked (Runtime, Event.X, Event.Y);
+         end case;
+      end loop;
+   end Drain_Input;
 
    procedure Free_Window is new Ada.Unchecked_Deallocation
      (Object => Desktop_Window,
@@ -295,6 +458,24 @@ package body Archive.Application.Windows is
       end if;
    end Render_Once;
 
+   --  ARCHIVE_LIVE_SMOKE_HOLD=<seconds> keeps the smoke's last frame on screen
+   --  that long, so a person or a screenshot tool can look at it.
+   procedure Hold_For_Inspection is
+      Value   : constant String := Safe_Environment_Value ("ARCHIVE_LIVE_SMOKE_HOLD");
+      Seconds : Natural := 0;
+   begin
+      begin
+         Seconds := (if Value = "" then 0 else Natural'Min (Natural'Value (Value), 600));
+      exception
+         when Constraint_Error =>
+            Seconds := 0;
+      end;
+      for Tick in 1 .. Seconds * 10 loop
+         Guikit.Vulkan.Poll_Events;
+         delay 0.1;
+      end loop;
+   end Hold_For_Inspection;
+
    function Live_Smoke (Plan : Live_Smoke_Plan := Default_Live_Smoke_Plan) return Live_Smoke_Result is
       Result      : Live_Smoke_Result;
       Initialized : Boolean := False;
@@ -312,7 +493,9 @@ package body Archive.Application.Windows is
       Result.Attempted := True;
       Glfw.Init;
       Initialized := True;
-      Guikit.Vulkan.Configure_Window_Hints (Resizable => True, Visible => False);
+      --  Hidden, unless someone asked to look at it.
+      Guikit.Vulkan.Configure_Window_Hints
+        (Resizable => True, Visible => Safe_Environment_Value ("ARCHIVE_LIVE_SMOKE_HOLD") /= "");
       Handle := new Desktop_Window;
       Glfw.Windows.Init
         (Object => As_Window (Handle),
@@ -344,6 +527,36 @@ package body Archive.Application.Windows is
             Result.Frames_Presented := Result.Frames_Presented + 1;
          end if;
       end loop;
+
+      --  Drive the window's own input queue: click Open archive, type a path,
+      --  and render the dialog that should now hold it.
+      declare
+         Typed : constant String := "/tmp/example.zip";
+         Shell : constant Archive.UI.Shell_Snapshot := Archive.GUI_Runtime.Snapshot (Runtime);
+      begin
+         for Button of Archive.GUI_Frame.Toolbar_Buttons (Shell, Shell.Layout.Content_W + Shell.Layout.Preview_W) loop
+            if Button.Command = Archive.Commands.Open_Archive_Command then
+               Handle.Pending.Append
+                 (Input_Event'
+                    (Kind => Click_Input, X => Button.X + Button.Width / 2, Y => Button.Y + Button.Height / 2,
+                     others => <>));
+            end if;
+         end loop;
+         Handle.Pending.Append
+           (Input_Event'(Kind => Text_Input, Text => To_Unbounded_String (Typed), others => <>));
+         Drain_Input (Handle, Runtime);
+         Render_Once (Runtime, As_Window (Handle), Vulkan, Smoke_Cache, Force => True, Status => Result.Last_Status);
+         Result.Frames_Attempted := Result.Frames_Attempted + 1;
+         if Result.Last_Status = Guikit.Vulkan.Vulkan_Presented then
+            Result.Frames_Presented := Result.Frames_Presented + 1;
+         end if;
+         declare
+            After : constant Archive.UI.Shell_Snapshot := Archive.GUI_Runtime.Snapshot (Runtime);
+         begin
+            Result.Input_Driven := After.Dialog.Takes_Path and then To_String (After.Dialog.Text) = Typed;
+         end;
+         Hold_For_Inspection;
+      end;
 
       Result.Frame_Rendered := Result.Frames_Attempted > 0;
       Guikit.Vulkan.Shutdown (Vulkan);
@@ -385,6 +598,7 @@ package body Archive.Application.Windows is
         & " resized=" & Boolean'Image (Result.Resize_Applied)
         & " runtime_validated=" & Boolean'Image (Result.Runtime_Validated)
         & " closed=" & Boolean'Image (Result.Closed_Cleanly)
+        & " input=" & Boolean'Image (Result.Input_Driven)
         & " status=" & Guikit.Vulkan.Vulkan_Status'Image (Result.Last_Status)
         & " reason=" & To_String (Result.Error_Key);
    end Live_Smoke_Report;
@@ -407,12 +621,17 @@ package body Archive.Application.Windows is
          Height => 768,
          Title  => Archive.Localization.Text ("application.title"));
       Glfw.Windows.Show (As_Window (Handle));
+      Glfw.Windows.Enable_Callback (As_Window (Handle), Glfw.Windows.Callbacks.Char);
+      Glfw.Windows.Enable_Callback (As_Window (Handle), Glfw.Windows.Callbacks.Key);
+      Glfw.Windows.Enable_Callback (As_Window (Handle), Glfw.Windows.Callbacks.Mouse_Button);
+      Glfw.Windows.Enable_Callback (As_Window (Handle), Glfw.Windows.Callbacks.Mouse_Position);
       Archive.GUI_Runtime.Initialize (Runtime, Width => 1024, Height => 768);
       if Initial_Path /= "" then
          Archive.GUI_Runtime.Start_Open_Archive (Runtime, Initial_Path);
       end if;
 
       while not Glfw.Windows.Should_Close (As_Window (Handle)) loop
+         Drain_Input (Handle, Runtime);
          Render_Once (Runtime, As_Window (Handle), Vulkan, Cache,
                       Force => False, Status => Status);
          --  Wait a frame's worth so input stays prompt and a running archive-open

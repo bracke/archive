@@ -272,7 +272,10 @@ package body Archive.UI is
          Visible         => Dialog /= Archive.Model.No_Dialog,
          Title           => To_Unbounded_String (Locale_Text (Config, Dialog_Key (Dialog))),
          Accessible_Name => To_Unbounded_String (Locale_Text (Config, Dialog_Key (Dialog))),
-         Modal           => Dialog /= Archive.Model.No_Dialog);
+         Modal           => Dialog /= Archive.Model.No_Dialog,
+         Takes_Path      => Dialog_Takes_Path (Dialog),
+         Text            => To_Unbounded_String (Archive.Model.Dialog_Text (Model)),
+         Hint            => To_Unbounded_String (Locale_Text (Config, "ui.dialog.path_hint")));
    end Build_Dialog;
 
    function Build_Notification
@@ -742,6 +745,8 @@ package body Archive.UI is
          Breadcrumb_Label      => To_Unbounded_String (Locale_Text (Config, "ui.region.breadcrumb")),
          Preview_Label         => To_Unbounded_String (Locale_Text (Config, "ui.region.preview")),
          Command_Palette_Label => To_Unbounded_String (Locale_Text (Config, "ui.region.command_palette")),
+         Command_Palette_Filter => To_Unbounded_String (Archive.Model.Command_Palette_Filter (Model)),
+         Command_Palette_Moves => Archive.Model.Command_Palette_Selection (Model),
          Menus                 => Archive.View_Snapshots.Command_Surfaces.Build_Menus
            (Model, Config.Locale),
          Toolbar               => Archive.View_Snapshots.Command_Surfaces.Build_Toolbar

@@ -114,7 +114,17 @@ package Archive.UI is
       Title           : Archive.Types.UString;
       Accessible_Name : Archive.Types.UString;
       Modal           : Boolean := False;
+      Takes_Path      : Boolean := False;
+      --  True for a dialog that asks for a path, typed into its one field.
+      Text            : Archive.Types.UString;
+      --  The path typed so far.
+      Hint            : Archive.Types.UString;
+      --  What to do with the field, shown under it.
    end record;
+
+   --  True for a dialog that is answered with one typed path.
+   function Dialog_Takes_Path (Dialog : Archive.Model.Dialog_Kind) return Boolean is
+     (Dialog in Archive.Model.Open_Archive_Dialog .. Archive.Model.Save_As_Dialog);
 
    type Notification_Snapshot is record
       Severity : Archive.Model.Notification_Severity := Archive.Model.No_Notification;
@@ -274,6 +284,10 @@ package Archive.UI is
       Breadcrumb_Label     : Archive.Types.UString;
       Preview_Label        : Archive.Types.UString;
       Command_Palette_Label : Archive.Types.UString;
+      Command_Palette_Filter : Archive.Types.UString;
+      --  The palette's typed query.
+      Command_Palette_Moves : Integer := 0;
+      --  Rows the palette highlight has moved from the first result.
       Menus                : Archive.View_Snapshots.Command_Surfaces.Menu_Snapshot;
       Toolbar              : Archive.View_Snapshots.Command_Surfaces.Toolbar_Snapshot;
       Breadcrumb           : Archive.View_Snapshots.Breadcrumbs.Breadcrumb_Snapshot;
