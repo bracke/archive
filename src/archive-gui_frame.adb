@@ -2,6 +2,7 @@ with Ada.Strings.Unbounded;
 
 with Guikit.Command_Palette;
 with Guikit.Item_Grid;
+with Guikit.Layout;
 with Guikit.List_Panel;
 with Guikit.Settings_Panel;
 with Guikit.Widgets;
@@ -145,7 +146,7 @@ package body Archive.GUI_Frame is
          Content_H     => Content_H,
          Columns       => Detail_Columns (16, (if Shell.Layout.Content_W > 32 then Shell.Layout.Content_W - 32 else 0)),
          Scroll_Pixels => 0,
-         Line_Height   => 20);
+         Line_Height   => Archive.UI.Default_Line_Height);
 
       for Cell of Layouts loop
          if Cell.Height > 0 and then Cell.Visible_Index > 0 then
@@ -220,7 +221,7 @@ package body Archive.GUI_Frame is
 
       Guikit.Command_Palette.Set_Configuration
         (Palette,
-         (Line_Height    => 20,
+         (Line_Height    => Archive.UI.Default_Line_Height,
           Show_Icons     => False,
           Show_Shortcuts => False,
           Overlay        => True,
@@ -364,7 +365,7 @@ package body Archive.GUI_Frame is
 
       Guikit.Settings_Panel.Set_Configuration
         (Panel,
-         (Line_Height     => 20,
+         (Line_Height     => Archive.UI.Default_Line_Height,
           Title           => Shell.Settings.Title,
           Status          => Shell.Settings.Status_Text,
           Status_Is_Error => False,
@@ -423,7 +424,7 @@ package body Archive.GUI_Frame is
          (if Shell.Layout.Content_H > 44 then Shell.Layout.Content_H - 44 else 0),
          (Title               => Shell.Preview_Label,
           Empty_State         => Shell.Preview_Panel.State_Text,
-          Line_Height         => 20,
+          Line_Height         => Archive.UI.Default_Line_Height,
           Text_Padding        => 12,
           Show_Alternate_Rows => True),
          Rows,
@@ -491,20 +492,31 @@ package body Archive.GUI_Frame is
       end if;
 
       declare
+         Line_H       : constant Positive := Archive.UI.Default_Line_Height;
+         Advance      : constant Positive := Guikit.Layout.Caret_Advance_Width (Line_H);
+         Padding      : constant Natural := 8;
+         Gap          : constant Natural := 4;
          Button_Count : constant Natural := Natural (Shell.Toolbar.Commands.Length);
          Max_Buttons  : constant Natural := Natural'Min (Button_Count, 8);
+         X            : Natural := 260;
       begin
+         --  Each button is as wide as its label, measured with the advance the
+         --  renderer draws at; buttons that no longer fit the window are left out
+         --  rather than drawn clipped.
          for Index in 1 .. Max_Buttons loop
             declare
-               X : constant Natural := 260 + (Index - 1) * 44;
-               Label : constant Archive.Types.UString := Shell.Toolbar.Commands.Element (Index).Name;
+               Label   : constant Archive.Types.UString := Shell.Toolbar.Commands.Element (Index).Name;
+               Width   : constant Natural :=
+                 Guikit.Layout.Label_Pixel_Width (To_String (Label), Advance) + 2 * Padding;
             begin
+               exit when X + Width > W;
                Guikit.Widgets.Draw_Button
-                 (Result.Rectangles, Result.Text, W, H, X, 8, 40, 28,
-                  Guikit.Draw.Input_Color, Guikit.Draw.Border_Color, 4,
-                  Label, False, 16, Guikit.Draw.Text_Color);
+                 (Result.Rectangles, Result.Text, W, H, X, 8, Width, 28,
+                  Guikit.Draw.Input_Color, Guikit.Draw.Border_Color, Padding,
+                  Label, False, Line_H, Guikit.Draw.Text_Color);
                Add_Accessibility
-                 (Result.Accessibility, Guikit.Draw.Role_Button, X, 8, 40, 28, Label);
+                 (Result.Accessibility, Guikit.Draw.Role_Button, X, 8, Width, 28, Label);
+               X := X + Width + Gap;
             end;
          end loop;
       end;

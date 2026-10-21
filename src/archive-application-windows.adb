@@ -2,6 +2,7 @@ with Ada.Environment_Variables;
 with Ada.Unchecked_Deallocation;
 
 with Guikit.Draw;
+with Guikit.Layout;
 with Guikit.Text;
 
 with Archive.Fonts;
@@ -14,6 +15,7 @@ with Archive.GUI_Frame;
 with Archive.GUI_Runtime;
 with Archive.Localization;
 with Archive.Operations.Opening;
+with Archive.UI;
 
 package body Archive.Application.Windows is
    use Ada.Strings.Unbounded;
@@ -94,9 +96,11 @@ package body Archive.Application.Windows is
           (R              => Text_Renderer,
            Font_Path      => Archive.Fonts.Primary,
            Fallback_Paths => Archive.Fonts.Fallbacks,
-           Pixel_Size     => 14,
-           Cell_Width     => 8,
-           Cell_Height    => 18,
+           --  Sized from the layouts' line height, as files does: the font at
+           --  four fifths of it, the cell at the advance layouts measure with.
+           Pixel_Size     => Archive.UI.Default_Line_Height * 4 / 5,
+           Cell_Width     => Guikit.Layout.Caret_Advance_Width (Archive.UI.Default_Line_Height),
+           Cell_Height    => Archive.UI.Default_Line_Height,
            Atlas_Width    => 1024,
            Atlas_Height   => 1024) = Guikit.Draw.Text_Render_Success;
    end Ensure_Text_Ready;

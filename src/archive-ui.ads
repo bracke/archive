@@ -25,11 +25,17 @@ with Archive.Writes.Plans;
 with Archive.Writes.Results;
 
 package Archive.UI is
+   --  The one line height every layout and the text renderer derive from. The
+   --  renderer's cell width must equal what layouts measure labels with
+   --  (Guikit.Layout.Caret_Advance_Width of this height), or text drifts from
+   --  its carets and clips early.
+   Default_Line_Height : constant Positive := 20;
+
    type Shell_Configuration is record
       Width       : Natural := 1280;
       Height      : Natural := 800;
       Locale      : Archive.Types.UString;
-      Line_Height : Positive := 20;
+      Line_Height : Positive := Default_Line_Height;
    end record;
 
    type Shell_Layout is record

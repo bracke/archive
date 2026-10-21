@@ -26,7 +26,7 @@ package body Archive.GUI_Runtime is
         (Width       => Width,
          Height      => Height,
          Locale      => To_Unbounded_String (Locale),
-         Line_Height => 20);
+         Line_Height => Archive.UI.Default_Line_Height);
       Runtime.Open_Coord := new Archive.Operations.Opening.Coordinator;
       Runtime.Started := True;
    end Initialize;
