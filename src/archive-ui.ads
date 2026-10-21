@@ -288,6 +288,9 @@ package Archive.UI is
       --  The palette's typed query.
       Command_Palette_Moves : Integer := 0;
       --  Rows the palette highlight has moved from the first result.
+      Settings_Section   : Natural := 0;
+      Settings_Focus_Key : Archive.Types.UString;
+      --  The settings panel's shown section and focused field.
       Toolbar_Overflow_Open : Boolean := False;
       --  Whether the menu of toolbar commands that did not fit is open.
       Toolbar_More_Label : Archive.Types.UString;

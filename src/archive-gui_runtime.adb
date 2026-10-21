@@ -338,6 +338,39 @@ package body Archive.GUI_Runtime is
       end if;
    end Run_Palette_Selection;
 
+   procedure Apply_Setting
+     (Runtime : in out Runtime_State;
+      Key     : String;
+      Value   : String)
+   is
+      Settings : Archive.Settings.Settings_Model := Archive.Model.Effective_Settings (Runtime.App_Model);
+      On       : constant Boolean := Value = "true";
+   begin
+      if Key = "default_view" then
+         declare
+            Parsed : Boolean;
+            Mode   : constant Archive.Types.View_Mode := Archive.Settings.Parse_View_Mode (Value, Parsed);
+         begin
+            if not Parsed then
+               return;
+            end if;
+            Settings.Default_View := Mode;
+            Archive.Model.Set_View_Mode (Runtime.App_Model, Mode);
+         end;
+      elsif Key = "directories_first" then
+         Settings.Directories_First := On;
+      elsif Key = "preview_visible" then
+         Settings.Preview_Visible := On;
+      elsif Key = "toolbar_visible" then
+         Settings.Toolbar_Visible := On;
+      elsif Key = "status_bar_visible" then
+         Settings.Status_Bar_Visible := On;
+      else
+         return;
+      end if;
+      Archive.Model.Apply_Settings (Runtime.App_Model, Settings);
+   end Apply_Setting;
+
    procedure Key_Pressed
      (Runtime   : in out Runtime_State;
       Key       : Guikit.Input.Key_Code;
@@ -351,6 +384,60 @@ package body Archive.GUI_Runtime is
       if Archive.Model.Toolbar_Overflow_Open (Runtime.App_Model) and then Key = Guikit.Input.Key_Escape then
          Archive.Model.Set_Toolbar_Overflow_Open (Runtime.App_Model, False);
          return;
+      end if;
+
+      --  The settings panel: fields, sections and values from the keyboard.
+      if Archive.Model.Active_Overlay (Runtime.App_Model) = Archive.Model.Settings_Overlay
+        and then Key /= Guikit.Input.Key_Escape
+      then
+         declare
+            use type Guikit.Settings_Panel.Change_Kind;
+            Panel : Guikit.Settings_Panel.Panel := Archive.GUI_Frame.Settings_Panel_For (Snapshot (Runtime));
+            Ctrl  : constant Boolean := Modifiers (Guikit.Input.Control_Key);
+            Shift : constant Boolean := Modifiers (Guikit.Input.Shift_Key);
+            Handled : Boolean := True;
+         begin
+            case Key is
+               when Guikit.Input.Key_Up =>
+                  Guikit.Settings_Panel.Move_Focus (Panel, -1);
+               when Guikit.Input.Key_Down =>
+                  Guikit.Settings_Panel.Move_Focus (Panel, 1);
+               when Guikit.Input.Key_Tab =>
+                  if Ctrl then
+                     declare
+                        Count  : constant Natural := Guikit.Settings_Panel.Section_Count (Panel);
+                        Active : constant Natural := Guikit.Settings_Panel.Active_Section (Panel);
+                     begin
+                        if Count > 0 then
+                           Guikit.Settings_Panel.Set_Active_Section
+                             (Panel,
+                              (if Shift then (if Active <= 1 then Count else Active - 1)
+                               else (if Active >= Count then 1 else Active + 1)));
+                        end if;
+                     end;
+                  else
+                     Guikit.Settings_Panel.Move_Focus (Panel, (if Shift then -1 else 1));
+                  end if;
+               when Guikit.Input.Key_Left | Guikit.Input.Key_Right | Guikit.Input.Key_Space =>
+                  Guikit.Settings_Panel.Cycle_Choice (Panel, Forward => Key /= Guikit.Input.Key_Left);
+                  declare
+                     Change : constant Guikit.Settings_Panel.Change := Guikit.Settings_Panel.Take_Change (Panel);
+                  begin
+                     if Change.Kind = Guikit.Settings_Panel.Value_Changed then
+                        Apply_Setting (Runtime, To_String (Change.Key), To_String (Change.Value));
+                     end if;
+                  end;
+               when others =>
+                  Handled := False;
+            end case;
+            if Handled then
+               Archive.Model.Set_Settings_Place
+                 (Runtime.App_Model,
+                  Guikit.Settings_Panel.Active_Section (Panel),
+                  Guikit.Settings_Panel.Focused_Key (Panel));
+               return;
+            end if;
+         end;
       end if;
       if Archive.UI.Dialog_Takes_Path (Archive.Model.Active_Dialog (Runtime.App_Model)) and then Plain then
          if Key = Guikit.Input.Key_Backspace then
@@ -398,38 +485,6 @@ package body Archive.GUI_Runtime is
    end Text_Typed;
 
    --  Apply one changed settings control to the model's settings.
-   procedure Apply_Setting
-     (Runtime : in out Runtime_State;
-      Key     : String;
-      Value   : String)
-   is
-      Settings : Archive.Settings.Settings_Model := Archive.Model.Effective_Settings (Runtime.App_Model);
-      On       : constant Boolean := Value = "true";
-   begin
-      if Key = "default_view" then
-         declare
-            Parsed : Boolean;
-            Mode   : constant Archive.Types.View_Mode := Archive.Settings.Parse_View_Mode (Value, Parsed);
-         begin
-            if not Parsed then
-               return;
-            end if;
-            Settings.Default_View := Mode;
-            Archive.Model.Set_View_Mode (Runtime.App_Model, Mode);
-         end;
-      elsif Key = "directories_first" then
-         Settings.Directories_First := On;
-      elsif Key = "preview_visible" then
-         Settings.Preview_Visible := On;
-      elsif Key = "toolbar_visible" then
-         Settings.Toolbar_Visible := On;
-      elsif Key = "status_bar_visible" then
-         Settings.Status_Bar_Visible := On;
-      else
-         return;
-      end if;
-      Archive.Model.Apply_Settings (Runtime.App_Model, Settings);
-   end Apply_Setting;
 
    procedure Clicked
      (Runtime   : in out Runtime_State;

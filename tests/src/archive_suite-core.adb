@@ -13986,6 +13986,42 @@ package body Archive_Suite.Core is
          Archive.GUI_Runtime.Key_Pressed (Runtime, Guikit.Input.Key_Escape, None);
       end;
 
+      --  The settings panel from the keyboard: Down walks to the toggles,
+      --  Space flips the focused one, Ctrl+Tab shows the next section.
+      declare
+         Ignored : constant Archive.UI.Dispatch_Result :=
+           Archive.GUI_Runtime.Dispatch_Command
+             (Runtime, Archive.Commands.Open_Settings_Command, Archive.UI.Shortcut_Source);
+         Ctrl    : constant Guikit.Input.Modifier_Set :=
+           [Guikit.Input.Control_Key => True, others => False];
+         First   : constant String := Archive.Model.Settings_Focus_Key (Archive.GUI_Runtime.Model (Runtime));
+         Flipped : Boolean := False;
+      begin
+         Archive.GUI_Runtime.Key_Pressed (Runtime, Guikit.Input.Key_Down, None);
+         Assert (Archive.Model.Settings_Focus_Key (Archive.GUI_Runtime.Model (Runtime)) /= First,
+                 "Down moves the settings focus");
+         for Step in 1 .. 4 loop
+            declare
+               Before_Dirs : constant Boolean :=
+                 Archive.Model.Effective_Settings (Archive.GUI_Runtime.Model (Runtime)).Directories_First;
+            begin
+               if Archive.Model.Settings_Focus_Key (Archive.GUI_Runtime.Model (Runtime)) = "directories_first" then
+                  Archive.GUI_Runtime.Key_Pressed (Runtime, Guikit.Input.Key_Space, None);
+                  Flipped :=
+                    Archive.Model.Effective_Settings (Archive.GUI_Runtime.Model (Runtime)).Directories_First
+                    /= Before_Dirs;
+                  exit;
+               end if;
+            end;
+            Archive.GUI_Runtime.Key_Pressed (Runtime, Guikit.Input.Key_Down, None);
+         end loop;
+         Assert (Flipped, "Space flips the focused settings toggle");
+         Archive.GUI_Runtime.Key_Pressed (Runtime, Guikit.Input.Key_Tab, Ctrl);
+         Assert (Archive.Model.Settings_Section (Archive.GUI_Runtime.Model (Runtime)) = 2,
+                 "Ctrl+Tab shows the next settings section");
+         Archive.GUI_Runtime.Key_Pressed (Runtime, Guikit.Input.Key_Escape, None);
+      end;
+
       --  The toolbar's overflow: More opens the commands that did not fit,
       --  Escape closes it, a click on a row runs that command and closes it.
       declare

@@ -254,6 +254,16 @@ package Archive.Model is
      (Model : in out Application_Model;
       Rows  : Integer);
 
+   --  The settings panel's keyboard place, kept across frames: the shown
+   --  section (0 for the first) and the focused field's key ("" for the
+   --  first field). Opening the settings resets both.
+   function Settings_Section (Model : Application_Model) return Natural;
+   function Settings_Focus_Key (Model : Application_Model) return String;
+   procedure Set_Settings_Place
+     (Model   : in out Application_Model;
+      Section : Natural;
+      Key     : String);
+
    --  Whether the toolbar's overflow menu (the commands that did not fit) is
    --  open.
    function Toolbar_Overflow_Open (Model : Application_Model) return Boolean;
@@ -436,6 +446,8 @@ private
       Palette_Filter : UString;
       Palette_Moves  : Integer := 0;
       Overflow_Open  : Boolean := False;
+      Settings_Shown : Natural := 0;
+      Settings_Key   : UString;
       Dialog         : Dialog_Kind := No_Dialog;
       Dialog_Input   : UString;
       Notice         : Notification_Severity := No_Notification;

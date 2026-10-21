@@ -650,6 +650,8 @@ package body Archive.Model is
 
    procedure Open_Settings (Model : in out Application_Model) is
    begin
+      Model.Settings_Shown := 0;
+      Model.Settings_Key := Null_Unbounded_String;
       Model.Overlay := Settings_Overlay;
       Model.Focus := Settings_Focus;
       Touch (Model);
@@ -688,6 +690,21 @@ package body Archive.Model is
       Model.Palette_Moves := Model.Palette_Moves + Rows;
       Touch (Model);
    end Move_Command_Palette_Selection;
+
+   function Settings_Section (Model : Application_Model) return Natural is (Model.Settings_Shown);
+
+   function Settings_Focus_Key (Model : Application_Model) return String is (To_String (Model.Settings_Key));
+
+   procedure Set_Settings_Place
+     (Model   : in out Application_Model;
+      Section : Natural;
+      Key     : String)
+   is
+   begin
+      Model.Settings_Shown := Section;
+      Model.Settings_Key := To_Unbounded_String (Key);
+      Touch (Model);
+   end Set_Settings_Place;
 
    function Toolbar_Overflow_Open (Model : Application_Model) return Boolean is (Model.Overflow_Open);
 

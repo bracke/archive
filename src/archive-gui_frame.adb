@@ -508,6 +508,17 @@ package body Archive.GUI_Frame is
           Status_Is_Error => False,
           Switch_Tooltip  => To_Unbounded_String ("")));
       Guikit.Settings_Panel.Set_Fields (Panel, Fields);
+      --  Back to where the keyboard left the panel: its section, then its
+      --  focused field.
+      if Shell.Settings_Section > 0 then
+         Guikit.Settings_Panel.Set_Active_Section (Panel, Shell.Settings_Section);
+      end if;
+      if Length (Shell.Settings_Focus_Key) > 0 then
+         for Step in 1 .. Natural (Fields.Length) loop
+            exit when Guikit.Settings_Panel.Focused_Key (Panel) = To_String (Shell.Settings_Focus_Key);
+            Guikit.Settings_Panel.Move_Focus (Panel, 1);
+         end loop;
+      end if;
       return Panel;
    end Settings_Panel_For;
 
