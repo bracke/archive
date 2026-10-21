@@ -6,6 +6,9 @@ with Ada.Strings;
 with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded;
 
+with Hostkit.Fs;
+with Hostkit.Resources;
+
 with Messages.Arguments;
 with Messages.Result;
 with Messages.Runtime;
@@ -114,17 +117,17 @@ package body Archive.Localization is
       end;
    end Environment_Locale;
 
+   --  The share/ directory found from the program's own executable (beside it,
+   --  or above an installed bin/ or a tests/bin/), never from the directory it
+   --  was started in.
    function Catalog_Root return String is
+      Catalog : constant String := Hostkit.Resources.Beside_Executable ("share/archive.catalog");
    begin
-      if Ada.Directories.Exists ("share/archive.catalog") then
-         return "share";
-      elsif Ada.Directories.Exists ("../../share/archive.catalog") then
-         return "../../share";
-      elsif Ada.Directories.Exists ("../share/archive.catalog") then
-         return "../share";
-      end if;
-
-      return "share";
+      --  Not found: a share/ beside the executable, which also does not
+      --  exist, rather than one the launch directory could supply.
+      return
+        (if Catalog /= "" then Ada.Directories.Containing_Directory (Catalog)
+         else Hostkit.Fs.Join (Hostkit.Fs.Own_Executable_Directory, "share"));
    end Catalog_Root;
 
    function Catalog_Path return String is
