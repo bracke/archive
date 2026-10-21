@@ -9,6 +9,7 @@ with Ada.Strings.Fixed;
 with Ada.Streams.Stream_IO;
 with Interfaces;
 with Guikit.Input;
+with Guikit.Item_Grid;
 with Guikit.Vulkan;
 with Archive.Fonts;
 with Guikit.Draw;
@@ -13935,6 +13936,85 @@ package body Archive_Suite.Core is
       for Attempt in 1 .. 10_000 loop
          exit when Archive.GUI_Runtime.Drain_Operations (Runtime).Event_Seen;
       end loop;
+
+      --  A click on an entry selects it.
+      declare
+         Shell : constant Archive.UI.Shell_Snapshot := Archive.GUI_Runtime.Snapshot (Runtime);
+         Cells : constant Guikit.Item_Grid.Item_Layout_Vectors.Vector := Archive.GUI_Frame.Content_Cells (Shell);
+         Found : Boolean := False;
+      begin
+         for Cell of Cells loop
+            if Cell.Visible_Index = 1 and then Cell.Height > 0 then
+               Archive.GUI_Runtime.Clicked (Runtime, Cell.X + Cell.Width / 2, Cell.Y + Cell.Height / 2);
+               Found := True;
+               exit;
+            end if;
+         end loop;
+         Assert (Found, "the opened archive shows an entry to click");
+         Assert (Archive.Model.Is_Selected
+                   (Archive.GUI_Runtime.Model (Runtime), Shell.Content_Rows.First_Element.Entry_Id),
+                 "clicking an entry selects it");
+      end;
+
+      --  A click on a settings toggle flips its setting.
+      declare
+         Ignored : constant Archive.UI.Dispatch_Result :=
+           Archive.GUI_Runtime.Dispatch_Command
+             (Runtime, Archive.Commands.Open_Settings_Command, Archive.UI.Shortcut_Source);
+         Before  : constant Boolean :=
+           Archive.Model.Effective_Settings (Archive.GUI_Runtime.Model (Runtime)).Preview_Visible;
+         Label   : constant String :=
+           To_String (Archive.GUI_Runtime.Snapshot (Runtime).Settings.Preview_Visible_Label);
+         Frame   : constant Archive.GUI_Frame.Frame := Archive.GUI_Runtime.Render_Frame (Runtime);
+         Clicked : Boolean := False;
+      begin
+         --  Sweep the row from its right edge until the switch is hit.
+         for Node of Frame.Accessibility loop
+            if To_String (Node.Name) = Label and then Node.Width > 0 then
+               for X in reverse Node.X .. Node.X + Node.Width - 1 loop
+                  Archive.GUI_Runtime.Clicked (Runtime, X, Node.Y + Node.Height / 2);
+                  Clicked := True;
+                  exit when Archive.Model.Effective_Settings
+                              (Archive.GUI_Runtime.Model (Runtime)).Preview_Visible /= Before;
+               end loop;
+               exit;
+            end if;
+         end loop;
+         Assert (Clicked, "the settings panel shows the preview toggle");
+         Assert (Archive.Model.Effective_Settings (Archive.GUI_Runtime.Model (Runtime)).Preview_Visible /= Before,
+                 "clicking the preview toggle flips the setting");
+         Archive.GUI_Runtime.Key_Pressed (Runtime, Guikit.Input.Key_Escape, None);
+      end;
+
+      --  The toolbar's overflow: More opens the commands that did not fit,
+      --  Escape closes it, a click on a row runs that command and closes it.
+      declare
+         Buttons : constant Archive.GUI_Frame.Toolbar_Button_Vectors.Vector :=
+           Archive.GUI_Frame.Toolbar_Buttons (Archive.GUI_Runtime.Snapshot (Runtime), 1024);
+         More    : constant Archive.GUI_Frame.Toolbar_Button := Buttons.Last_Element;
+      begin
+         Assert (More.More, "at 1024 pixels the toolbar ends in More");
+         Archive.GUI_Runtime.Clicked (Runtime, More.X + More.Width / 2, More.Y + More.Height / 2);
+         Assert (Archive.Model.Toolbar_Overflow_Open (Archive.GUI_Runtime.Model (Runtime)),
+                 "clicking More opens the overflow menu");
+         Archive.GUI_Runtime.Key_Pressed (Runtime, Guikit.Input.Key_Escape, None);
+         Assert (not Archive.Model.Toolbar_Overflow_Open (Archive.GUI_Runtime.Model (Runtime)),
+                 "Escape closes the overflow menu");
+         Archive.GUI_Runtime.Clicked (Runtime, More.X + More.Width / 2, More.Y + More.Height / 2);
+         declare
+            Rows : constant Archive.GUI_Frame.Toolbar_Button_Vectors.Vector :=
+              Archive.GUI_Frame.Toolbar_Overflow_Rows (Archive.GUI_Runtime.Snapshot (Runtime), 1024);
+         begin
+            Assert (not Rows.Is_Empty, "the overflow menu lists the commands that did not fit");
+            Archive.GUI_Runtime.Clicked
+              (Runtime, Rows.First_Element.X + 4, Rows.First_Element.Y + Rows.First_Element.Height / 2);
+            Assert (not Archive.Model.Toolbar_Overflow_Open (Archive.GUI_Runtime.Model (Runtime)),
+                    "choosing an overflow row closes the menu");
+         end;
+         if Archive.GUI_Runtime.Snapshot (Runtime).Dialog.Visible then
+            Archive.GUI_Runtime.Key_Pressed (Runtime, Guikit.Input.Key_Escape, None);
+         end if;
+      end;
 
       --  The palette: typing filters it, Enter runs the highlighted command.
       declare

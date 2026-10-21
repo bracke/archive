@@ -115,10 +115,14 @@ package Archive.GUI_Runtime is
       Text    : String);
 
    --  A left click at a window position: a toolbar button runs its command;
-   --  a palette row runs its command.
+   --  a palette row runs its command; a settings control changes its setting;
+   --  an entry is selected (Ctrl adds or removes it), and a double click
+   --  activates it.
    procedure Clicked
-     (Runtime : in out Runtime_State;
-      X, Y    : Integer);
+     (Runtime   : in out Runtime_State;
+      X, Y      : Integer;
+      Double    : Boolean := False;
+      Modifiers : Guikit.Input.Modifier_Set := Guikit.Input.No_Modifiers);
 
    procedure Request_Close (Runtime : in out Runtime_State);
    function Runtime_Report (Runtime : Runtime_State) return String;

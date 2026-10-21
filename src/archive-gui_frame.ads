@@ -1,6 +1,8 @@
 with Ada.Containers.Vectors;
 
 with Guikit.Command_Palette;
+with Guikit.Item_Grid;
+with Guikit.Settings_Panel;
 with Guikit.Draw;
 with Guikit.Vulkan;
 
@@ -37,15 +39,25 @@ package Archive.GUI_Frame is
       Command : Archive.Commands.Command_Id := Archive.Commands.No_Command;
       Enabled : Boolean := False;
       Label   : Archive.Types.UString;
+      More    : Boolean := False;
+      --  The button that opens the overflow menu, not a command.
    end record;
 
    package Toolbar_Button_Vectors is new Ada.Containers.Vectors
      (Index_Type   => Positive,
       Element_Type => Toolbar_Button);
 
-   --  The toolbar's buttons, each as wide as its label, left to right; those
-   --  that do not fit a window Width wide are left out.
+   --  The toolbar's buttons, each as wide as its label, left to right. When
+   --  they do not all fit a window Width wide, the last place holds a More
+   --  button that opens the rest.
    function Toolbar_Buttons
+     (Shell : Archive.UI.Shell_Snapshot;
+      Width : Natural)
+      return Toolbar_Button_Vectors.Vector;
+
+   --  The commands that did not fit, as rows of the overflow menu under the
+   --  More button (empty when everything fits).
+   function Toolbar_Overflow_Rows
      (Shell : Archive.UI.Shell_Snapshot;
       Width : Natural)
       return Toolbar_Button_Vectors.Vector;
@@ -53,6 +65,15 @@ package Archive.GUI_Frame is
    --  The command palette as the frame draws it -- its rows, typed query and
    --  highlighted row -- so input reads the same result the user sees.
    function Command_Palette_For (Shell : Archive.UI.Shell_Snapshot) return Guikit.Command_Palette.Palette;
+
+   --  The content area's item cells, as drawn and as clicks hit-test them.
+   function Content_Cells (Shell : Archive.UI.Shell_Snapshot) return Guikit.Item_Grid.Item_Layout_Vectors.Vector;
+
+   --  The settings panel as drawn (fields and values), and where it is drawn.
+   function Settings_Panel_For (Shell : Archive.UI.Shell_Snapshot) return Guikit.Settings_Panel.Panel;
+   procedure Settings_Panel_Box
+     (Width, Height : Natural;
+      X, Y, W, H    : out Natural);
 
    --  Where the palette is drawn in a Width x Height window.
    procedure Command_Palette_Box

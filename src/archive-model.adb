@@ -689,6 +689,17 @@ package body Archive.Model is
       Touch (Model);
    end Move_Command_Palette_Selection;
 
+   function Toolbar_Overflow_Open (Model : Application_Model) return Boolean is (Model.Overflow_Open);
+
+   procedure Set_Toolbar_Overflow_Open
+     (Model : in out Application_Model;
+      Open  : Boolean)
+   is
+   begin
+      Model.Overflow_Open := Open;
+      Touch (Model);
+   end Set_Toolbar_Overflow_Open;
+
    function Dialog_Text (Model : Application_Model) return String is (To_String (Model.Dialog_Input));
 
    procedure Set_Dialog_Text

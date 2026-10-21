@@ -20,6 +20,7 @@ with Glfw.Windows.Vulkan;
 with Archive.GUI_Frame;
 with Archive.GUI_Runtime;
 with Archive.Localization;
+with Archive.Model;
 with Archive.Operations.Opening;
 with Archive.UI;
 
@@ -122,6 +123,7 @@ package body Archive.Application.Windows is
       Modifiers : Guikit.Input.Modifier_Set := Guikit.Input.No_Modifiers;
       Text      : Unbounded_String;
       X, Y      : Integer := 0;
+      Double    : Boolean := False;
    end record;
 
    package Input_Event_Vectors is new Ada.Containers.Vectors
@@ -132,12 +134,18 @@ package body Archive.Application.Windows is
    --  the real one; presses closer together than this are one click.
    Click_Bounce : constant Glfw.Seconds := 0.04;
 
+   --  A second click this soon after the first, near it, is a double click.
+   Double_Click_Time : constant Glfw.Seconds := 0.4;
+   Double_Click_Slop : constant := 4;
+
    type Desktop_Window is new Glfw.Windows.Window with record
       Pending     : Input_Event_Vectors.Vector;
       Mouse_X     : Integer := 0;
       Mouse_Y     : Integer := 0;
       Have_Press  : Boolean := False;
       Last_Press  : Glfw.Seconds := 0.0;
+      Press_X     : Integer := 0;
+      Press_Y     : Integer := 0;
    end record;
    type Window_Access is access all Desktop_Window;
 
@@ -228,17 +236,37 @@ package body Archive.Application.Windows is
       use type Glfw.Input.Mouse.Button;
       use type Glfw.Input.Button_State;
       use type Glfw.Seconds;
-      pragma Unreferenced (Mods);
       Now : constant Glfw.Seconds := Glfw.Time;
    begin
       if Button = Glfw.Input.Mouse.Left_Button and then State = Glfw.Input.Pressed then
          if Object.Have_Press and then Now - Object.Last_Press < Click_Bounce then
             return;
          end if;
-         Object.Have_Press := True;
+         declare
+            Double : constant Boolean :=
+              Object.Have_Press
+              and then Now - Object.Last_Press < Double_Click_Time
+              and then abs (Object.Mouse_X - Object.Press_X) <= Double_Click_Slop
+              and then abs (Object.Mouse_Y - Object.Press_Y) <= Double_Click_Slop;
+         begin
+            Object.Pending.Append
+              (Input_Event'
+                 (Kind      => Click_Input,
+                  X         => Object.Mouse_X,
+                  Y         => Object.Mouse_Y,
+                  Double    => Double,
+                  Modifiers =>
+                    [Guikit.Input.Shift_Key   => Mods.Shift,
+                     Guikit.Input.Control_Key => Mods.Control,
+                     Guikit.Input.Alt_Key     => Mods.Alt,
+                     Guikit.Input.Meta_Key    => Mods.Super],
+                  others    => <>));
+            --  A double click's second press does not start another one.
+            Object.Have_Press := not Double;
+         end;
          Object.Last_Press := Now;
-         Object.Pending.Append
-           (Input_Event'(Kind => Click_Input, X => Object.Mouse_X, Y => Object.Mouse_Y, others => <>));
+         Object.Press_X := Object.Mouse_X;
+         Object.Press_Y := Object.Mouse_Y;
       end if;
    end Mouse_Button_Changed;
 
@@ -266,7 +294,7 @@ package body Archive.Application.Windows is
             when Text_Input =>
                Archive.GUI_Runtime.Text_Typed (Runtime, To_String (Event.Text));
             when Click_Input =>
-               Archive.GUI_Runtime.Clicked (Runtime, Event.X, Event.Y);
+               Archive.GUI_Runtime.Clicked (Runtime, Event.X, Event.Y, Event.Double, Event.Modifiers);
          end case;
       end loop;
    end Drain_Input;
@@ -555,6 +583,34 @@ package body Archive.Application.Windows is
          begin
             Result.Input_Driven := After.Dialog.Takes_Path and then To_String (After.Dialog.Text) = Typed;
          end;
+         Hold_For_Inspection;
+
+         --  Close the dialog and open the toolbar's overflow menu.
+         Handle.Pending.Append
+           (Input_Event'(Kind => Key_Input, Key => Guikit.Input.Key_Escape, others => <>));
+         declare
+            Now_Shell : constant Archive.UI.Shell_Snapshot := Archive.GUI_Runtime.Snapshot (Runtime);
+         begin
+            for Button of Archive.GUI_Frame.Toolbar_Buttons
+              (Now_Shell, Now_Shell.Layout.Content_W + Now_Shell.Layout.Preview_W)
+            loop
+               if Button.More then
+                  Handle.Pending.Append
+                    (Input_Event'
+                       (Kind => Click_Input, X => Button.X + Button.Width / 2, Y => Button.Y + Button.Height / 2,
+                        others => <>));
+               end if;
+            end loop;
+         end;
+         Drain_Input (Handle, Runtime);
+         Render_Once (Runtime, As_Window (Handle), Vulkan, Smoke_Cache, Force => True, Status => Result.Last_Status);
+         Result.Frames_Attempted := Result.Frames_Attempted + 1;
+         if Result.Last_Status = Guikit.Vulkan.Vulkan_Presented then
+            Result.Frames_Presented := Result.Frames_Presented + 1;
+         end if;
+         Result.Input_Driven :=
+           Result.Input_Driven
+           and then Archive.Model.Toolbar_Overflow_Open (Archive.GUI_Runtime.Model (Runtime));
          Hold_For_Inspection;
       end;
 

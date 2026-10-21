@@ -1,47 +1,130 @@
 with Ada.Strings.Unbounded;
 
-with Guikit.Item_Grid;
 with Guikit.Layout;
 with Guikit.List_Panel;
-with Guikit.Settings_Panel;
 with Guikit.Widgets;
 
 with Archive.Archives.Entries;
 with Archive.Model;
 with Archive.Settings;
+with Archive.View_Snapshots.Command_Surfaces;
 
 package body Archive.GUI_Frame is
    use Ada.Strings.Unbounded;
 
    Toolbar_Button_Padding : constant Natural := 8;
 
+   Toolbar_Start : constant Natural := 260;
+   Toolbar_Gap   : constant Natural := 4;
+
+   function Button_Width (Label : Archive.Types.UString) return Natural is
+     (Guikit.Layout.Label_Pixel_Width
+        (To_String (Label), Guikit.Layout.Caret_Advance_Width (Archive.UI.Default_Line_Height))
+      + 2 * Toolbar_Button_Padding);
+
+   --  How many of the toolbar's commands are shown as buttons.
+   function Shown_Commands
+     (Shell : Archive.UI.Shell_Snapshot;
+      Width : Natural)
+      return Natural
+   is
+      Count  : constant Natural := Natural (Shell.Toolbar.Commands.Length);
+      More_W : constant Natural := Button_Width (Shell.Toolbar_More_Label);
+      X      : Natural := Toolbar_Start;
+      Fits   : Natural := 0;
+   begin
+      for Command of Shell.Toolbar.Commands loop
+         exit when X + Button_Width (Command.Name) > Width;
+         X := X + Button_Width (Command.Name) + Toolbar_Gap;
+         Fits := Fits + 1;
+      end loop;
+      if Fits = Count then
+         return Count;
+      end if;
+      --  Make room for More after the last button shown.
+      while Fits > 0 loop
+         X := Toolbar_Start;
+         for Index in 1 .. Fits loop
+            X := X + Button_Width (Shell.Toolbar.Commands.Element (Index).Name) + Toolbar_Gap;
+         end loop;
+         exit when X + More_W <= Width;
+         Fits := Fits - 1;
+      end loop;
+      return Fits;
+   end Shown_Commands;
+
    function Toolbar_Buttons
      (Shell : Archive.UI.Shell_Snapshot;
       Width : Natural)
       return Toolbar_Button_Vectors.Vector
    is
-      Advance : constant Positive := Guikit.Layout.Caret_Advance_Width (Archive.UI.Default_Line_Height);
-      Gap     : constant Natural := 4;
-      Result  : Toolbar_Button_Vectors.Vector;
-      X       : Natural := 260;
+      Shown  : constant Natural := Shown_Commands (Shell, Width);
+      Result : Toolbar_Button_Vectors.Vector;
+      X      : Natural := Toolbar_Start;
    begin
       --  Each button is as wide as its label, measured with the advance the
-      --  renderer draws at; buttons that no longer fit the window are left out
-      --  rather than drawn clipped.
-      for Command of Shell.Toolbar.Commands loop
+      --  renderer draws at.
+      for Index in 1 .. Shown loop
          declare
-            Button_W : constant Natural :=
-              Guikit.Layout.Label_Pixel_Width (To_String (Command.Name), Advance) + 2 * Toolbar_Button_Padding;
+            Command  : constant Archive.View_Snapshots.Command_Surfaces.Surface_Command :=
+              Shell.Toolbar.Commands.Element (Index);
+            Button_W : constant Natural := Button_Width (Command.Name);
          begin
-            exit when X + Button_W > Width;
             Result.Append
               (Toolbar_Button'(X => X, Y => 8, Width => Button_W, Height => 28,
-                Command => Command.Id, Enabled => Command.Enabled, Label => Command.Name));
-            X := X + Button_W + Gap;
+                               Command => Command.Id, Enabled => Command.Enabled, Label => Command.Name,
+                               More => False));
+            X := X + Button_W + Toolbar_Gap;
          end;
       end loop;
+      if Shown < Natural (Shell.Toolbar.Commands.Length) then
+         Result.Append
+           (Toolbar_Button'(X => X, Y => 8, Width => Button_Width (Shell.Toolbar_More_Label), Height => 28,
+                            Command => Archive.Commands.No_Command, Enabled => True,
+                            Label => Shell.Toolbar_More_Label, More => True));
+      end if;
       return Result;
    end Toolbar_Buttons;
+
+   function Toolbar_Overflow_Rows
+     (Shell : Archive.UI.Shell_Snapshot;
+      Width : Natural)
+      return Toolbar_Button_Vectors.Vector
+   is
+      Shown   : constant Natural := Shown_Commands (Shell, Width);
+      Buttons : constant Toolbar_Button_Vectors.Vector := Toolbar_Buttons (Shell, Width);
+      Result  : Toolbar_Button_Vectors.Vector;
+      Menu_W  : Natural := 0;
+      Row_H   : constant Natural := Archive.UI.Default_Line_Height + 8;
+   begin
+      if Buttons.Is_Empty or else not Buttons.Last_Element.More then
+         return Result;
+      end if;
+      for Index in Shown + 1 .. Natural (Shell.Toolbar.Commands.Length) loop
+         Menu_W := Natural'Max (Menu_W, Button_Width (Shell.Toolbar.Commands.Element (Index).Name));
+      end loop;
+      declare
+         More   : constant Toolbar_Button := Buttons.Last_Element;
+         --  Under the More button, kept inside the window.
+         Left   : constant Natural :=
+           (if More.X + Menu_W > Width and then Width > Menu_W then Width - Menu_W else More.X);
+         Y      : Natural := More.Y + More.Height + 2;
+      begin
+         for Index in Shown + 1 .. Natural (Shell.Toolbar.Commands.Length) loop
+            declare
+               Command : constant Archive.View_Snapshots.Command_Surfaces.Surface_Command :=
+                 Shell.Toolbar.Commands.Element (Index);
+            begin
+               Result.Append
+                 (Toolbar_Button'(X => Left, Y => Y, Width => Menu_W, Height => Row_H,
+                                  Command => Command.Id, Enabled => Command.Enabled, Label => Command.Name,
+                                  More => False));
+               Y := Y + Row_H;
+            end;
+         end loop;
+      end;
+      return Result;
+   end Toolbar_Overflow_Rows;
    use type Archive.Archives.Entries.Entry_Kind;
    use type Archive.Model.Focus_Region;
    use type Archive.Model.Overlay_Kind;
@@ -145,16 +228,13 @@ package body Archive.GUI_Frame is
       end if;
    end Draw_Breadcrumb;
 
-   procedure Draw_Content (Result : in out Frame; Shell : Archive.UI.Shell_Snapshot; W : Natural; H : Natural) is
-      pragma Unreferenced (W);
+   function Content_Cells (Shell : Archive.UI.Shell_Snapshot) return Guikit.Item_Grid.Item_Layout_Vectors.Vector is
       Items   : Guikit.Item_Grid.Layout_Item_Vectors.Vector;
       View    : constant Guikit.Item_Grid.View_Kind := Grid_View (Shell.Content_View.Mode);
       Header_H : constant Natural := 32;
       Content_Y : constant Natural := Shell.Layout.Content_Y + Header_H;
       Content_H : constant Natural :=
         (if Shell.Layout.Content_H > Header_H then Shell.Layout.Content_H - Header_H else 0);
-      Layouts : Guikit.Item_Grid.Item_Layout_Vectors.Vector;
-      Tips    : Guikit.Draw.Tooltip_Command_Vectors.Vector;
    begin
       for I in 1 .. Natural (Shell.Content_Rows.Length) loop
          Items.Append
@@ -164,7 +244,7 @@ package body Archive.GUI_Frame is
                Label         => Shell.Content_Rows.Element (I).Name));
       end loop;
 
-      Layouts := Guikit.Item_Grid.Calculate_Layout
+      return Guikit.Item_Grid.Calculate_Layout
         (Items         => Items,
          View          => View,
          Content_X     => 8,
@@ -174,7 +254,14 @@ package body Archive.GUI_Frame is
          Columns       => Detail_Columns (16, (if Shell.Layout.Content_W > 32 then Shell.Layout.Content_W - 32 else 0)),
          Scroll_Pixels => 0,
          Line_Height   => Archive.UI.Default_Line_Height);
+   end Content_Cells;
 
+   procedure Draw_Content (Result : in out Frame; Shell : Archive.UI.Shell_Snapshot; W : Natural; H : Natural) is
+      pragma Unreferenced (W);
+      Layouts : constant Guikit.Item_Grid.Item_Layout_Vectors.Vector := Content_Cells (Shell);
+      View    : constant Guikit.Item_Grid.View_Kind := Grid_View (Shell.Content_View.Mode);
+      Tips    : Guikit.Draw.Tooltip_Command_Vectors.Vector;
+   begin
       for Cell of Layouts loop
          if Cell.Height > 0 and then Cell.Visible_Index > 0 then
             declare
@@ -314,17 +401,19 @@ package body Archive.GUI_Frame is
       end loop;
    end Append_Panel_Output;
 
-   procedure Draw_Settings_Overlay
-     (Result : in out Frame;
-      Shell  : Archive.UI.Shell_Snapshot;
-      W      : Natural;
-      H      : Natural)
-   is
+   procedure Settings_Panel_Box
+     (Width, Height : Natural;
+      X, Y, W, H    : out Natural) is
+   begin
+      X := Width / 6;
+      Y := Height / 8;
+      W := (Width * 2) / 3;
+      H := (Height * 3) / 4;
+   end Settings_Panel_Box;
+
+   function Settings_Panel_For (Shell : Archive.UI.Shell_Snapshot) return Guikit.Settings_Panel.Panel is
       Panel  : Guikit.Settings_Panel.Panel;
       Fields : Guikit.Settings_Panel.Field_Vectors.Vector;
-      Rects  : Guikit.Draw.Rectangle_Command_Vectors.Vector;
-      Text   : Guikit.Draw.Text_Command_Vectors.Vector;
-      Nodes  : Guikit.Draw.Accessibility_Node_Vectors.Vector;
 
       function Bool_Value (Value : Boolean) return Archive.Types.UString is
       begin
@@ -419,8 +508,24 @@ package body Archive.GUI_Frame is
           Status_Is_Error => False,
           Switch_Tooltip  => To_Unbounded_String ("")));
       Guikit.Settings_Panel.Set_Fields (Panel, Fields);
+      return Panel;
+   end Settings_Panel_For;
+
+   procedure Draw_Settings_Overlay
+     (Result : in out Frame;
+      Shell  : Archive.UI.Shell_Snapshot;
+      W      : Natural;
+      H      : Natural)
+   is
+      Panel  : Guikit.Settings_Panel.Panel := Settings_Panel_For (Shell);
+      Rects  : Guikit.Draw.Rectangle_Command_Vectors.Vector;
+      Text   : Guikit.Draw.Text_Command_Vectors.Vector;
+      Nodes  : Guikit.Draw.Accessibility_Node_Vectors.Vector;
+      Box_X, Box_Y, Box_W, Box_H : Natural;
+   begin
+      Settings_Panel_Box (W, H, Box_X, Box_Y, Box_W, Box_H);
       Guikit.Settings_Panel.Build_Frame
-        (Panel, W / 6, H / 8, (W * 2) / 3, (H * 3) / 4, W, H,
+        (Panel, Box_X, Box_Y, Box_W, Box_H, W, H,
          Shell.Focus.Region = Archive.Model.Settings_Focus, -1, -1,
          Rects, Text, Nodes);
       Append_Panel_Output (Result, Rects, Text, Nodes);
@@ -549,6 +654,29 @@ package body Archive.GUI_Frame is
            (Result.Accessibility, Guikit.Draw.Role_Button, Button.X, Button.Y, Button.Width, Button.Height,
             Button.Label);
       end loop;
+
+      if Shell.Toolbar_Overflow_Open then
+         declare
+            Rows : constant Toolbar_Button_Vectors.Vector := Toolbar_Overflow_Rows (Shell, W);
+         begin
+            if not Rows.Is_Empty then
+               Guikit.Widgets.Draw_Menu_Panel
+                 (Result.Overlay_Rectangles, W, H, Rows.First_Element.X, Rows.First_Element.Y,
+                  Rows.First_Element.Width,
+                  Rows.Last_Element.Y + Rows.Last_Element.Height - Rows.First_Element.Y,
+                  Guikit.Draw.Overlay_Color, Guikit.Draw.Border_Color);
+               for Row of Rows loop
+                  Add_Text
+                    (Result.Overlay_Text, Row.X + Toolbar_Button_Padding, Row.Y + 4,
+                     Row.Width - 2 * Toolbar_Button_Padding, Archive.UI.Default_Line_Height, Row.Label,
+                     (if Row.Enabled then Guikit.Draw.Text_Color else Guikit.Draw.Disabled_Text_Color));
+                  Add_Accessibility
+                    (Result.Accessibility, Guikit.Draw.Role_Button, Row.X, Row.Y, Row.Width, Row.Height,
+                     Row.Label);
+               end loop;
+            end if;
+         end;
+      end if;
 
       if Shell.Dialog.Visible then
          Guikit.Widgets.Draw_Menu_Panel

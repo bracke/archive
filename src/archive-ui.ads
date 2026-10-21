@@ -288,6 +288,10 @@ package Archive.UI is
       --  The palette's typed query.
       Command_Palette_Moves : Integer := 0;
       --  Rows the palette highlight has moved from the first result.
+      Toolbar_Overflow_Open : Boolean := False;
+      --  Whether the menu of toolbar commands that did not fit is open.
+      Toolbar_More_Label : Archive.Types.UString;
+      --  The label of the button that opens it.
       Menus                : Archive.View_Snapshots.Command_Surfaces.Menu_Snapshot;
       Toolbar              : Archive.View_Snapshots.Command_Surfaces.Toolbar_Snapshot;
       Breadcrumb           : Archive.View_Snapshots.Breadcrumbs.Breadcrumb_Snapshot;

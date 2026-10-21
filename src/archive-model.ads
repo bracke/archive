@@ -254,6 +254,13 @@ package Archive.Model is
      (Model : in out Application_Model;
       Rows  : Integer);
 
+   --  Whether the toolbar's overflow menu (the commands that did not fit) is
+   --  open.
+   function Toolbar_Overflow_Open (Model : Application_Model) return Boolean;
+   procedure Set_Toolbar_Overflow_Open
+     (Model : in out Application_Model;
+      Open  : Boolean);
+
    --  The path typed into the open dialog's field; opening a dialog clears it.
    function Dialog_Text (Model : Application_Model) return String;
    procedure Set_Dialog_Text
@@ -428,6 +435,7 @@ private
       Focus          : Focus_Region := Content_Focus;
       Palette_Filter : UString;
       Palette_Moves  : Integer := 0;
+      Overflow_Open  : Boolean := False;
       Dialog         : Dialog_Kind := No_Dialog;
       Dialog_Input   : UString;
       Notice         : Notification_Severity := No_Notification;

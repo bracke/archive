@@ -747,6 +747,8 @@ package body Archive.UI is
          Command_Palette_Label => To_Unbounded_String (Locale_Text (Config, "ui.region.command_palette")),
          Command_Palette_Filter => To_Unbounded_String (Archive.Model.Command_Palette_Filter (Model)),
          Command_Palette_Moves => Archive.Model.Command_Palette_Selection (Model),
+         Toolbar_Overflow_Open => Archive.Model.Toolbar_Overflow_Open (Model),
+         Toolbar_More_Label    => To_Unbounded_String (Locale_Text (Config, "ui.toolbar.more")),
          Menus                 => Archive.View_Snapshots.Command_Surfaces.Build_Menus
            (Model, Config.Locale),
          Toolbar               => Archive.View_Snapshots.Command_Surfaces.Build_Toolbar

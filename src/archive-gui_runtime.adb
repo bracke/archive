@@ -3,8 +3,11 @@ with Ada.Strings.Unbounded;
 
 with Guikit.Command_Palette;
 with Guikit.Draw;
+with Guikit.Item_Grid;
+with Guikit.Settings_Panel;
 
 with Archive.Localization;
+with Archive.Settings;
 
 package body Archive.GUI_Runtime is
    use Ada.Strings.Unbounded;
@@ -345,6 +348,10 @@ package body Archive.GUI_Runtime is
       Plain   : constant Boolean := Modifiers = Guikit.Input.No_Modifiers;
       Ignored : Archive.UI.Dispatch_Result;
    begin
+      if Archive.Model.Toolbar_Overflow_Open (Runtime.App_Model) and then Key = Guikit.Input.Key_Escape then
+         Archive.Model.Set_Toolbar_Overflow_Open (Runtime.App_Model, False);
+         return;
+      end if;
       if Archive.UI.Dialog_Takes_Path (Archive.Model.Active_Dialog (Runtime.App_Model)) and then Plain then
          if Key = Guikit.Input.Key_Backspace then
             Archive.Model.Set_Dialog_Text
@@ -390,14 +397,94 @@ package body Archive.GUI_Runtime is
       end if;
    end Text_Typed;
 
-   procedure Clicked
+   --  Apply one changed settings control to the model's settings.
+   procedure Apply_Setting
      (Runtime : in out Runtime_State;
-      X, Y    : Integer)
+      Key     : String;
+      Value   : String)
    is
+      Settings : Archive.Settings.Settings_Model := Archive.Model.Effective_Settings (Runtime.App_Model);
+      On       : constant Boolean := Value = "true";
+   begin
+      if Key = "default_view" then
+         declare
+            Parsed : Boolean;
+            Mode   : constant Archive.Types.View_Mode := Archive.Settings.Parse_View_Mode (Value, Parsed);
+         begin
+            if not Parsed then
+               return;
+            end if;
+            Settings.Default_View := Mode;
+            Archive.Model.Set_View_Mode (Runtime.App_Model, Mode);
+         end;
+      elsif Key = "directories_first" then
+         Settings.Directories_First := On;
+      elsif Key = "preview_visible" then
+         Settings.Preview_Visible := On;
+      elsif Key = "toolbar_visible" then
+         Settings.Toolbar_Visible := On;
+      elsif Key = "status_bar_visible" then
+         Settings.Status_Bar_Visible := On;
+      else
+         return;
+      end if;
+      Archive.Model.Apply_Settings (Runtime.App_Model, Settings);
+   end Apply_Setting;
+
+   procedure Clicked
+     (Runtime   : in out Runtime_State;
+      X, Y      : Integer;
+      Double    : Boolean := False;
+      Modifiers : Guikit.Input.Modifier_Set := Guikit.Input.No_Modifiers)
+   is
+      use type Guikit.Settings_Panel.Change_Kind;
       Shell : constant Archive.UI.Shell_Snapshot := Snapshot (Runtime);
    begin
       if Archive.Model.Active_Dialog (Runtime.App_Model) /= Archive.Model.No_Dialog then
          return;  --  a modal dialog answers to the keyboard
+      elsif Archive.Model.Toolbar_Overflow_Open (Runtime.App_Model) then
+         --  The overflow menu takes the click: a row runs its command, and
+         --  any click closes the menu.
+         Archive.Model.Set_Toolbar_Overflow_Open (Runtime.App_Model, False);
+         for Row of Archive.GUI_Frame.Toolbar_Overflow_Rows (Shell, Runtime.Config.Width) loop
+            if X >= Row.X and then X < Row.X + Row.Width
+              and then Y >= Row.Y and then Y < Row.Y + Row.Height
+              and then Row.Enabled
+            then
+               declare
+                  Ignored : constant Archive.UI.Dispatch_Result :=
+                    Dispatch_Command (Runtime, Row.Command, Archive.UI.Toolbar_Source);
+               begin
+                  null;
+               end;
+            end if;
+         end loop;
+         return;
+      elsif Archive.Model.Active_Overlay (Runtime.App_Model) = Archive.Model.Settings_Overlay then
+         declare
+            Panel : Guikit.Settings_Panel.Panel := Archive.GUI_Frame.Settings_Panel_For (Shell);
+            Rects : Guikit.Draw.Rectangle_Command_Vectors.Vector;
+            Text  : Guikit.Draw.Text_Command_Vectors.Vector;
+            Nodes : Guikit.Draw.Accessibility_Node_Vectors.Vector;
+            Box_X, Box_Y, Box_W, Box_H : Natural;
+         begin
+            --  Lay the panel out as drawn, then let it hit-test the click.
+            Archive.GUI_Frame.Settings_Panel_Box
+              (Runtime.Config.Width, Runtime.Config.Height, Box_X, Box_Y, Box_W, Box_H);
+            Guikit.Settings_Panel.Build_Frame
+              (Panel, Box_X, Box_Y, Box_W, Box_H, Runtime.Config.Width, Runtime.Config.Height,
+               True, -1, -1, Rects, Text, Nodes);
+            if Guikit.Settings_Panel.Click (Panel, X, Y) then
+               declare
+                  Change : constant Guikit.Settings_Panel.Change := Guikit.Settings_Panel.Take_Change (Panel);
+               begin
+                  if Change.Kind = Guikit.Settings_Panel.Value_Changed then
+                     Apply_Setting (Runtime, To_String (Change.Key), To_String (Change.Value));
+                  end if;
+               end;
+            end if;
+         end;
+         return;
       elsif Archive.Model.Active_Overlay (Runtime.App_Model) = Archive.Model.Command_Palette_Overlay then
          declare
             Palette : Guikit.Command_Palette.Palette := Archive.GUI_Frame.Command_Palette_For (Shell);
@@ -433,11 +520,39 @@ package body Archive.GUI_Runtime is
          return;
       end if;
 
+      --  An entry in the content area.
+      if X >= 0 and then Y >= 0 then
+         declare
+            Index : constant Natural :=
+              Guikit.Item_Grid.Item_At (Archive.GUI_Frame.Content_Cells (Shell), Natural (X), Natural (Y));
+         begin
+            if Index in 1 .. Natural (Shell.Content_Rows.Length) then
+               declare
+                  Id : constant Archive.Types.Entry_Id := Shell.Content_Rows.Element (Index).Entry_Id;
+               begin
+                  Archive.Model.Set_Focus (Runtime.App_Model, Archive.Model.Content_Focus);
+                  Archive.Model.Set_Focused_Entry (Runtime.App_Model, Id);
+                  if Modifiers (Guikit.Input.Control_Key) then
+                     Archive.Model.Toggle_Selection (Runtime.App_Model, Id);
+                  else
+                     Archive.Model.Select_Only (Runtime.App_Model, Id);
+                  end if;
+                  if Double then
+                     Archive.Model.Activate_Focused_Entry (Runtime.App_Model);
+                  end if;
+               end;
+               return;
+            end if;
+         end;
+      end if;
+
       for Button of Archive.GUI_Frame.Toolbar_Buttons (Shell, Runtime.Config.Width) loop
          if X >= Button.X and then X < Button.X + Button.Width
            and then Y >= Button.Y and then Y < Button.Y + Button.Height
          then
-            if Button.Enabled then
+            if Button.More then
+               Archive.Model.Set_Toolbar_Overflow_Open (Runtime.App_Model, True);
+            elsif Button.Enabled then
                declare
                   Ignored : constant Archive.UI.Dispatch_Result :=
                     Dispatch_Command (Runtime, Button.Command, Archive.UI.Toolbar_Source);
