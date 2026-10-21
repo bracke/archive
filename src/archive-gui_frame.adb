@@ -295,6 +295,7 @@ package body Archive.GUI_Frame is
                Min           => 0,
                Max           => 0,
                Enabled       => True,
+               Display       => <>,
                Help          => To_Unbounded_String ("")));
       end Add_Section;
 
@@ -315,6 +316,7 @@ package body Archive.GUI_Frame is
                Min           => 0,
                Max           => 0,
                Enabled       => True,
+               Display       => <>,
                Help          => To_Unbounded_String ("")));
       end Add_Toggle;
 
@@ -340,6 +342,7 @@ package body Archive.GUI_Frame is
                Min           => 0,
                Max           => 0,
                Enabled       => True,
+               Display       => <>,
                Help          => To_Unbounded_String ("")));
       end Add_View_Choice;
    begin
