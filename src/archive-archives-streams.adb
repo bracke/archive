@@ -17,7 +17,7 @@ package body Archive.Archives.Streams is
         (1 .. Ada.Streams.Stream_Element_Offset (Positive'Min (Chunk_Size, Max_Bytes)));
       Last      : Ada.Streams.Stream_Element_Offset := 0;
    begin
-      Ada.Streams.Stream_IO.Open (File, Ada.Streams.Stream_IO.In_File, Path);
+      Ada.Streams.Stream_IO.Open (File, Ada.Streams.Stream_IO.In_File, Path, Form => "shared=no");
       while not Ada.Streams.Stream_IO.End_Of_File (File) loop
          Ada.Streams.Stream_IO.Read (File, Buffer, Last);
          exit when Last < Buffer'First;
@@ -83,7 +83,7 @@ package body Archive.Archives.Streams is
       Last    : Ada.Streams.Stream_Element_Offset := 0;
       Written : Natural := 0;
    begin
-      Ada.Streams.Stream_IO.Open (File, Ada.Streams.Stream_IO.In_File, Path);
+      Ada.Streams.Stream_IO.Open (File, Ada.Streams.Stream_IO.In_File, Path, Form => "shared=no");
       Ada.Streams.Stream_IO.Read (File, Buffer, Last);
       Ada.Streams.Stream_IO.Close (File);
 

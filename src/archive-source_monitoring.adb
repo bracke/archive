@@ -58,7 +58,7 @@ package body Archive.Source_Monitoring is
          Data  : Ada.Streams.Stream_Element_Array (1 .. Ada.Streams.Stream_Element_Offset (Count));
          Last  : Ada.Streams.Stream_Element_Offset := 0;
       begin
-         Ada.Streams.Stream_IO.Open (File, Ada.Streams.Stream_IO.In_File, Path);
+         Ada.Streams.Stream_IO.Open (File, Ada.Streams.Stream_IO.In_File, Path, Form => "shared=no");
          if Count > 0 then
             Ada.Streams.Stream_IO.Read (File, Data, Last);
          end if;

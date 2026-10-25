@@ -559,7 +559,7 @@ package body Archive.Settings is
       File   : Ada.Text_IO.File_Type;
       Result : Unbounded_String;
    begin
-      Ada.Text_IO.Open (File, Ada.Text_IO.In_File, Path);
+      Ada.Text_IO.Open (File, Ada.Text_IO.In_File, Path, Form => "shared=no");
       while not Ada.Text_IO.End_Of_File (File) loop
          Append (Result, Ada.Text_IO.Get_Line (File));
          Append (Result, ASCII.LF);
@@ -623,7 +623,7 @@ package body Archive.Settings is
             null;
       end;
 
-      Ada.Text_IO.Create (File, Ada.Text_IO.Out_File, Temp);
+      Ada.Text_IO.Create (File, Ada.Text_IO.Out_File, Temp, Form => "shared=no");
       Ada.Text_IO.Put (File, Serialize (Settings));
       Ada.Text_IO.Close (File);
 

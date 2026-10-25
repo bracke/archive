@@ -199,7 +199,7 @@ package body Archive.Writes.Zip is
          Size := 0;
          CRC := 0;
          CryptoLib.Checksums.CRC32_Reset (State);
-         Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Path);
+         Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Path, Form => "shared=no");
          loop
             Ada.Streams.Stream_IO.Read (Input, Data, Last);
             exit when Last < Data'First;
@@ -233,7 +233,7 @@ package body Archive.Writes.Zip is
          Last  : Ada.Streams.Stream_Element_Offset := 0;
       begin
          Good := False;
-         Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Path);
+         Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Path, Form => "shared=no");
          loop
             Ada.Streams.Stream_IO.Read (Input, Data, Last);
             exit when Last < Data'First;
@@ -380,7 +380,7 @@ package body Archive.Writes.Zip is
             Archive.Compression.Zlib.Raw_Deflate,
             Max_Output_Bytes => Archive.Types.Compressed_Size (Interfaces.Unsigned_32'Last));
 
-         Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Path);
+         Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Path, Form => "shared=no");
          loop
             Ada.Streams.Stream_IO.Read (Input, Data, Last);
             exit when Last < Data'First;

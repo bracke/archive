@@ -139,7 +139,7 @@ package body Archive.Extraction.Execution is
          return (Status => Archive.Extraction.Results.Failed_Containment);
       end if;
 
-      Ada.Streams.Stream_IO.Create (File, Ada.Streams.Stream_IO.Out_File, Temp);
+      Ada.Streams.Stream_IO.Create (File, Ada.Streams.Stream_IO.Out_File, Temp, Form => "shared=no");
       declare
          Streamed : constant Stream_Payload_Result :=
            Provider.all (Plan.Source, Consume'Unrestricted_Access);

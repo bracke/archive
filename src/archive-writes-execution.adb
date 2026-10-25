@@ -306,8 +306,8 @@ package body Archive.Writes.Execution is
       Last   : Ada.Streams.Stream_Element_Offset := 0;
    begin
       OK := False;
-      Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Source_Path);
-      Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Target_Path);
+      Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Source_Path, Form => "shared=no");
+      Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Target_Path, Form => "shared=no");
       loop
          Ada.Streams.Stream_IO.Read (Input, Data, Last);
          exit when Last < Data'First;
@@ -804,7 +804,7 @@ package body Archive.Writes.Execution is
       State : Archive.Verification.CRC32.CRC32_State := Archive.Verification.CRC32.Initial;
    begin
       OK := False;
-      Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Path);
+      Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Path, Form => "shared=no");
       loop
          Ada.Streams.Stream_IO.Read (Input, Data, Last);
          exit when Last < Data'First;
@@ -984,7 +984,7 @@ package body Archive.Writes.Execution is
                end if;
 
                Ada.Streams.Stream_IO.Open
-                 (Read_File, Ada.Streams.Stream_IO.In_File, Destination_Path);
+                 (Read_File, Ada.Streams.Stream_IO.In_File, Destination_Path, Form => "shared=no");
                if not Locate_Zip_Central_Record
                  (Read_File, Item.Ordinal, Central_Off, Local_Off)
                then
@@ -1006,8 +1006,8 @@ package body Archive.Writes.Execution is
                end if;
                Ada.Streams.Stream_IO.Close (Read_File);
 
-               Ada.Streams.Stream_IO.Open (Host_File, Ada.Streams.Stream_IO.In_File, Host_Path);
-               Byte_IO.Open (Archive_File, Byte_IO.Inout_File, Destination_Path);
+               Ada.Streams.Stream_IO.Open (Host_File, Ada.Streams.Stream_IO.In_File, Host_Path, Form => "shared=no");
+               Byte_IO.Open (Archive_File, Byte_IO.Inout_File, Destination_Path, Form => "shared=no");
                Byte_IO.Set_Index
                  (Archive_File, Byte_IO.Count (Natural (Item.Data_Offset.Value) + 1));
                loop
@@ -1091,7 +1091,7 @@ package body Archive.Writes.Execution is
       end if;
 
       Ada.Directories.Create_Path (Root);
-      Ada.Streams.Stream_IO.Create (Sink.File, Ada.Streams.Stream_IO.Out_File, Temp);
+      Ada.Streams.Stream_IO.Create (Sink.File, Ada.Streams.Stream_IO.Out_File, Temp, Form => "shared=no");
       Build_Status :=
         (if External_Method /= ""
          then Archive.Writes.Zip.Build_External_Stream
@@ -1284,7 +1284,7 @@ package body Archive.Writes.Execution is
             return;
          end if;
 
-         Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Path);
+         Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Path, Form => "shared=no");
          declare
             Payload : constant Archive.Archives.Readers.Dispatch.Stream_Result :=
               Archive.Archives.Readers.Dispatch.Stream_Payload_File
@@ -1577,7 +1577,7 @@ package body Archive.Writes.Execution is
       end if;
 
       Ada.Directories.Create_Path (Root);
-      Ada.Streams.Stream_IO.Create (Sink.File, Ada.Streams.Stream_IO.Out_File, Temp);
+      Ada.Streams.Stream_IO.Create (Sink.File, Ada.Streams.Stream_IO.Out_File, Temp, Form => "shared=no");
       Build_Status :=
         (if Source_Path = ""
          then Archive.Writes.Tar.Build_Stream (Plan, Sink)
@@ -1684,8 +1684,8 @@ package body Archive.Writes.Execution is
               (Archive.Resource_Limits.Default_Configured
                  (Archive.Resource_Limits.Temporary_Backing_Bytes)),
             Max_Ratio => 1_000));
-      Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Source_Path);
-      Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Target_Path);
+      Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Source_Path, Form => "shared=no");
+      Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Target_Path, Form => "shared=no");
 
       loop
          Ada.Streams.Stream_IO.Read (Input, Data, Last);
@@ -1828,7 +1828,7 @@ package body Archive.Writes.Execution is
             return False;
          end if;
 
-         Ada.Streams.Stream_IO.Open (In_File, Ada.Streams.Stream_IO.In_File, Part_Path);
+         Ada.Streams.Stream_IO.Open (In_File, Ada.Streams.Stream_IO.In_File, Part_Path, Form => "shared=no");
          Ada.Streams.Stream_IO.Read (In_File, Raw, Last);
          Ada.Streams.Stream_IO.Close (In_File);
          return Last = 4
@@ -1866,7 +1866,7 @@ package body Archive.Writes.Execution is
             raise Storage_Error;
          end if;
 
-         Ada.Streams.Stream_IO.Open (In_File, Ada.Streams.Stream_IO.In_File, Part_Path);
+         Ada.Streams.Stream_IO.Open (In_File, Ada.Streams.Stream_IO.In_File, Part_Path, Form => "shared=no");
          if Skip > 0 then
             Ada.Streams.Stream_IO.Set_Index
               (In_File, Skip + Ada.Streams.Stream_IO.Count (1));
@@ -1911,7 +1911,7 @@ package body Archive.Writes.Execution is
          Ada.Directories.Delete_File (Target_Path);
       end if;
 
-      Ada.Streams.Stream_IO.Create (Out_File, Ada.Streams.Stream_IO.Out_File, Target_Path);
+      Ada.Streams.Stream_IO.Create (Out_File, Ada.Streams.Stream_IO.Out_File, Target_Path, Form => "shared=no");
 
       for Part in Positive range 1 .. 99 loop
          declare
@@ -1974,7 +1974,7 @@ package body Archive.Writes.Execution is
       end if;
 
       Ada.Directories.Create_Path (Root);
-      Ada.Streams.Stream_IO.Create (Sink.File, Ada.Streams.Stream_IO.Out_File, Temp);
+      Ada.Streams.Stream_IO.Create (Sink.File, Ada.Streams.Stream_IO.Out_File, Temp, Form => "shared=no");
       Archive.Compression.Zlib.Open
         (Sink.Stream,
          Archive.Compression.Zlib.Gzip_Wrapped,
@@ -2150,8 +2150,8 @@ package body Archive.Writes.Execution is
       Ada.Directories.Create_Path (Root);
       Ada.Streams.Stream_IO.Open
         (Input, Ada.Streams.Stream_IO.In_File,
-         Ada.Strings.Unbounded.To_String (Source));
-      Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Temp);
+         Ada.Strings.Unbounded.To_String (Source), Form => "shared=no");
+      Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Temp, Form => "shared=no");
       Archive.Compression.Zlib.Open
         (Stream,
          Archive.Compression.Zlib.Gzip_Wrapped,
@@ -2469,7 +2469,7 @@ package body Archive.Writes.Execution is
             return;
          end if;
 
-         Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Path);
+         Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Path, Form => "shared=no");
          loop
             Ada.Streams.Stream_IO.Read (Input, Data, Last);
             exit when Last < Data'First;
@@ -2584,7 +2584,7 @@ package body Archive.Writes.Execution is
       end if;
 
       Ada.Directories.Create_Path (Root);
-      Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Temp);
+      Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Temp, Form => "shared=no");
       Write_Text (Output, "!<arch>" & ASCII.LF, Failed);
 
       if Source_Path /= "" and then Failed = Archive.Archives.Errors.Ok then
@@ -2772,7 +2772,7 @@ package body Archive.Writes.Execution is
             return;
          end if;
 
-         Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Path);
+         Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Path, Form => "shared=no");
          loop
             Ada.Streams.Stream_IO.Read (Input, Data, Last);
             exit when Last < Data'First;
@@ -2896,7 +2896,7 @@ package body Archive.Writes.Execution is
       end if;
 
       Ada.Directories.Create_Path (Root);
-      Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Temp);
+      Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Temp, Form => "shared=no");
 
       if Source_Path /= "" and then Failed = Archive.Archives.Errors.Ok then
          for Raw_Id in 1 .. Archive.Archives.Index.Entry_Count (Plan.Index) loop
@@ -3246,7 +3246,7 @@ package body Archive.Writes.Execution is
          Data : Ada.Streams.Stream_Element_Array (1 .. Chunk_Size);
          Last : Ada.Streams.Stream_Element_Offset := 0;
       begin
-         Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Path);
+         Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Path, Form => "shared=no");
          loop
             Ada.Streams.Stream_IO.Read (Input, Data, Last);
             exit when Last < Data'First;
@@ -3311,7 +3311,7 @@ package body Archive.Writes.Execution is
       end if;
 
       Ada.Directories.Create_Path (Root);
-      Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Temp);
+      Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Temp, Form => "shared=no");
 
       Write_Cab_Text
         ("MSCF"
@@ -3816,7 +3816,7 @@ package body Archive.Writes.Execution is
          Last : Ada.Streams.Stream_Element_Offset := 0;
          Written : Natural := 0;
       begin
-         Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Path);
+         Ada.Streams.Stream_IO.Open (Input, Ada.Streams.Stream_IO.In_File, Path, Form => "shared=no");
          loop
             Ada.Streams.Stream_IO.Read (Input, Data, Last);
             exit when Last < Data'First;
@@ -3965,7 +3965,7 @@ package body Archive.Writes.Execution is
       end;
 
       Ada.Directories.Create_Path (Root);
-      Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Temp);
+      Ada.Streams.Stream_IO.Create (Output, Ada.Streams.Stream_IO.Out_File, Temp, Form => "shared=no");
       Write_Zeroes (16 * Sector_Size);
 
       declare

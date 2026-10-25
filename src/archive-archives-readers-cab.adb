@@ -47,7 +47,7 @@ package body Archive.Archives.Readers.Cab is
             return Result;
          end if;
          Ada.Streams.Stream_IO.Open
-           (File, Ada.Streams.Stream_IO.In_File, Path);
+           (File, Ada.Streams.Stream_IO.In_File, Path, Form => "shared=no");
          Ada.Streams.Stream_IO.Read (File, Buffer, Last);
          Ada.Streams.Stream_IO.Close (File);
          if Natural (Last - Buffer'First + 1) /= Count then
