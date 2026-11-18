@@ -147,6 +147,15 @@ jobs:
           I18N_DATA_DIR: ${{ github.workspace }}/i18n/share/i18n
         run: |
           alr --non-interactive build
+          # The Intel runner has no Metal device, and MoltenVK aborts the process
+          # when the live-runtime test creates a Vulkan instance there. Mesa's
+          # lavapipe software driver renders instead, as in files' CI.
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install mesa || echo "::warning::could not install Homebrew mesa"
+          icd="$(ls "$(brew --prefix)"/{share,etc}/vulkan/icd.d/lvp_icd*.json 2>/dev/null | head -1)"
+          if [ -n "$icd" ]; then
+            export VK_ICD_FILENAMES="$icd"
+          fi
+          echo "VK_ICD_FILENAMES=${VK_ICD_FILENAMES:-<unset>}"
           ./bin/archive_tests
 
   windows-build-check:
