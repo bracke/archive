@@ -1,5 +1,6 @@
 with Ada.Strings.Unbounded;
 
+with Guikit.Bidi;
 with Guikit.Layout;
 with Guikit.List_Panel;
 with Guikit.Widgets;
@@ -333,7 +334,8 @@ package body Archive.GUI_Frame is
           Wrap_Selection => True,
           Placeholder    => Shell.Command_Palette_Label,
           Empty_State    => Shell.Status_Text,
-          Title          => Shell.Command_Palette_Label));
+          Title          => Shell.Command_Palette_Label,
+          Close_Label    => <>));
       Guikit.Command_Palette.Set_Commands (Palette, Commands);
       Guikit.Command_Palette.Set_Query (Palette, To_String (Shell.Command_Palette_Filter));
       Guikit.Command_Palette.Select_First (Palette);
@@ -506,7 +508,8 @@ package body Archive.GUI_Frame is
           Title           => Shell.Settings.Title,
           Status          => Shell.Settings.Status_Text,
           Status_Is_Error => False,
-          Switch_Tooltip  => To_Unbounded_String ("")));
+          Switch_Tooltip  => To_Unbounded_String (""),
+          Close_Label     => <>));
       Guikit.Settings_Panel.Set_Fields (Panel, Fields);
       --  Back to where the keyboard left the panel: its section, then its
       --  focused field.
@@ -613,7 +616,8 @@ package body Archive.GUI_Frame is
          Command_X         => 0,
          Command_Y         => Shell.Layout.Breadcrumb_Y,
          Command_Width     => W,
-         Command_Height    => Shell.Layout.Breadcrumb_H);
+         Command_Height    => Shell.Layout.Breadcrumb_H,
+         Line_Height       => Archive.UI.Default_Line_Height);
 
       Result.Rectangles.Append
         (Guikit.Draw.Rectangle_Command'
@@ -703,9 +707,14 @@ package body Archive.GUI_Frame is
                Field_Y : constant Natural := H / 4 + 56;
                Field_W : constant Natural := (if W / 2 > 32 then W / 2 - 32 else 0);
                Field_H : constant Natural := Line_H + 8;
+               Cell_W  : constant Positive := Guikit.Layout.Caret_Advance_Width (Line_H);
+               --  The caret follows the last character typed as it is drawn:
+               --  on the left of a right-to-left path's text.
                Typed_W : constant Natural :=
-                 Guikit.Layout.Label_Pixel_Width
-                   (To_String (Shell.Dialog.Text), Guikit.Layout.Caret_Advance_Width (Line_H));
+                 Guikit.Bidi.Caret_Column
+                   (To_String (Shell.Dialog.Text), Length (Shell.Dialog.Text),
+                    Columns => (if Field_W > 12 then (Field_W - 12) / Cell_W else 0))
+                 * Cell_W;
             begin
                Guikit.Widgets.Draw_Input_Field
                  (Result.Overlay_Rectangles, W, H, Field_X, Field_Y, Field_W, Field_H,

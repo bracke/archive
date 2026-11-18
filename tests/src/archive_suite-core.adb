@@ -10,6 +10,7 @@ with Ada.Streams.Stream_IO;
 with Interfaces;
 with Guikit.Input;
 with Guikit.Item_Grid;
+with Guikit.Layout;
 with Guikit.Vulkan;
 with Archive.Fonts;
 with Guikit.Draw;
@@ -13876,6 +13877,39 @@ package body Archive_Suite.Core is
                  "gui frame emits overlay rectangles for dialogs");
          Assert (Natural (Frame.Overlay_Text.Length) > 0,
                  "gui frame emits overlay text for dialogs");
+      end;
+
+      --  The dialog's caret follows the end of the typed path as drawn: after
+      --  "abc", but on the left of three Hebrew letters, which read right to left.
+      declare
+         function Caret_X (Typed : String) return Natural is
+         begin
+            Archive.Model.Set_Dialog_Text (Model, Typed);
+            declare
+               Frame : constant Archive.GUI_Frame.Frame :=
+                 Archive.GUI_Frame.Build (Archive.UI.Build_Shell (Model, Config));
+            begin
+               for Rect of Frame.Overlay_Rectangles loop
+                  if Rect.Width = 2 and then Guikit.Draw."=" (Rect.Color, Guikit.Draw.Text_Color) then
+                     return Rect.X;
+                  end if;
+               end loop;
+               Assert (False, "the dialog draws a caret");
+               return 0;
+            end;
+         end Caret_X;
+
+         Cell   : constant Natural :=
+           Guikit.Layout.Caret_Advance_Width (Archive.UI.Default_Line_Height);
+         Latin  : constant Natural := Caret_X ("abc");
+         Hebrew : constant Natural :=
+           Caret_X
+             (Character'Val (16#D7#) & Character'Val (16#90#) & Character'Val (16#D7#) & Character'Val (16#91#)
+              & Character'Val (16#D7#) & Character'Val (16#92#));
+      begin
+         Assert (Hebrew + 3 * Cell = Latin,
+                 "the caret after Hebrew is at the text's left edge (Hebrew" & Hebrew'Image & ", Latin"
+                 & Latin'Image & ")");
       end;
    end Test_GUI_Frame;
 
