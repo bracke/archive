@@ -13967,8 +13967,9 @@ package body Archive_Suite.Core is
       Assert (Dialog = Archive.Model.No_Dialog, "Enter answers the dialog");
       Assert (Archive.GUI_Runtime.Open_Operation_Status (Runtime) /= Archive.Operations.Opening.Operation_Idle,
               "and opens the typed archive");
-      for Attempt in 1 .. 10_000 loop
+      for Attempt in 1 .. 3_000 loop
          exit when Archive.GUI_Runtime.Drain_Operations (Runtime).Event_Seen;
+         delay 0.01;
       end loop;
 
       --  A click on an entry selects it.
@@ -14180,9 +14181,12 @@ package body Archive_Suite.Core is
       declare
          Drain : Archive.Operations.Opening.Drain_Result;
       begin
-         for Attempt in 1 .. 10_000 loop
+         --  Bounded by time, not by a count of tries: ten thousand tries without
+         --  a pause ran out before the open finished on a slow macOS runner.
+         for Attempt in 1 .. 3_000 loop
             Drain := Archive.GUI_Runtime.Drain_Operations (Runtime);
             exit when Drain.Event_Seen;
+            delay 0.01;
          end loop;
          Assert
            (Drain.Event_Seen and then Drain.Applied
