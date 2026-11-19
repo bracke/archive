@@ -152,6 +152,7 @@ package body Archive.GUI_Frame is
                Color        => Color,
                Truncated    => False,
                Scale_To_Box => False,
+               Align_End    => False,
                Italic       => False));
       end if;
    end Add_Text;
