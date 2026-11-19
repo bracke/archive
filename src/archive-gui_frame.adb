@@ -1,7 +1,6 @@
 with Ada.Strings.Unbounded;
 
 with Guikit.Bidi;
-with Guikit.Text;
 with Guikit.Layout;
 with Guikit.List_Panel;
 with Guikit.Widgets;
@@ -716,8 +715,7 @@ package body Archive.GUI_Frame is
                Typed_W : constant Natural :=
                  Guikit.Bidi.Caret_Column
                    (To_String (Shell.Dialog.Text), Length (Shell.Dialog.Text),
-                    Columns   => (if Field_W > 12 then (Field_W - 12) / Cell_W else 0),
-                    Has_Glyph => Guikit.Text.Can_Draw_Form'Access)
+                    Columns   => (if Field_W > 12 then (Field_W - 12) / Cell_W else 0))
                  * Cell_W;
             begin
                Guikit.Widgets.Draw_Input_Field
