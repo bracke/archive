@@ -43,6 +43,9 @@ package body Archive.Archives.Readers.Zstd is
             --  zlib-layer failure rather than Unsupported_Method (the format is
             --  supported). Give these dedicated codes when archive grows a prompt.
             return Archive.Archives.Errors.Zlib_Failed;
+         when Zlib.Cancelled =>
+            --  The caller's cancel stopped the work.
+            return Archive.Archives.Errors.Cancelled;
       end case;
    end Map_Status;
 

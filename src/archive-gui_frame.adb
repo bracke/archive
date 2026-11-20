@@ -154,7 +154,8 @@ package body Archive.GUI_Frame is
                Scale_To_Box => False,
                Align_End    => False,
                Italic       => False,
-               Mirror_Glyph => False));
+               Mirror_Glyph => False,
+               Cut_Columns  => Guikit.Draw.Auto_Cut));
       end if;
    end Add_Text;
 

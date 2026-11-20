@@ -80,6 +80,9 @@ package body Archive.Compression.Zlib is
             --  failure rather than Unsupported_Method (the format is supported).
             --  Give these dedicated codes when archive grows a password prompt.
             return Archive.Archives.Errors.Zlib_Failed;
+         when Standard.Zlib.Cancelled =>
+            --  The caller's cancel stopped the work.
+            return Archive.Archives.Errors.Cancelled;
       end case;
    end Map_Status;
 
