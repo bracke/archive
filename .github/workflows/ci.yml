@@ -200,10 +200,14 @@ jobs:
           pacman-key --init || true
           pacman-key --populate msys2 || true
 
+          # MSYS2 is retiring its MINGW64 packages and has dropped glfw from it;
+          # take glfw alone from UCRT64. It links through its DLL import library
+          # (-lglfw3 finds libglfw3.dll.a), so its C runtime is the DLL's own
+          # business and the mingw-w64 toolchain links it like any other DLL.
           packages="mingw-w64-x86_64-vulkan-loader
                     mingw-w64-x86_64-glib2
                     mingw-w64-x86_64-gdk-pixbuf2
-                    mingw-w64-x86_64-glfw
+                    mingw-w64-ucrt-x86_64-glfw
                     mingw-w64-x86_64-openssl"
 
           # The mirrors stall often enough to matter, so give each sync room to
@@ -233,7 +237,10 @@ jobs:
           [ -n "$synced" ] || { echo "::error::could not install the MSYS2 packages"; exit 1; }
 
           echo "CPATH=C:/msys64/mingw64/include" >> "$GITHUB_ENV"
-          echo "LIBRARY_PATH=C:/msys64/mingw64/lib" >> "$GITHUB_ENV"
+          echo "LIBRARY_PATH=C:/msys64/mingw64/lib;C:/msys64/ucrt64/lib" >> "$GITHUB_ENV"
+          # Each line goes in front of PATH: UCRT64's (for glfw3.dll) first, so
+          # MINGW64's DLLs stay ahead of it.
+          echo "C:\msys64\ucrt64\bin" >> "$GITHUB_PATH"
           echo "C:\msys64\mingw64\bin" >> "$GITHUB_PATH"
       - name: Build archive on Windows
         working-directory: archive
